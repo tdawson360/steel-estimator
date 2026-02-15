@@ -286,3 +286,25 @@
     inset: -1px;
   }
 }
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .print\:border-0 {
+    border: none !important;
+  }
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+  header, nav, [data-testid="tabs-navigation"] {
+    display: none !important;
+  }
+}
