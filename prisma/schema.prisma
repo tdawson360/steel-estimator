@@ -1,0 +1,383 @@
+// =============================================================================
+// BERGER IRON WORKS — STEEL ESTIMATOR DATABASE SCHEMA
+// =============================================================================
+// This file describes every "table" (model) in your database.
+// Think of each model as a drawer in a filing cabinet.
+// Each field is a column on a spreadsheet inside that drawer.
+//
+// After editing this file, run:  npx prisma migrate dev --name describe_change
+// That tells PostgreSQL to build/update the actual tables.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// USER & AUTHENTICATION
+// =============================================================================
+// Who can log in and what they're allowed to do.
+// role: ADMIN = full access, ESTIMATOR = create/edit/lock, PM = read-only
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  password  String    // Will store a hashed version, never plain text
+  name      String
+  role      String    @default("ESTIMATOR") // ADMIN, ESTIMATOR, PM
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // A user can create many projects
+  projects  Project[]
+}
+
+// =============================================================================
+// PROJECT
+// =============================================================================
+// One project = one estimate. This is the top-level record that holds
+// everything together — like the project folder that contains all your sheets.
+
+model Project {
+  id               Int       @id @default(autoincrement())
+  
+  // Status: DRAFT (editable), LOCKED (read-only), REVISED (new version created)
+  status           String    @default("DRAFT")
+  
+  // Project Info tab fields
+  projectName      String    @default("")
+  projectAddress   String    @default("")
+  customerName     String    @default("")
+  billingAddress   String    @default("")
+  customerContact  String    @default("")
+  customerPhone    String    @default("")
+  customerEmail    String    @default("")
+  estimateDate     String    @default("")
+  estimatedBy      String    @default("")
+  drawingDate      String    @default("")
+  drawingRevision  String    @default("")
+  architect        String    @default("")
+  
+  // Project types (checkboxes)
+  typeStructural    Boolean  @default(false)
+  typeMiscellaneous Boolean  @default(false)
+  typeOrnamental    Boolean  @default(false)
+  
+  // Delivery options (checkboxes)
+  deliveryInstalled  Boolean @default(false)
+  deliveryFobJobsite Boolean @default(false)
+  deliveryWillCall   Boolean @default(false)
+  
+  // Tax category: null, "newConstruction", "resale", "fob", "noTax"
+  taxCategory      String?
+  
+  // Timestamps & tracking
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  // Who created this project
+  createdById      Int
+  createdBy        User      @relation(fields: [createdById], references: [id])
+  
+  // If this is a revision, link back to the original
+  parentProjectId  Int?
+  parentProject    Project?  @relation("ProjectRevisions", fields: [parentProjectId], references: [id])
+  revisions        Project[] @relation("ProjectRevisions")
+  
+  // Everything inside this project
+  items              Item[]
+  breakoutGroups     BreakoutGroup[]
+  adjustments        Adjustment[]
+  exclusions         Exclusion[]
+  qualifications     Qualification[]
+  customRecapColumns CustomRecapColumn[]
+}
+
+// =============================================================================
+// BREAKOUT GROUP
+// =============================================================================
+// Groups items into Base Bid, Deduct, or Add alternates on the quote.
+// Example: "Canopy" might be a Deduct option.
+
+model BreakoutGroup {
+  id        Int     @id @default(autoincrement())
+  name      String  @default("")
+  type      String  @default("base") // "base", "deduct", "add"
+  
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  items     Item[]
+}
+
+// =============================================================================
+// ITEM
+// =============================================================================
+// A single line item in the estimate. Example: "Stair #1" or "Canopy Framing"
+// Each item has its own materials, fabrication, and recap costs.
+
+model Item {
+  id              Int     @id @default(autoincrement())
+  itemNumber      String  @default("001")
+  itemName        String  @default("New Item")
+  drawingRef      String  @default("")
+  sortOrder       Int     @default(0)        // Controls display order
+  materialMarkup  Float   @default(0)        // Percentage
+  fabMarkup       Float   @default(0)        // Percentage
+  
+  projectId       Int
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  breakoutGroupId Int?
+  breakoutGroup   BreakoutGroup? @relation(fields: [breakoutGroupId], references: [id], onDelete: SetNull)
+  
+  // Everything inside this item
+  materials       Material[]
+  fabrication     ItemFabrication[]
+  recapCosts      RecapCost[]
+}
+
+// =============================================================================
+// MATERIAL
+// =============================================================================
+// A single material line within an item. Example: "W12x26 at 20'-0" — 4 pieces"
+// This stores the shape, size, length, quantity, pricing, and weight calculations.
+
+model Material {
+  id             Int     @id @default(autoincrement())
+  sortOrder      Int     @default(0)
+  
+  // What shape and size
+  category       String  @default("")     // "W Shapes", "HSS Rect", "Plate", etc.
+  shape          String  @default("")     // "W12x26", "HSS6x4x1/4", etc.
+  
+  // Dimensions and quantity
+  length         Float   @default(0)      // Piece length in feet
+  pieces         Int     @default(0)      // How many pieces
+  
+  // Stock / nesting
+  stockLength    Float   @default(0)      // Stock length purchased
+  stocksRequired Int     @default(0)      // How many stocks to buy
+  waste          Float   @default(0)      // Waste percentage
+  
+  // Weight
+  weightPerFt    Float   @default(0)      // Lbs per linear foot
+  fabWeight      Float   @default(0)      // Total fabrication weight
+  stockWeight    Float   @default(0)      // Total stock weight purchased
+  
+  // Pricing
+  pricePerFt     Float   @default(0)      // Cost per foot
+  pricePerLb     Float   @default(0)      // Cost per pound
+  totalCost      Float   @default(0)      // Calculated total material cost
+  
+  // Galvanizing
+  galvanized     Boolean @default(false)
+  galvRate       Float   @default(0)
+  
+  // Plate-specific fields
+  width          Float?                   // Plate width in inches
+  thickness      Float?                   // Plate thickness in inches
+  
+  // Parent relationship
+  itemId         Int
+  item           Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  // Fab operations on this material (welding, connections, coatings, etc.)
+  fabrication    MaterialFabrication[]
+  
+  // Sub-materials (embedded items like clips, stiffeners within this material)
+  children       ChildMaterial[]
+}
+
+// =============================================================================
+// MATERIAL FABRICATION
+// =============================================================================
+// A fabrication operation tied to a specific material.
+// Example: "WF Connx — 4 ea @ $85" on a W12x26
+
+model MaterialFabrication {
+  id           Int     @id @default(autoincrement())
+  sortOrder    Int     @default(0)
+  
+  operation    String  @default("")       // "WF Connx", "Prime Paint", "Handling", etc.
+  quantity     Float   @default(0)
+  unit         String  @default("ea")     // "ea", "ft", "sqft", "hr", etc.
+  rate         Float   @default(0)        // Cost per unit
+  totalCost    Float   @default(0)        // quantity × rate
+  
+  // Connection-specific fields (for WF Connx, C Connx)
+  connWeight   Float   @default(0)        // Weight per connection
+  
+  // Galvanizing auto-generated line
+  isGalvLine   Boolean @default(false)    // True if auto-created for galvanizing
+  
+  materialId   Int
+  material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// CHILD MATERIAL
+// =============================================================================
+// A sub-material embedded within a parent material.
+// Example: Base plate welded to a column, or stiffeners inside a beam.
+
+model ChildMaterial {
+  id             Int     @id @default(autoincrement())
+  sortOrder      Int     @default(0)
+  
+  category       String  @default("")
+  shape          String  @default("")
+  length         Float   @default(0)
+  pieces         Int     @default(0)
+  stockLength    Float   @default(0)
+  stocksRequired Int     @default(0)
+  waste          Float   @default(0)
+  weightPerFt    Float   @default(0)
+  fabWeight      Float   @default(0)
+  stockWeight    Float   @default(0)
+  pricePerFt     Float   @default(0)
+  pricePerLb     Float   @default(0)
+  totalCost      Float   @default(0)
+  galvanized     Boolean @default(false)
+  galvRate       Float   @default(0)
+  width          Float?
+  thickness      Float?
+  
+  // Parent material this belongs to
+  parentId       Int
+  parent         Material @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  
+  // Fab operations on this child material
+  fabrication    ChildMaterialFabrication[]
+}
+
+// =============================================================================
+// CHILD MATERIAL FABRICATION
+// =============================================================================
+// Fab operations on a child material (same structure as MaterialFabrication)
+
+model ChildMaterialFabrication {
+  id           Int     @id @default(autoincrement())
+  sortOrder    Int     @default(0)
+  
+  operation    String  @default("")
+  quantity     Float   @default(0)
+  unit         String  @default("ea")
+  rate         Float   @default(0)
+  totalCost    Float   @default(0)
+  connWeight   Float   @default(0)
+  isGalvLine   Boolean @default(false)
+  
+  childMaterialId Int
+  childMaterial   ChildMaterial @relation(fields: [childMaterialId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// ITEM FABRICATION
+// =============================================================================
+// Item-level (general) fabrication — not tied to a specific material.
+// Example: "Shop Load-out — 1 LS @ $500" for the whole item.
+
+model ItemFabrication {
+  id           Int     @id @default(autoincrement())
+  sortOrder    Int     @default(0)
+  
+  operation    String  @default("")
+  quantity     Float   @default(0)
+  unit         String  @default("ea")
+  rate         Float   @default(0)
+  totalCost    Float   @default(0)
+  
+  itemId       Int
+  item         Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// RECAP COST
+// =============================================================================
+// Per-item costs on the Recap tab — installation, drafting, engineering, etc.
+// Also stores custom column values. Each row is one cost category for one item.
+
+model RecapCost {
+  id        Int     @id @default(autoincrement())
+  
+  // Which cost category: "installation", "drafting", "engineering", 
+  // "projectManagement", "shipping", or a custom column key like "custom_1707..."
+  costType  String
+  
+  // Standard fields (cost + markup %)
+  cost      Float   @default(0)
+  markup    Float   @default(0)
+  total     Float   @default(0)
+  
+  // Project Management uses hours × rate instead of cost + markup
+  hours     Float   @default(0)
+  rate      Float   @default(0)
+  
+  itemId    Int
+  item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  @@unique([itemId, costType]) // One entry per cost type per item
+}
+
+// =============================================================================
+// CUSTOM RECAP COLUMN
+// =============================================================================
+// User-defined columns on the Recap tab (e.g., "Crane", "Permits")
+
+model CustomRecapColumn {
+  id        Int     @id @default(autoincrement())
+  key       String                        // "custom_1707..." — matches the key in RecapCost.costType
+  name      String                        // Display name: "Crane", "Permits", etc.
+  
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// ADJUSTMENT
+// =============================================================================
+// General adjustments on the Summary tab (internal only, baked into total)
+
+model Adjustment {
+  id          Int     @id @default(autoincrement())
+  description String  @default("")
+  amount      Float   @default(0)
+  
+  projectId   Int
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// EXCLUSION
+// =============================================================================
+// Both standard (selected from checkboxes) and custom exclusions
+
+model Exclusion {
+  id        Int     @id @default(autoincrement())
+  text      String
+  isCustom  Boolean @default(false)       // true = user typed it, false = selected from standard list
+  
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// QUALIFICATION
+// =============================================================================
+// Both standard and custom qualifications
+
+model Qualification {
+  id        Int     @id @default(autoincrement())
+  text      String
+  isCustom  Boolean @default(false)
+  
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
