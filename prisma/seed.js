@@ -1,37 +1,43 @@
-// =============================================================================
-// SEED SCRIPT — Creates the first user in the database
-// =============================================================================
-// Run this once after setting up the database:
-//   node prisma/seed.js
-//
-// This creates your admin account so projects can be saved.
-// =============================================================================
-
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  // Check if any users exist already
   const userCount = await prisma.user.count();
   
   if (userCount > 0) {
     console.log('Users already exist. Skipping seed.');
-    const users = await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true } });
+    const users = await prisma.user.findMany({ select: { id: true, firstName: true, lastName: true, email: true, role: true } });
     console.log('Existing users:', users);
     return;
   }
 
-  // Create the admin user
-  const admin = await prisma.user.create({
+  const hashedPassword = await bcrypt.hash('BergerIron2024!', 12);
+
+  const todd = await prisma.user.create({
     data: {
       email: 'tdawson@bergerinc.com',
-      password: 'temporary', // We'll add proper password hashing when we build auth
-      name: 'Todd Dawson',
+      password: hashedPassword,
+      firstName: 'Todd',
+      lastName: 'Dawson',
       role: 'ADMIN',
     }
   });
 
-  console.log('Created admin user:', { id: admin.id, name: admin.name, email: admin.email, role: admin.role });
+  const leadEstimator = await prisma.user.create({
+    data: {
+      email: 'estimator@bergerinc.com',
+      password: hashedPassword,
+      firstName: 'Lead',
+      lastName: 'Estimator',
+      role: 'ADMIN',
+    }
+  });
+
+  console.log('Created admin users:');
+  console.log(`  ${todd.firstName} ${todd.lastName} (${todd.email}) - ${todd.role}`);
+  console.log(`  ${leadEstimator.firstName} ${leadEstimator.lastName} (${leadEstimator.email}) - ${leadEstimator.role}`);
+  console.log('Default password: BergerIron2024!');
   console.log('Seed complete!');
 }
 

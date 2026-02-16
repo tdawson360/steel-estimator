@@ -25,17 +25,19 @@ datasource db {
 // role: ADMIN = full access, ESTIMATOR = create/edit/lock, PM = read-only
 
 model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  password  String    // Will store a hashed version, never plain text
-  name      String
-  role      String    @default("ESTIMATOR") // ADMIN, ESTIMATOR, PM
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          Int       @id @default(autoincrement())
+  email       String    @unique
+  password    String
+  firstName   String    @default("")
+  lastName    String    @default("")
+  role        String    @default("ESTIMATOR") // ADMIN, ESTIMATOR, PM, FIELD_SHOP
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
 
-  // A user can create many projects
-  projects  Project[]
+  projects          Project[] @relation("CreatedBy")
+  publishedProjects Project[] @relation("PublishedBy")
 }
 
 // =============================================================================
@@ -47,8 +49,9 @@ model User {
 model Project {
   id               Int       @id @default(autoincrement())
   
-  // Status: DRAFT (editable), LOCKED (read-only), REVISED (new version created)
+  // Status: DRAFT, IN_REVIEW, PUBLISHED, REOPENED
   status           String    @default("DRAFT")
+  publishedAt      DateTime?
   
   // Project Info tab fields
   projectName      String    @default("")
@@ -83,7 +86,11 @@ model Project {
   
   // Who created this project
   createdById      Int
-  createdBy        User      @relation(fields: [createdById], references: [id])
+  createdBy        User      @relation("CreatedBy", fields: [createdById], references: [id])
+  
+  // Who published this project
+  publishedById    Int?
+  publishedBy      User?     @relation("PublishedBy", fields: [publishedById], references: [id])
   
   // If this is a revision, link back to the original
   parentProjectId  Int?

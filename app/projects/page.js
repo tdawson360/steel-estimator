@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Plus, Trash2, FolderOpen, Search } from 'lucide-react';
+import AppHeader from '../../components/AppHeader';
 
 export default function ProjectsPage() {
+  const { data: session } = useSession();
   const [projects, setProjects] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -76,22 +79,28 @@ export default function ProjectsPage() {
     }
   };
 
+  const userRole = session?.user?.role;
+  const canCreate = userRole === 'ADMIN' || userRole === 'ESTIMATOR';
+  const canDelete = userRole === 'ADMIN';
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <AppHeader />
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Berger Iron Works</h1>
-            <p className="text-sm text-gray-500 mt-1">Steel Estimator — Project Dashboard</p>
+            <h1 className="text-xl font-bold text-gray-900">Project Dashboard</h1>
           </div>
-          <button
-            onClick={handleCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-            data-testid="button-new-project"
-          >
-            <Plus size={16} />
-            New Project
-          </button>
+          {canCreate && (
+            <button
+              onClick={handleCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+              data-testid="button-new-project"
+            >
+              <Plus size={16} />
+              New Project
+            </button>
+          )}
         </div>
 
         <div className="mb-4 relative">
@@ -174,15 +183,17 @@ export default function ProjectsPage() {
                         >
                           <FolderOpen size={16} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(project.id)}
-                          disabled={deleting === project.id}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                          title="Delete"
-                          data-testid={`button-delete-${project.id}`}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(project.id)}
+                            disabled={deleting === project.id}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                            title="Delete"
+                            data-testid={`button-delete-${project.id}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
