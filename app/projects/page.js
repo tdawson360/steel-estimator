@@ -122,7 +122,7 @@ export default function ProjectsPage() {
             <p className="text-gray-500 mb-4">
               {search ? 'No projects match your search.' : 'No projects yet.'}
             </p>
-            {!search && (
+            {!search && canCreate && (
               <button
                 onClick={handleCreate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
@@ -163,11 +163,12 @@ export default function ProjectsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                        project.status === 'LOCKED'
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-green-100 text-green-700'
-                      }`}>
-                        {project.status}
+                        project.status === 'PUBLISHED' ? 'bg-green-100 text-green-700'
+                        : project.status === 'IN_REVIEW' ? 'bg-amber-100 text-amber-700'
+                        : project.status === 'REOPENED' ? 'bg-purple-100 text-purple-700'
+                        : 'bg-gray-100 text-gray-700'
+                      }`} data-testid={`status-badge-${project.id}`}>
+                        {project.status === 'IN_REVIEW' ? 'In Review' : project.status === 'FIELD_SHOP' ? 'Field/Shop' : project.status.charAt(0) + project.status.slice(1).toLowerCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">

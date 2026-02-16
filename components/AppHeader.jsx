@@ -41,7 +41,9 @@ export default function AppHeader() {
   const isAdmin = role === 'ADMIN';
 
   const handleLogout = () => {
-    signOut({ callbackUrl: '/login' });
+    signOut({ redirect: false }).then(() => {
+      window.location.href = '/login';
+    });
   };
 
   return (

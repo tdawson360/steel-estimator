@@ -1,13 +1,29 @@
 import prisma from '../../../lib/db';
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../lib/auth';
+
+async function getUser(request) {
+  const session = await getServerSession(authOptions);
+  return session?.user || null;
+}
 
 export async function GET(request) {
   try {
+    const user = await getUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
 
     const where = {};
+
+    if (user.role === 'PM' || user.role === 'FIELD_SHOP') {
+      where.status = 'PUBLISHED';
+    }
 
     if (search) {
       where.OR = [
@@ -17,7 +33,7 @@ export async function GET(request) {
       ];
     }
 
-    if (status) {
+    if (status && !(user.role === 'PM' || user.role === 'FIELD_SHOP')) {
       where.status = status;
     }
 
@@ -40,6 +56,10 @@ export async function GET(request) {
         deliveryWillCall: true,
         createdAt: true,
         updatedAt: true,
+        publishedAt: true,
+        createdBy: {
+          select: { firstName: true, lastName: true }
+        },
         _count: {
           select: { items: true }
         }
@@ -60,13 +80,20 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const TEMP_USER_ID = 1;
+    const user = await getUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.role !== 'ADMIN' && user.role !== 'ESTIMATOR') {
+      return NextResponse.json({ error: 'You do not have permission to create estimates' }, { status: 403 });
+    }
 
     const project = await prisma.project.create({
       data: {
         projectName: '',
         status: 'DRAFT',
-        createdById: TEMP_USER_ID,
+        createdById: parseInt(user.id),
         items: {
           create: [
             {

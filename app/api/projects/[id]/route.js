@@ -1,5 +1,12 @@
 import prisma from '../../../../lib/db';
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../lib/auth';
+
+async function getUser() {
+  const session = await getServerSession(authOptions);
+  return session?.user || null;
+}
 
 const FULL_PROJECT_INCLUDE = {
   items: {
@@ -28,8 +35,25 @@ const FULL_PROJECT_INCLUDE = {
   customRecapColumns: true
 };
 
+function canViewProject(user, project) {
+  if (user.role === 'ADMIN' || user.role === 'ESTIMATOR') return true;
+  if ((user.role === 'PM' || user.role === 'FIELD_SHOP') && project.status === 'PUBLISHED') return true;
+  return false;
+}
+
+function canEditProject(user, project) {
+  if (user.role === 'ADMIN') return true;
+  if (user.role === 'ESTIMATOR' && (project.status === 'DRAFT' || project.status === 'IN_REVIEW' || project.status === 'REOPENED')) return true;
+  return false;
+}
+
 export async function GET(request, { params }) {
   try {
+    const user = await getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await params;
     const projectId = parseInt(id);
 
@@ -39,25 +63,28 @@ export async function GET(request, { params }) {
     });
 
     if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    if (!canViewProject(user, project)) {
+      return NextResponse.json({ error: 'You do not have permission to view this estimate' }, { status: 403 });
     }
 
     return NextResponse.json(project);
 
   } catch (error) {
     console.error('Error loading project:', error);
-    return NextResponse.json(
-      { error: 'Failed to load project' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load project' }, { status: 500 });
   }
 }
 
 export async function PUT(request, { params }) {
   try {
+    const user = await getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await params;
     const projectId = parseInt(id);
     const data = await request.json();
@@ -68,17 +95,11 @@ export async function PUT(request, { params }) {
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    if (existing.status === 'LOCKED') {
-      return NextResponse.json(
-        { error: 'This estimate is locked and cannot be edited' },
-        { status: 403 }
-      );
+    if (!canEditProject(user, existing)) {
+      return NextResponse.json({ error: 'You do not have permission to edit this estimate' }, { status: 403 });
     }
 
     const updatedProject = await prisma.$transaction(async (tx) => {
@@ -356,28 +377,31 @@ export async function PUT(request, { params }) {
 
   } catch (error) {
     console.error('Error saving project:', error);
-    return NextResponse.json(
-      { error: 'Failed to save project' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to save project' }, { status: 500 });
   }
 }
 
 export async function DELETE(request, { params }) {
   try {
+    const user = await getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Only admins can delete estimates' }, { status: 403 });
+    }
+
     const { id } = await params;
     const projectId = parseInt(id);
 
     const existing = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, status: true }
+      select: { id: true }
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -400,9 +424,6 @@ export async function DELETE(request, { params }) {
 
   } catch (error) {
     console.error('Error deleting project:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete project' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
   }
 }

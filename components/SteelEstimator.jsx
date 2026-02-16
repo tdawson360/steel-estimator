@@ -1479,10 +1479,20 @@ const aggregateImportData = (rows) => {
 // Get unique categories
 const categories = [...new Set(Object.values(steelDatabase).map(s => s.category)), 'Plate'].sort();
 
-const SteelEstimator = ({ projectId }) => {
+const STATUS_COLORS = {
+  DRAFT: 'bg-gray-100 text-gray-700 border-gray-300',
+  IN_REVIEW: 'bg-amber-100 text-amber-700 border-amber-300',
+  PUBLISHED: 'bg-green-100 text-green-700 border-green-300',
+  REOPENED: 'bg-purple-100 text-purple-700 border-purple-300',
+};
+const STATUS_LABELS = { DRAFT: 'Draft', IN_REVIEW: 'In Review', PUBLISHED: 'Published', REOPENED: 'Reopened' };
+
+const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [activeTab, setActiveTab] = useState('project');
   const [saveStatus, setSaveStatus] = useState(null);
   const [currentProjectId, setCurrentProjectId] = useState(projectId || null);
+  const [projectStatus, setProjectStatus] = useState('DRAFT');
+  const [statusChanging, setStatusChanging] = useState(false);
   
   // Project Info
   const [projectName, setProjectName] = useState('');
@@ -1738,6 +1748,7 @@ const SteelEstimator = ({ projectId }) => {
       if (!res.ok) throw new Error('Failed to load project');
       const data = await res.json();
 
+      setProjectStatus(data.status || 'DRAFT');
       setProjectName(data.projectName || '');
       setProjectAddress(data.projectAddress || '');
       setCustomerName(data.customerName || '');
@@ -1944,6 +1955,39 @@ const SteelEstimator = ({ projectId }) => {
       setTimeout(() => setSaveStatus(null), 3000);
     }
   }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, estimatedBy, drawingDate, drawingRevision, architect, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
+
+  const handleStatusChange = useCallback(async (newStatus) => {
+    if (!currentProjectId) return;
+    const messages = {
+      IN_REVIEW: 'Submit this estimate for review?',
+      PUBLISHED: 'Are you sure you want to publish this estimate? It will become visible to Project Managers and Viewers.',
+      REOPENED: 'This will hide the estimate from Viewers until it is re-published. Continue?',
+      DRAFT: 'Reset this estimate back to Draft status?',
+    };
+    if (!confirm(messages[newStatus] || `Change status to ${newStatus}?`)) return;
+    setStatusChanging(true);
+    try {
+      const res = await fetch(`/api/projects/${currentProjectId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setProjectStatus(result.status);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to update status');
+      }
+    } catch (err) {
+      alert('Failed to update status');
+    } finally {
+      setStatusChanging(false);
+    }
+  }, [currentProjectId]);
+
+  const canEdit = userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED'));
+  const isReadOnly = !canEdit;
 
   // ── LOAD ON MOUNT ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -3067,21 +3111,58 @@ const SteelEstimator = ({ projectId }) => {
               <h1 className="text-2xl font-bold text-gray-900">Steel Estimator</h1>
               <p className="text-sm text-gray-600">Professional Estimating System</p>
             </div>
+            <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 text-gray-700 border-gray-300'}`} data-testid="text-project-status">
+              {STATUS_LABELS[projectStatus] || projectStatus}
+            </span>
+            {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap justify-end">
             {saveStatus === 'saved' && <span className="text-green-600 text-sm flex items-center gap-1"><Check size={14} /> Saved</span>}
             {saveStatus === 'error' && <span className="text-red-600 text-sm">Save failed</span>}
-            <button
-              onClick={handleSave}
-              disabled={saveStatus === 'saving'}
-              className="flex items-center gap-1 bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50"
-              data-testid="button-save"
-            >
-              <Save size={16} /> {saveStatus === 'saving' ? 'Saving...' : 'Save'}
-            </button>
+            {canEdit && (
+              <button
+                onClick={handleSave}
+                disabled={saveStatus === 'saving'}
+                className="flex items-center gap-1 bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50"
+                data-testid="button-save"
+              >
+                <Save size={16} /> {saveStatus === 'saving' ? 'Saving...' : 'Save'}
+              </button>
+            )}
             <button className="flex items-center gap-1 bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800">
               <Download size={16} /> Export
             </button>
+            {/* Status transition buttons */}
+            {projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
+              <button onClick={() => handleStatusChange('IN_REVIEW')} disabled={statusChanging}
+                className="px-3 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 disabled:opacity-50" data-testid="button-submit-review">
+                Submit for Review
+              </button>
+            )}
+            {projectStatus === 'IN_REVIEW' && userRole === 'ADMIN' && (
+              <button onClick={() => handleStatusChange('PUBLISHED')} disabled={statusChanging}
+                className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50" data-testid="button-publish">
+                Publish
+              </button>
+            )}
+            {projectStatus === 'PUBLISHED' && userRole === 'ADMIN' && (
+              <button onClick={() => handleStatusChange('REOPENED')} disabled={statusChanging}
+                className="px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50" data-testid="button-reopen">
+                Reopen for Editing
+              </button>
+            )}
+            {projectStatus === 'REOPENED' && userRole === 'ADMIN' && (
+              <button onClick={() => handleStatusChange('PUBLISHED')} disabled={statusChanging}
+                className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50" data-testid="button-republish">
+                Re-Publish
+              </button>
+            )}
+            {userRole === 'ADMIN' && projectStatus !== 'DRAFT' && (
+              <button onClick={() => handleStatusChange('DRAFT')} disabled={statusChanging}
+                className="px-3 py-2 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 disabled:opacity-50" data-testid="button-reset-draft">
+                Reset to Draft
+              </button>
+            )}
           </div>
         </div>
 
