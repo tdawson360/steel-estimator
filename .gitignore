@@ -3,4 +3,16 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gz.next
+*.tar.gz
+
+# Next.js build output
+.next/
+
+# Environment variables (contain secrets)
+.env
+.env.local
+.env*.local
+
+# Database
+prisma/dev.db
+prisma/dev.db-journal

@@ -875,7 +875,9 @@ const fabricationOperations = {
   prep: [
     'Ease',
     'Splice',
-    '90\'s'
+    '90\'s',
+    'Camber',
+    'Roll'
   ],
   welding: [
     'Welding- Fillet',
@@ -909,9 +911,21 @@ const fabricationOperations = {
   ],
   connections: [
     'WF Connx',
-    'C Connx'
+    'C Connx',
+    'WF Moment Connx',
+    'C Moment Connx',
+    'Loose'
   ]
 };
+
+// Connection types that carry a weight-based cost (connWeight applies)
+// 'Loose' is excluded because it has no associated connection weight
+const CONNECTION_WEIGHT_OPS = new Set([
+  'WF Connx',
+  'C Connx',
+  'WF Moment Connx',
+  'C Moment Connx',
+]);
 
 // Flattened list for dropdowns
 const allFabOperations = [
@@ -1773,11 +1787,18 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     }
   ]);
 
-  // CSV Import State
+  // CSV Import State (Revu)
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Takeoff CSV Import State (Neilsoft 19-column)
+  const [showTakeoffModal, setShowTakeoffModal] = useState(false);
+  const [takeoffPreview, setTakeoffPreview] = useState(null);
+  const [takeoffError, setTakeoffError] = useState(null);
+  const [takeoffImporting, setTakeoffImporting] = useState(false);
+  const takeoffFileInputRef = useRef(null);
 
   // ── LOAD PROJECT FROM DATABASE ──────────────────────────────────────────────
   const handleLoad = useCallback(async (id) => {
@@ -2466,6 +2487,208 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     setImportError(null);
   };
 
+  // ── TAKEOFF CSV IMPORT (Neilsoft 19-column) ─────────────────────────────────
+
+  const handleTakeoffFileSelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+
+    setTakeoffImporting(true);
+    setTakeoffError(null);
+    setTakeoffPreview(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/import-csv', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setTakeoffError(data.error || 'Failed to process CSV file');
+        setTakeoffPreview(null);
+      } else {
+        setTakeoffPreview(data);
+        setTakeoffError(null);
+      }
+    } catch (err) {
+      setTakeoffError('Network error: ' + err.message);
+      setTakeoffPreview(null);
+    } finally {
+      setTakeoffImporting(false);
+      setShowTakeoffModal(true);
+    }
+  };
+
+  const cancelTakeoffImport = () => {
+    setShowTakeoffModal(false);
+    setTakeoffPreview(null);
+    setTakeoffError(null);
+  };
+
+  const executeTakeoffImport = () => {
+    if (!takeoffPreview || !takeoffPreview.items) return;
+
+    let updatedItems = [...items];
+    let newExpandedItems = { ...expandedItems };
+
+    for (const importItem of takeoffPreview.items) {
+      // Build flat materials list from all members (parents first, then children)
+      const flatMaterials = [];
+      let seqIndex = 0;
+      const parentIdMap = new Map(); // mark -> generated material id
+
+      const processMember = (member, parentMaterialId) => {
+        const translated = translateSizeToAISC(member.size);
+        const seq = String.fromCharCode(65 + seqIndex);
+        seqIndex++;
+
+        const matId = Date.now() + Math.random();
+        const newMat = {
+          id: matId,
+          sequence: seq,
+          parentMaterialId: parentMaterialId || null,
+          description: member.description || translated.size || member.size,
+          category: translated.category,
+          size: translated.size || member.size,
+          customWeight: translated.category === 'Custom' ? 0 : null,
+          pieces: member.pieces || 1,
+          length: member.length || 0,
+          stockLength: null,
+          priceBy: 'LB',
+          unitPrice: 0,
+          galvanized: member.galvanized || false,
+          fabrication: (member.fabrication || []).map(op => ({
+            id: Date.now() + Math.random(),
+            operation: op.operation,
+            quantity: op.quantity,
+            unit: op.unit || 'EA',
+            length: null,
+            unitPrice: 0,
+            totalCost: 0,
+            connWeight: null,
+            galvanized: false,
+            galvWeight: null,
+            isGalvLine: false,
+          })),
+        };
+        flatMaterials.push(calculateMaterial(newMat));
+        parentIdMap.set(member.mark, matId);
+
+        // Process children
+        if (member.children && member.children.length > 0) {
+          for (const child of member.children) {
+            processMember(child, matId);
+          }
+        }
+      };
+
+      for (const member of importItem.members) {
+        processMember(member, null);
+      }
+
+      // Build item-level fabrication (uniform coating)
+      const itemFab = [];
+      if (importItem.coatingUniform) {
+        itemFab.push({
+          id: Date.now() + Math.random(),
+          operation: importItem.coatingUniform,
+          quantity: 1,
+          unit: 'EA',
+          length: null,
+          unitPrice: 0,
+          totalCost: 0,
+          connWeight: null,
+          galvanized: false,
+          galvWeight: null,
+          isGalvLine: false,
+        });
+      }
+
+      // Find or create item
+      const existingIndex = updatedItems.findIndex(
+        item => item.itemNumber === importItem.itemNumber
+      );
+
+      if (existingIndex !== -1) {
+        const existingItem = updatedItems[existingIndex];
+        let updatedMaterials = [...existingItem.materials];
+
+        // Add only non-duplicate materials
+        for (const mat of flatMaterials) {
+          const exists = updatedMaterials.some(
+            m => m.size === mat.size &&
+                 m.length === mat.length &&
+                 m.description === mat.description
+          );
+          if (!exists) {
+            updatedMaterials.push(mat);
+          }
+        }
+
+        // Merge item-level fab ops (no duplicates)
+        let updatedFab = [...(existingItem.fabrication || [])];
+        for (const op of itemFab) {
+          const exists = updatedFab.some(f => f.operation === op.operation);
+          if (!exists) updatedFab.push(op);
+        }
+
+        updatedItems[existingIndex] = {
+          ...existingItem,
+          itemName: existingItem.itemName === 'New Item' ? importItem.itemName : existingItem.itemName,
+          drawingRef: (() => {
+            const existing = existingItem.drawingRef ? existingItem.drawingRef.split(',').map(s => s.trim()) : [];
+            const incoming = importItem.drawingRef ? importItem.drawingRef.split(',').map(s => s.trim()) : [];
+            const merged = [...new Set([...existing, ...incoming].filter(Boolean))];
+            return merged.join(', ');
+          })(),
+          materials: updatedMaterials,
+          fabrication: updatedFab,
+        };
+        newExpandedItems[existingItem.id] = true;
+
+      } else {
+        const newId = Date.now() + Math.random();
+        const newItem = {
+          id: newId,
+          itemNumber: importItem.itemNumber,
+          itemName: importItem.itemName,
+          drawingRef: importItem.drawingRef,
+          breakoutGroupId: null,
+          materialMarkup: 0,
+          fabMarkup: 0,
+          materials: flatMaterials,
+          fabrication: itemFab,
+          recapCosts: {
+            installation: { cost: 0, markup: 0, total: 0 },
+            drafting: { cost: 0, markup: 0, total: 0 },
+            engineering: { cost: 0, markup: 0, total: 0 },
+            projectManagement: { hours: 0, rate: 60, total: 0 },
+            shipping: { cost: 0, markup: 0, total: 0 },
+          },
+        };
+        updatedItems.push(newItem);
+        newExpandedItems[newId] = true;
+      }
+    }
+
+    // Sort items numerically
+    updatedItems.sort((a, b) =>
+      a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true })
+    );
+
+    setItems(updatedItems);
+    setExpandedItems(newExpandedItems);
+    setShowTakeoffModal(false);
+    setTakeoffPreview(null);
+    setTakeoffError(null);
+  };
+
   // Item functions
   const addItem = () => {
     const newId = Date.now();
@@ -2657,7 +2880,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               // Update connection weights when size or category changes
               if (field === 'size' || field === 'category') {
                 matFab = matFab.map(fab => {
-                  if (fab.operation === 'WF Connx' || fab.operation === 'C Connx') {
+                  if (CONNECTION_WEIGHT_OPS.has(fab.operation)) {
                     const newConnWeight = getConnectionWeight(updated.size, updated.category);
                     const qty = fab.quantity || 0;
                     const rate = fab.unitPrice || 0;
@@ -2841,9 +3064,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           
           const updated = { ...fab, [field]: value };
           
-          // Handle operation change for connection types (WF Connx, C Connx)
+          // Handle operation change for connection types
           if (field === 'operation') {
-            if (value === 'WF Connx' || value === 'C Connx') {
+            if (CONNECTION_WEIGHT_OPS.has(value)) {
               const connWeight = getConnectionWeight(mat.size, mat.category);
               updated.connWeight = connWeight; // Store in connWeight, not quantity
               updated.quantity = 1; // Default to 1 connection
@@ -2858,7 +3081,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           }
           
           // Calculate galv weight for connections when galvanized or qty/connWeight changes
-          if (updated.connWeight && (updated.operation === 'WF Connx' || updated.operation === 'C Connx')) {
+          if (updated.connWeight && CONNECTION_WEIGHT_OPS.has(updated.operation)) {
             if (updated.galvanized) {
               updated.galvWeight = (updated.quantity || 0) * updated.connWeight;
             } else {
@@ -2872,7 +3095,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           const rate = updated.unitPrice || 0;
           
           // For connection operations: check unit type
-          if (updated.connWeight && (updated.operation === 'WF Connx' || updated.operation === 'C Connx')) {
+          if (updated.connWeight && CONNECTION_WEIGHT_OPS.has(updated.operation)) {
             // If unit is LB, multiply by connWeight; if EA, just qty × rate
             if (updated.unit === 'LB') {
               updated.totalCost = qty * updated.connWeight * rate;
@@ -2894,7 +3117,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         let finalFab = [...updatedFab];
         const changedFab = updatedFab.find(f => f.id === fabId);
         
-        if (changedFab && (changedFab.operation === 'WF Connx' || changedFab.operation === 'C Connx')) {
+        if (changedFab && CONNECTION_WEIGHT_OPS.has(changedFab.operation)) {
           const galvLineId = `galv-${fabId}`; // Linked galv line ID
           const galvLineIndex = finalFab.findIndex(f => f.id === galvLineId);
           
@@ -3077,7 +3300,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           mat.fabrication.forEach(fab => {
             itemFabCost += fab.totalCost || 0;
             // Add connection weights
-            if ((fab.operation === 'WF Connx' || fab.operation === 'C Connx') && fab.connWeight) {
+            if (CONNECTION_WEIGHT_OPS.has(fab.operation) && fab.connWeight) {
               totalConnectionWeight += (fab.quantity || 0) * fab.connWeight;
             }
           });
@@ -3455,19 +3678,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 <div className="flex items-center gap-2">
                   <input
                     type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
+                    ref={takeoffFileInputRef}
+                    onChange={handleTakeoffFileSelect}
                     accept=".csv"
                     className="hidden"
                   />
                   <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700"
+                    onClick={() => takeoffFileInputRef.current?.click()}
+                    disabled={takeoffImporting}
+                    className="flex items-center gap-2 bg-blue-700 text-white px-3 py-2 rounded text-sm hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Upload size={16} />
-                    Import from Revu CSV
+                    {takeoffImporting ? 'Processing...' : 'Import Takeoff CSV'}
                   </button>
-                  <span className="text-xs text-gray-500">Import markup list from Bluebeam Revu</span>
                 </div>
                 <button onClick={addItem} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700">
                   <Plus size={16} /> Add Item
@@ -3638,7 +3861,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                     {(mat.fabrication || []).filter(f => !f.isAutoGalv && !f.isConnGalv).map(fab => {
                                       const hasLength = (fab.unit === 'IN' || fab.unit === 'LF') && fab.length;
                                       const extLen = hasLength ? (fab.quantity || 0) * (fab.length || 0) : null;
-                                      const isConnection = fab.operation === 'WF Connx' || fab.operation === 'C Connx';
+                                      const isConnection = CONNECTION_WEIGHT_OPS.has(fab.operation);
                                       
                                       return (
                                       <tr key={fab.id} className="bg-green-50">
@@ -4222,7 +4445,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                               item.materials.reduce((sum, m) => sum + (m.fabWeight || 0), 0) +
                               item.materials.reduce((sum, m) => 
                                 sum + ((m.fabrication || []).reduce((fs, f) => 
-                                  fs + ((f.operation === 'WF Connx' || f.operation === 'C Connx') && f.connWeight 
+                                  fs + (CONNECTION_WEIGHT_OPS.has(f.operation) && f.connWeight
                                     ? (f.quantity || 0) * f.connWeight 
                                     : 0), 0)), 0)
                             )} lbs
@@ -5513,6 +5736,132 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               {importPreview && (
                 <button onClick={executeImport} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
                   Import {importPreview.items.length} Items
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Takeoff Import Modal (Neilsoft 19-column) */}
+      {showTakeoffModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
+            <div className="bg-blue-700 text-white p-4 rounded-t-lg flex justify-between items-center">
+              <h3 className="text-lg font-bold">Import Takeoff CSV</h3>
+              <button onClick={cancelTakeoffImport} className="text-white hover:text-gray-300 text-2xl">&times;</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {takeoffError && (
+                <div className="bg-red-50 border border-red-200 rounded p-4 flex items-start gap-3">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <p className="font-semibold text-red-800">Import Error</p>
+                    <p className="text-red-700 text-sm">{takeoffError}</p>
+                  </div>
+                </div>
+              )}
+
+              {takeoffPreview && (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Check className="text-blue-600" size={20} />
+                      <span className="font-semibold text-blue-800">Ready to Import</span>
+                    </div>
+                    <div className="flex gap-8 text-sm">
+                      <div><span className="text-gray-600">Items:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalItems}</span></div>
+                      <div><span className="text-gray-600">Members:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalMembers}</span></div>
+                      <div><span className="text-gray-600">Fab Operations:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalFabOps}</span></div>
+                    </div>
+                  </div>
+
+                  {takeoffPreview.items.some(i => i.coatingMixed) && (
+                    <div className="bg-yellow-50 border border-yellow-300 rounded p-4 text-sm">
+                      <p className="font-semibold text-yellow-800 mb-1">Mixed Coating Warning</p>
+                      <p className="text-yellow-700 mb-2">The following items have rows with different or missing coating values. No item-level coating operation will be added — review manually:</p>
+                      <ul className="list-disc list-inside text-yellow-700 space-y-0.5">
+                        {takeoffPreview.items.filter(i => i.coatingMixed).map(i => (
+                          <li key={i.itemNumber}>
+                            Item {i.itemNumber} — {i.itemName}
+                            {i.coatingMixedValues.length > 0 && (
+                              <span className="text-yellow-600"> ({i.coatingMixedValues.join(', ')})</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="border p-2 text-left">Item #</th>
+                          <th className="border p-2 text-left">Description</th>
+                          <th className="border p-2 text-left">Drawing Ref</th>
+                          <th className="border p-2 text-center">Members</th>
+                          <th className="border p-2 text-center">Fab Ops</th>
+                          <th className="border p-2 text-left">Coating</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {takeoffPreview.items.slice(0, 10).map(item => {
+                          const memberCount = item.members.reduce((n, m) => n + 1 + (m.children || []).length, 0);
+                          const fabOpCount = item.members.reduce((n, m) =>
+                            n + (m.fabrication || []).length +
+                            (m.children || []).reduce((nc, c) => nc + (c.fabrication || []).length, 0), 0
+                          );
+                          return (
+                            <tr key={item.itemNumber} className="hover:bg-gray-50">
+                              <td className="border p-2 font-mono">{item.itemNumber}</td>
+                              <td className="border p-2">{item.itemName}</td>
+                              <td className="border p-2 text-gray-600">{item.drawingRef}</td>
+                              <td className="border p-2 text-center">{memberCount}</td>
+                              <td className="border p-2 text-center">{fabOpCount}</td>
+                              <td className="border p-2 text-sm">
+                                {item.coatingUniform
+                                  ? <span className="text-green-700">{item.coatingUniform}</span>
+                                  : item.coatingMixed
+                                    ? <span className="text-yellow-600">Mixed</span>
+                                    : <span className="text-gray-400">—</span>
+                                }
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {takeoffPreview.items.length > 10 && (
+                          <tr>
+                            <td colSpan={6} className="p-2 text-center text-gray-500">
+                              ... and {takeoffPreview.items.length - 10} more items
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm">
+                    <p className="font-semibold text-blue-800 mb-1">Import Behavior:</p>
+                    <ul className="text-blue-700 space-y-1">
+                      <li>- Each member mark becomes a material line (parents + children)</li>
+                      <li>- Fabrication operations are populated per member</li>
+                      <li>- Uniform coating becomes an item-level fabrication operation</li>
+                      <li>- Mixed coatings are skipped — add manually after import</li>
+                      <li>- Existing items: new materials appended, no duplicates added</li>
+                      <li>- Existing pricing and fabrication rates are preserved</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-gray-100 p-4 rounded-b-lg flex justify-end gap-2">
+              <button onClick={cancelTakeoffImport} className="px-4 py-2 border rounded hover:bg-gray-200">Cancel</button>
+              {takeoffPreview && (
+                <button onClick={executeTakeoffImport} className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+                  Import {takeoffPreview.stats.totalItems} Items
                 </button>
               )}
             </div>
