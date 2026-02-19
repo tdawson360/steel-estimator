@@ -13,7 +13,7 @@ function EstimatorWithParams() {
 
   if (!projectId) {
     if (typeof window !== 'undefined') {
-      window.location.href = '/projects'
+      window.location.href = '/dashboard'
     }
     return null
   }

@@ -36,8 +36,9 @@ model User {
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
 
-  projects          Project[] @relation("CreatedBy")
-  publishedProjects Project[] @relation("PublishedBy")
+  projects            Project[] @relation("CreatedBy")
+  publishedProjects   Project[] @relation("PublishedBy")
+  estimatedProjects   Project[] @relation("EstimatorProjects")
 }
 
 // =============================================================================
@@ -79,15 +80,41 @@ model Project {
   
   // Tax category: null, "newConstruction", "resale", "fob", "noTax"
   taxCategory      String?
-  
-  // Timestamps & tracking
+
+  // ── DASHBOARD / BID BOARD FIELDS ─────────────────────────────────────────
+  // dashboardStatus tracks where this project sits in the bid pipeline.
+  // Valid values: "Bidding" | "Quoted - Pending Award from GC" |
+  //               "Quoted - Budget Only" | "Awarded to BIW" |
+  //               "Redesign omitted scope"
+  dashboardStatus  String?
+
+  // newOrCo: whether this is a new project or a change order.
+  // Valid values: "NEW_PROJECT" | "CHANGE_ORDER"
+  newOrCo          String?
+
+  description      String?   // Free-text project description
+  notes            String?   // Internal notes
+  bidDate          DateTime? // When the bid is due
+  startDate        DateTime? // Projected or actual start date
+  bidAmount        Float?    // Dollar amount of the bid (nullable; may be calculated)
+  isArchived       Boolean   @default(false)
+
+  // estimatorId: who is assigned to estimate this project (may differ from createdBy)
+  estimatorId      Int?
+  estimator        User?     @relation("EstimatorProjects", fields: [estimatorId], references: [id])
+
+  // NOTE: estimateDate already exists above as a String field ("" default).
+  // It is NOT duplicated here. If a DateTime version is needed in the future,
+  // a migration to rename/convert that field would be required.
+
+  // ── TIMESTAMPS & TRACKING ────────────────────────────────────────────────
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  
+
   // Who created this project
   createdById      Int
   createdBy        User      @relation("CreatedBy", fields: [createdById], references: [id])
-  
+
   // Who published this project
   publishedById    Int?
   publishedBy      User?     @relation("PublishedBy", fields: [publishedById], references: [id])

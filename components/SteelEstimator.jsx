@@ -1522,7 +1522,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [drawingDate, setDrawingDate] = useState('');
   const [drawingRevision, setDrawingRevision] = useState('');
   const [architect, setArchitect] = useState('');
-  
+
+  // Dashboard fields
+  const [estimatorId, setEstimatorId] = useState(null);
+  const [dashboardStatus, setDashboardStatus] = useState('');
+  const [newOrCo, setNewOrCo] = useState('');
+  const [notes, setNotes] = useState('');
+  const [usersList, setUsersList] = useState([]);
+
   // Project Types
   const [projectTypes, setProjectTypes] = useState({
     structural: false,
@@ -1820,6 +1827,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       setDrawingDate(data.drawingDate || '');
       setDrawingRevision(data.drawingRevision || '');
       setArchitect(data.architect || '');
+      setEstimatorId(data.estimatorId || null);
+      setDashboardStatus(data.dashboardStatus || '');
+      setNewOrCo(data.newOrCo || '');
+      setNotes(data.notes || '');
 
       setProjectTypes({
         structural: data.typeStructural || false,
@@ -1977,6 +1988,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         drawingDate,
         drawingRevision,
         architect,
+        estimatorId: estimatorId || null,
+        dashboardStatus: dashboardStatus || null,
+        newOrCo: newOrCo || null,
+        notes: notes || null,
+        bidAmount: totals.grandTotal,
         typeStructural: projectTypes.structural,
         typeMiscellaneous: projectTypes.miscellaneous,
         typeOrnamental: projectTypes.ornamental,
@@ -2013,7 +2029,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, estimatedBy, drawingDate, drawingRevision, architect, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
+  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
 
   const handleStatusChange = useCallback(async (newStatus) => {
     if (!currentProjectId) return;
@@ -2054,6 +2070,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       handleLoad(projectId);
     }
   }, [projectId, handleLoad]);
+
+  useEffect(() => {
+    fetch('/api/dashboard/users')
+      .then(r => r.ok ? r.json() : [])
+      .then(list => setUsersList(list))
+      .catch(() => {});
+  }, []);
 
   // Toggle exclusion
   const toggleExclusion = (exclusion) => {
@@ -3514,6 +3537,65 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <label className="block text-xs font-medium text-gray-700 mb-1">Estimated By</label>
                     <input type="text" value={estimatedBy} onChange={e => setEstimatedBy(e.target.value)}
                       className="w-full p-2 border rounded text-sm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bid & Dashboard */}
+              <div className="bg-gray-50 p-4 rounded border">
+                <h2 className="text-lg font-semibold mb-3">Bid &amp; Dashboard</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Estimator</label>
+                    <select
+                      value={estimatorId || ''}
+                      onChange={e => setEstimatorId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full p-2 border rounded text-sm"
+                    >
+                      <option value="">— Unassigned —</option>
+                      {usersList.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {[u.firstName, u.lastName].filter(Boolean).join(' ') || `User ${u.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Dashboard Status</label>
+                    <select
+                      value={dashboardStatus}
+                      onChange={e => setDashboardStatus(e.target.value)}
+                      className="w-full p-2 border rounded text-sm"
+                    >
+                      <option value="">— None —</option>
+                      <option value="Bidding">Bidding</option>
+                      <option value="Quoted - Pending Award from GC">Quoted - Pending Award from GC</option>
+                      <option value="Quoted - Budget Only">Quoted - Budget Only</option>
+                      <option value="Awarded to BIW">Awarded to BIW</option>
+                      <option value="Redesign omitted scope">Redesign omitted scope</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">New / C.O.</label>
+                    <select
+                      value={newOrCo}
+                      onChange={e => setNewOrCo(e.target.value)}
+                      className="w-full p-2 border rounded text-sm"
+                    >
+                      <option value="">— None —</option>
+                      <option value="NEW_PROJECT">New Project</option>
+                      <option value="CHANGE_ORDER">Change Order</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 md:col-span-4">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      rows={3}
+                      className="w-full p-2 border rounded text-sm resize-y"
+                      placeholder="Internal notes about this bid..."
+                    />
                   </div>
                 </div>
               </div>

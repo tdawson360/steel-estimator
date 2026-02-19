@@ -49,7 +49,7 @@ export default function AppHeader() {
   return (
     <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between" data-testid="app-header">
       <div className="flex items-center gap-3">
-        <a href="/projects" className="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors" data-testid="link-dashboard">
+        <a href="/dashboard" className="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors" data-testid="link-dashboard">
           Berger Iron Works
         </a>
         <span className="text-xs text-gray-400">Steel Estimator</span>

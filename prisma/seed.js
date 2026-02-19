@@ -3,42 +3,50 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  const userCount = await prisma.user.count();
-  
-  if (userCount > 0) {
-    console.log('Users already exist. Skipping seed.');
-    const users = await prisma.user.findMany({ select: { id: true, firstName: true, lastName: true, email: true, role: true } });
-    console.log('Existing users:', users);
-    return;
-  }
-
-  const hashedPassword = await bcrypt.hash('BergerIron2024!', 12);
-
-  const todd = await prisma.user.create({
-    data: {
+  const users = [
+    {
       email: 'tdawson@bergerinc.com',
-      password: hashedPassword,
+      password: 'BergerIron2024!',
       firstName: 'Todd',
       lastName: 'Dawson',
       role: 'ADMIN',
-    }
-  });
-
-  const leadEstimator = await prisma.user.create({
-    data: {
+    },
+    {
       email: 'estimator@bergerinc.com',
-      password: hashedPassword,
+      password: 'BergerIron2024!',
       firstName: 'Lead',
       lastName: 'Estimator',
       role: 'ADMIN',
-    }
-  });
+    },
+    {
+      email: 'test@berger.com',
+      password: 'test123',
+      firstName: 'Test',
+      lastName: 'User',
+      role: 'ADMIN',
+    },
+  ];
 
-  console.log('Created admin users:');
-  console.log(`  ${todd.firstName} ${todd.lastName} (${todd.email}) - ${todd.role}`);
-  console.log(`  ${leadEstimator.firstName} ${leadEstimator.lastName} (${leadEstimator.email}) - ${leadEstimator.role}`);
-  console.log('Default password: BergerIron2024!');
-  console.log('Seed complete!');
+  for (const u of users) {
+    const hashed = await bcrypt.hash(u.password, 12);
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {},  // don't overwrite existing records
+      create: {
+        email: u.email,
+        password: hashed,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+      },
+    });
+    console.log(`  ✓ ${u.firstName} ${u.lastName} (${u.email}) - ${u.role}`);
+  }
+
+  console.log('\nSeed complete!');
+  console.log('  tdawson@bergerinc.com  /  BergerIron2024!');
+  console.log('  estimator@bergerinc.com  /  BergerIron2024!');
+  console.log('  test@berger.com  /  test123');
 }
 
 main()
