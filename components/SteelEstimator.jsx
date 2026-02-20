@@ -1509,7 +1509,7 @@ const aggregateImportData = (rows) => {
 };
 
 // Get unique categories
-const categories = [...new Set(Object.values(steelDatabase).map(s => s.category)), 'Plate'].sort();
+const categories = [...new Set(Object.values(steelDatabase).map(s => s.category)), 'Plate'].filter(c => c !== 'Flats').sort();
 
 const STATUS_COLORS = {
   DRAFT: 'bg-gray-100 text-gray-700 border-gray-300',
@@ -1524,6 +1524,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
   const [currentProjectId, setCurrentProjectId] = useState(projectId || null);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [projectStatus, setProjectStatus] = useState('DRAFT');
   const [statusChanging, setStatusChanging] = useState(false);
   
@@ -1972,6 +1973,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               unit: f.unit || 'ea',
               rate: f.rate || 0,
               totalCost: f.totalCost || 0,
+            })),
+            snapshots: (item.snapshots || []).map(s => ({
+              id: s.id,
+              imageData: s.imageData || '',
+              caption: s.caption || '',
+              sortOrder: s.sortOrder || 0,
             })),
           };
         });
@@ -2754,7 +2761,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         engineering: { cost: 0, markup: 0, total: 0 },
         projectManagement: { hours: 0, rate: 60, total: 0 },
         shipping: { cost: 0, markup: 0, total: 0 }
-      }
+      },
+      snapshots: [],
     };
     setItems([...items, newItem]);
     setExpandedItems({ ...expandedItems, [newId]: true });
@@ -2845,8 +2853,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         sequence: nextSeq,
         parentMaterialId: parentMaterialId,
         description: '',
-        category: 'Flats',
-        size: 'FL 1/2x6',
+        category: 'Plate',
+        size: '',
+        plateThickness: 0.5,
+        plateWidth: 6,
+        thickness: 0.5,
+        width: 6,
         customWeight: null,
         pieces: parent.pieces || 1, // Inherit from parent
         inheritPieces: true, // Flag to inherit piece count
@@ -3261,6 +3273,61 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     setItems(items.map(item =>
       item.id === itemId ? { ...item, fabrication: item.fabrication.filter(f => f.id !== fabId) } : item
     ));
+  };
+
+  // ── SNAPSHOT HELPERS ────────────────────────────────────────────────────────
+  const compressImage = (file) => new Promise((resolve) => {
+    const MAX_W = 1400;
+    const QUALITY = 0.75;
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(1, MAX_W / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', QUALITY));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  const addSnapshot = async (itemId, file) => {
+    const imageData = await compressImage(file);
+    const snap = { id: Date.now() + Math.random(), imageData, caption: '', sortOrder: 0 };
+    setItems(items.map(item =>
+      item.id === itemId
+        ? { ...item, snapshots: [...(item.snapshots || []), snap] }
+        : item
+    ));
+  };
+
+  const removeSnapshot = (itemId, snapId) => {
+    setItems(items.map(item =>
+      item.id === itemId
+        ? { ...item, snapshots: (item.snapshots || []).filter(s => s.id !== snapId) }
+        : item
+    ));
+  };
+
+  const updateSnapshotCaption = (itemId, snapId, caption) => {
+    setItems(items.map(item =>
+      item.id === itemId
+        ? { ...item, snapshots: (item.snapshots || []).map(s => s.id === snapId ? { ...s, caption } : s) }
+        : item
+    ));
+  };
+
+  const handleSnapshotPaste = async (itemId, e) => {
+    const items2 = e.clipboardData?.items;
+    if (!items2) return;
+    for (const clipItem of items2) {
+      if (clipItem.type.startsWith('image/')) {
+        e.preventDefault();
+        await addSnapshot(itemId, clipItem.getAsFile());
+        break;
+      }
+    }
   };
 
   // Recap cost functions
@@ -3974,9 +4041,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <td className="border p-1 text-green-600 text-center text-xs font-medium">[Fab]</td>
                                         {/* Description - Operation dropdown */}
                                         <td className="border p-1">
-                                          <select 
-                                            value={fab.operation} 
-                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)} 
+                                          {fab.operation === 'Custom' ? (
+                                            <div className="flex gap-1 items-center">
+                                              <input
+                                                type="text"
+                                                value={fab.customOperation || ''}
+                                                onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'customOperation', e.target.value)}
+                                                placeholder="Custom operation..."
+                                                className="flex-1 p-1 border border-orange-300 rounded text-xs bg-orange-50"
+                                                autoFocus
+                                              />
+                                              <button onClick={() => updateMaterialFab(item.id, mat.id, fab.id, 'operation', 'Cut- Straight')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
+                                            </div>
+                                          ) : (
+                                          <select
+                                            value={fab.operation}
+                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)}
                                             className="w-full p-1 border rounded text-xs bg-green-50"
                                           >
                                             <optgroup label="Cutting">
@@ -4003,7 +4083,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             <optgroup label="Connections">
                                               {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
+                                            <optgroup label="Other">
+                                              <option value="Custom">— Custom —</option>
+                                            </optgroup>
                                           </select>
+                                          )}
                                         </td>
                                         {/* Category */}
                                         <td className="border p-1 text-center text-gray-400">—</td>
@@ -4309,9 +4393,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                   ))}
                                                 </select>
                                               )}
-                                              <select 
-                                                value={fab.operation} 
-                                                onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)} 
+                                              {fab.operation === 'Custom' ? (
+                                                <div className="flex gap-1 items-center flex-1">
+                                                  <input
+                                                    type="text"
+                                                    value={fab.customOperation || ''}
+                                                    onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'customOperation', e.target.value)}
+                                                    placeholder="Custom operation..."
+                                                    className="flex-1 p-1 border border-orange-300 rounded text-xs bg-orange-50"
+                                                    autoFocus
+                                                  />
+                                                  <button onClick={() => updateMaterialFab(item.id, child.id, fab.id, 'operation', 'Welding- Fillet')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
+                                                </div>
+                                              ) : (
+                                              <select
+                                                value={fab.operation}
+                                                onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)}
                                                 className="flex-1 p-1 border rounded text-xs bg-green-50"
                                               >
                                                 {isApplyToSelf ? (
@@ -4343,7 +4440,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                     {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
                                                   </optgroup>
                                                 )}
+                                                <optgroup label="Other">
+                                                  <option value="Custom">— Custom —</option>
+                                                </optgroup>
                                               </select>
+                                              )}
                                             </div>
                                           </td>
                                           {/* Category */}
@@ -4499,6 +4600,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                 {item.fabrication.map(fab => (
                                   <tr key={fab.id}>
                                     <td className="border p-1">
+                                      {fab.operation === 'Custom' ? (
+                                        <div className="flex gap-1 items-center">
+                                          <input
+                                            type="text"
+                                            value={fab.customOperation || ''}
+                                            onChange={e => updateFabrication(item.id, fab.id, 'customOperation', e.target.value)}
+                                            placeholder="Custom operation..."
+                                            className="flex-1 p-1 border border-orange-300 rounded text-xs bg-orange-50"
+                                            autoFocus
+                                          />
+                                          <button onClick={() => updateFabrication(item.id, fab.id, 'operation', 'Handling')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
+                                        </div>
+                                      ) : (
                                       <select value={fab.operation} onChange={e => updateFabrication(item.id, fab.id, 'operation', e.target.value)} className="w-full p-1 border rounded text-xs">
                                         <optgroup label="Handling">
                                           {fabricationOperations.handling.map(op => <option key={op} value={op}>{op}</option>)}
@@ -4521,7 +4635,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <optgroup label="Welding">
                                           {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
                                         </optgroup>
+                                        <optgroup label="Other">
+                                          <option value="Custom">— Custom —</option>
+                                        </optgroup>
                                       </select>
+                                      )}
                                     </td>
                                     <td className="border p-1"><input type="text" value={fab.description || ''} onChange={e => updateFabrication(item.id, fab.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs" placeholder="description" /></td>
                                     <td className="border p-1"><input type="number" step="0.1" value={fab.quantity || ''} onChange={e => updateFabrication(item.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right" placeholder="qty" /></td>
@@ -4541,9 +4659,62 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         )}
                       </div>
 
-                      {/* Item Summary */}
-                      <div className="bg-gray-200 rounded p-3 mt-2">
-                        <div className="grid grid-cols-2 gap-y-1 text-xs max-w-md ml-auto">
+                      {/* Item Summary + Snapshots */}
+                      <div className="bg-gray-200 rounded p-3 mt-2 flex gap-4 items-start">
+
+                        {/* Blueprint Snapshots — left panel */}
+                        <div
+                          className="flex-1 min-w-0"
+                          onPaste={(e) => handleSnapshotPaste(item.id, e)}
+                        >
+                          <div className="text-xs font-semibold text-gray-500 mb-1">Blueprint Snapshots</div>
+                          <div className="flex flex-wrap gap-2">
+                            {(item.snapshots || []).map(snap => (
+                              <div key={snap.id} className="relative group w-28">
+                                <img
+                                  src={snap.imageData}
+                                  alt={snap.caption || 'Snapshot'}
+                                  className="w-28 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-90"
+                                  onClick={() => setLightboxSrc(snap.imageData)}
+                                />
+                                <button
+                                  onClick={() => removeSnapshot(item.id, snap.id)}
+                                  className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
+                                  title="Remove"
+                                >×</button>
+                                <input
+                                  type="text"
+                                  value={snap.caption}
+                                  onChange={e => updateSnapshotCaption(item.id, snap.id, e.target.value)}
+                                  placeholder="Caption..."
+                                  className="w-full mt-0.5 p-0.5 text-xs border border-gray-300 rounded bg-white"
+                                />
+                              </div>
+                            ))}
+
+                            {/* Add snapshot cell */}
+                            <label className="w-28 h-20 flex flex-col items-center justify-center border-2 border-dashed border-gray-400 rounded cursor-pointer hover:bg-gray-100 text-gray-400 text-xs gap-1">
+                              <span className="text-2xl leading-none">+</span>
+                              <span>Add Image</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="sr-only"
+                                onChange={async (e) => {
+                                  if (e.target.files[0]) {
+                                    await addSnapshot(item.id, e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">Ctrl+V to paste from clipboard</div>
+                        </div>
+
+                        {/* Cost Summary — right panel */}
+                        <div className="shrink-0">
+                        <div className="grid grid-cols-2 gap-y-1 text-xs">
                           <div className="text-right text-gray-600 pr-2">Total Fab Wt:</div>
                           <div className="text-right text-blue-800 font-bold">
                             {fmtWt(
@@ -4613,7 +4784,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             )}
                           </div>
                         </div>
-                      </div>
+                        </div>{/* end shrink-0 cost panel */}
+                      </div>{/* end flex grey band */}
                     </div>
                   )}
                 </div>
@@ -5971,6 +6143,25 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[100] cursor-zoom-out"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt="Snapshot"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-4 right-6 text-white text-3xl font-bold hover:text-gray-300"
+            onClick={() => setLightboxSrc(null)}
+          >×</button>
         </div>
       )}
 

@@ -175,6 +175,7 @@ model Item {
   materials       Material[]
   fabrication     ItemFabrication[]
   recapCosts      RecapCost[]
+  snapshots       ItemSnapshot[]
 }
 
 // =============================================================================
@@ -411,7 +412,23 @@ model Qualification {
   id        Int     @id @default(autoincrement())
   text      String
   isCustom  Boolean @default(false)
-  
+
   projectId Int
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// ITEM SNAPSHOT
+// =============================================================================
+// Blueprint or detail image attached to an item. Stored as base64 so no
+// external file storage is required. Multiple snapshots per item, ordered.
+
+model ItemSnapshot {
+  id        Int     @id @default(autoincrement())
+  sortOrder Int     @default(0)
+  imageData String  // base64-encoded JPEG (compressed before storage)
+  caption   String  @default("")
+
+  itemId    Int
+  item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
 }

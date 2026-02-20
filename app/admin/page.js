@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { Plus, X, Shield, UserCheck, Eye, Wrench } from 'lucide-react';
+import { Plus, X, Shield, UserCheck, Eye, Wrench, Pencil } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 
 const ROLE_OPTIONS = [
@@ -24,10 +24,15 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'ESTIMATOR' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Edit modal state
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editError, setEditError] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchUsers = async () => {
     try {
@@ -71,26 +76,62 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpdate = async (userId, updates) => {
+  const handleToggleActive = async (user) => {
+    const action = user.active ? 'deactivate' : 'reactivate';
+    if (!confirm(`Are you sure you want to ${action} ${user.firstName} ${user.lastName}?`)) return;
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ active: !user.active }),
       });
-      if (res.ok) {
-        fetchUsers();
-        setEditingUser(null);
-      }
+      if (res.ok) fetchUsers();
     } catch (err) {
       console.error('Failed to update user:', err);
     }
   };
 
-  const handleToggleActive = async (user) => {
-    const action = user.active ? 'deactivate' : 'reactivate';
-    if (!confirm(`Are you sure you want to ${action} ${user.firstName} ${user.lastName}?`)) return;
-    handleUpdate(user.id, { active: !user.active });
+  const openEdit = (user) => {
+    setEditingUser(user);
+    setEditForm({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      password: '',
+    });
+    setEditError('');
+  };
+
+  const handleEditSave = async () => {
+    setEditError('');
+    setEditSaving(true);
+    try {
+      const payload = {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        role: editForm.role,
+      };
+      if (editForm.password) payload.password = editForm.password;
+
+      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || 'Failed to update user');
+        return;
+      }
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      setEditError('Failed to update user');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const formatDate = (d) => {
@@ -240,24 +281,9 @@ export default function AdminPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
-                      {editingUser === user.id ? (
-                        <select
-                          defaultValue={user.role}
-                          onChange={(e) => {
-                            handleUpdate(user.id, { role: e.target.value });
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-xs"
-                          data-testid={`select-role-${user.id}`}
-                        >
-                          {ROLE_OPTIONS.map(r => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getRoleColor(user.role)}`}>
-                          {getRoleLabel(user.role)}
-                        </span>
-                      )}
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getRoleColor(user.role)}`}>
+                        {getRoleLabel(user.role)}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
@@ -270,21 +296,24 @@ export default function AdminPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}
-                          className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
+                          onClick={() => openEdit(user)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Edit user"
                           data-testid={`button-edit-user-${user.id}`}
                         >
-                          {editingUser === user.id ? 'Done' : 'Edit Role'}
+                          <Pencil size={14} />
                         </button>
-                        <button
-                          onClick={() => handleToggleActive(user)}
-                          className={`px-2 py-1 text-xs rounded ${
-                            user.active ? 'text-amber-600 hover:bg-amber-50' : 'text-green-600 hover:bg-green-50'
-                          }`}
-                          data-testid={`button-toggle-active-${user.id}`}
-                        >
-                          {user.active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        {String(user.id) !== session?.user?.id && (
+                          <button
+                            onClick={() => handleToggleActive(user)}
+                            className={`px-2 py-1 text-xs rounded ${
+                              user.active ? 'text-amber-600 hover:bg-amber-50' : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            data-testid={`button-toggle-active-${user.id}`}
+                          >
+                            {user.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -294,6 +323,94 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* Edit User Modal */}
+      {editingUser !== null && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Edit User</h2>
+              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {editError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                <input
+                  type="text" required value={editForm.firstName || ''}
+                  onChange={(e) => setEditForm(p => ({ ...p, firstName: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                <input
+                  type="text" required value={editForm.lastName || ''}
+                  onChange={(e) => setEditForm(p => ({ ...p, lastName: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email" required value={editForm.email || ''}
+                onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={editForm.role || ''}
+                  onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {ROLE_OPTIONS.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <input
+                  type="text" value={editForm.password || ''}
+                  onChange={(e) => setEditForm(p => ({ ...p, password: e.target.value }))}
+                  placeholder="Leave blank to keep current"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+              >
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

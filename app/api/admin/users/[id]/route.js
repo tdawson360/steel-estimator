@@ -32,6 +32,16 @@ export async function PATCH(request, { params }) {
 
     if (data.firstName !== undefined) updateData.firstName = data.firstName.trim();
     if (data.lastName !== undefined) updateData.lastName = data.lastName.trim();
+    if (data.email !== undefined) {
+      const normalized = data.email.trim().toLowerCase();
+      const conflict = await prisma.user.findFirst({
+        where: { email: normalized, NOT: { id: userId } }
+      });
+      if (conflict) {
+        return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+      }
+      updateData.email = normalized;
+    }
     if (data.role !== undefined) {
       const validRoles = ['ADMIN', 'ESTIMATOR', 'PM', 'FIELD_SHOP'];
       if (!validRoles.includes(data.role)) {

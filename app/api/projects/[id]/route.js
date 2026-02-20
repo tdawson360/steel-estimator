@@ -25,7 +25,8 @@ const FULL_PROJECT_INCLUDE = {
         }
       },
       fabrication: { orderBy: { sortOrder: 'asc' } },
-      recapCosts: true
+      recapCosts: true,
+      snapshots: { orderBy: { sortOrder: 'asc' } }
     }
   },
   breakoutGroups: true,
@@ -135,6 +136,7 @@ export async function PUT(request, { params }) {
       });
 
       await tx.recapCost.deleteMany({ where: { item: { projectId } } });
+      await tx.itemSnapshot.deleteMany({ where: { item: { projectId } } });
       await tx.childMaterialFabrication.deleteMany({ where: { childMaterial: { parent: { item: { projectId } } } } });
       await tx.childMaterial.deleteMany({ where: { parent: { item: { projectId } } } });
       await tx.materialFabrication.deleteMany({ where: { material: { item: { projectId } } } });
@@ -315,6 +317,20 @@ export async function PUT(request, { params }) {
               });
             }
           }
+
+          if (item.snapshots && item.snapshots.length > 0) {
+            for (let si = 0; si < item.snapshots.length; si++) {
+              const snap = item.snapshots[si];
+              await tx.itemSnapshot.create({
+                data: {
+                  itemId: createdItem.id,
+                  sortOrder: si,
+                  imageData: snap.imageData || '',
+                  caption: snap.caption || '',
+                }
+              });
+            }
+          }
         }
       }
 
@@ -411,6 +427,7 @@ export async function DELETE(request, { params }) {
 
     await prisma.$transaction(async (tx) => {
       await tx.recapCost.deleteMany({ where: { item: { projectId } } });
+      await tx.itemSnapshot.deleteMany({ where: { item: { projectId } } });
       await tx.childMaterialFabrication.deleteMany({ where: { childMaterial: { parent: { item: { projectId } } } } });
       await tx.childMaterial.deleteMany({ where: { parent: { item: { projectId } } } });
       await tx.materialFabrication.deleteMany({ where: { material: { item: { projectId } } } });
