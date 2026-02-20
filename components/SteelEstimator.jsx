@@ -1682,6 +1682,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [rfqNotes, setRfqNotes] = useState('');
   const [rfqDeliveryDate, setRfqDeliveryDate] = useState('');
   const [rfqResponseDate, setRfqResponseDate] = useState('');
+  const [rfqUploadResult, setRfqUploadResult] = useState(null);
   
   const addRfqVendor = () => {
     setRfqVendors([...rfqVendors, { id: Date.now(), name: '', email: '', phone: '' }]);
@@ -1756,10 +1757,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     if (rfqResponseDate) csv += `Quote Needed By,${new Date(rfqResponseDate).toLocaleDateString()}\n`;
     if (rfqDeliveryDate) csv += `Delivery Required,${new Date(rfqDeliveryDate).toLocaleDateString()}\n`;
     csv += '\n';
-    csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/LB,Your $/LF,Your Total,Lead Time,Notes\n';
-    
+    csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/LB,Your $/LF,Your $/EA,Your Total,Lead Time,Notes\n';
+
     stockList.forEach(stock => {
-      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${stock.weightPerFoot.toFixed(2)},${roundCustom(stock.totalWeight)},,,,\n`;
+      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${stock.weightPerFoot.toFixed(2)},${roundCustom(stock.totalWeight)},,,,,\n`;
     });
     
     csv += '\n';
@@ -1781,7 +1782,95 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     a.click();
     URL.revokeObjectURL(url);
   };
-  
+
+  // Upload vendor-returned RFQ CSV and apply pricing to matching materials
+  const handleRfqPricingUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // allow re-upload of same file
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const lines = evt.target.result.split(/\r?\n/);
+
+      // Find the data header row (first column = "Size", case-insensitive)
+      let headerIdx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].split(',')[0].trim().toLowerCase() === 'size') {
+          headerIdx = i;
+          break;
+        }
+      }
+      if (headerIdx === -1) {
+        setRfqUploadResult({ error: 'Could not find data rows. Make sure this is an RFQ CSV exported from this app.' });
+        return;
+      }
+
+      const headers = lines[headerIdx].split(',').map(h => h.trim().toLowerCase());
+      const sizeIdx      = headers.indexOf('size');
+      const stockLenIdx  = headers.indexOf('stock length');
+      const perLbIdx     = headers.findIndex(h => h.includes('$/lb'));
+      const perLfIdx     = headers.findIndex(h => h.includes('$/lf'));
+      const perEaIdx     = headers.findIndex(h => h.includes('$/ea'));
+
+      // Build pricing map: "normalizedSize-stockLength" -> { priceBy, unitPrice }
+      const pricingMap = new Map();
+      for (let i = headerIdx + 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.trim());
+        const size = cols[sizeIdx];
+        if (!size || size.toLowerCase().startsWith('total')) break;
+
+        const stockLen = parseFloat(cols[stockLenIdx]) || 0;
+        const perLb    = parseFloat(cols[perLbIdx]);
+        const perLf    = parseFloat(cols[perLfIdx]);
+        const perEa    = parseFloat(cols[perEaIdx]);
+
+        if (!isNaN(perLb) && perLb > 0) {
+          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'LB', unitPrice: perLb });
+        } else if (!isNaN(perLf) && perLf > 0) {
+          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'LF', unitPrice: perLf });
+        } else if (!isNaN(perEa) && perEa > 0) {
+          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'EA', unitPrice: perEa });
+        }
+      }
+
+      if (pricingMap.size === 0) {
+        setRfqUploadResult({ error: 'No pricing found. Make sure the vendor filled in the $/LB or $/LF columns.' });
+        return;
+      }
+
+      // Determine which keys actually match materials in the current estimate
+      const matchedKeys = new Set();
+      items.forEach(item => {
+        item.materials.forEach(mat => {
+          const key = `${normalizeShapeSize(mat.size)}-${mat.stockLength}`;
+          if (pricingMap.has(key)) matchedKeys.add(key);
+        });
+      });
+
+      const unmatchedSizes = [];
+      pricingMap.forEach((_, key) => {
+        if (!matchedKeys.has(key)) unmatchedSizes.push(key.split('-')[0]);
+      });
+
+      // Apply pricing to all matching materials
+      setItems(prevItems => prevItems.map(item => ({
+        ...item,
+        materials: item.materials.map(mat => {
+          const key = `${normalizeShapeSize(mat.size)}-${mat.stockLength}`;
+          const pricing = pricingMap.get(key);
+          if (!pricing) return mat;
+          return calculateMaterial({ ...mat, priceBy: pricing.priceBy, unitPrice: pricing.unitPrice });
+        }),
+      })));
+
+      setRfqUploadResult({ matched: matchedKeys.size, total: pricingMap.size, unmatched: unmatchedSizes });
+    };
+
+    reader.readAsText(file);
+  };
+
+
   // Exclusions & Qualifications
   const [selectedExclusions, setSelectedExclusions] = useState([
     'Bond/Tax', 'Engineering/Shop Drawings', 'Inspections/Permits of any kind'
@@ -4873,7 +4962,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
                     <div className="bg-gray-700 text-white p-4 rounded-t-lg flex justify-between items-center">
                       <h3 className="text-lg font-bold">Request for Quotation (RFQ)</h3>
-                      <button onClick={() => setShowRfqModal(false)} className="text-white hover:text-gray-300 text-2xl">&times;</button>
+                      <button onClick={() => { setShowRfqModal(false); setRfqUploadResult(null); }} className="text-white hover:text-gray-300 text-2xl">&times;</button>
                     </div>
                     
                     <div className="p-6 space-y-6">
@@ -5030,11 +5119,34 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         </div>
                       </div>
 
+                      {/* Import Vendor Response */}
+                      <div className="border-t pt-4">
+                        <h4 className="font-semibold mb-1">Import Vendor Response</h4>
+                        <p className="text-xs text-gray-500 mb-3">Upload the completed RFQ CSV to apply vendor pricing to the estimate.</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer text-sm font-medium">
+                            <Upload size={16} />
+                            Upload Vendor CSV
+                            <input type="file" accept=".csv" className="hidden" onChange={handleRfqPricingUpload} />
+                          </label>
+                          {rfqUploadResult && (
+                            rfqUploadResult.error
+                              ? <p className="text-sm text-red-600">{rfqUploadResult.error}</p>
+                              : <p className="text-sm text-green-700">
+                                  ✓ Pricing applied to {rfqUploadResult.matched} of {rfqUploadResult.total} shapes.
+                                  {rfqUploadResult.unmatched.length > 0 && (
+                                    <span className="text-amber-600"> Not matched: {rfqUploadResult.unmatched.join(', ')}</span>
+                                  )}
+                                </p>
+                          )}
+                        </div>
+                      </div>
+
                     </div>
 
                     <div className="bg-gray-100 p-4 rounded-b-lg flex justify-end gap-2">
-                      <button 
-                        onClick={() => setShowRfqModal(false)}
+                      <button
+                        onClick={() => { setShowRfqModal(false); setRfqUploadResult(null); }}
                         className="px-4 py-2 border rounded hover:bg-gray-200"
                       >
                         Close
