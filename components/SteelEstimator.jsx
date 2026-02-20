@@ -1118,6 +1118,21 @@ const getStockLengthsForCategory = (category) => {
   return standardStockLengths;
 };
 
+// Normalize steel shape size strings coming from vendor CSVs.
+// Fixes UTF-8 mojibake (× encoded as Windows-1252 → "Ã—") and strips inch marks.
+// Preserves industry conventions: fractions for plates (3/4), decimals for HSS (.25).
+const normalizeShapeSize = (raw) => {
+  if (!raw) return raw;
+  let s = raw;
+  // Fix mojibake: × (U+00D7) mis-decoded as Windows-1252 produces "Ã" + 0x97
+  s = s.replace(/Ã[\u0097\u00d7×—]/g, 'x');
+  // Replace any remaining true Unicode multiplication sign
+  s = s.replace(/[×\u00d7]/g, 'x');
+  // Strip inch marks (vendors don't use them, cleaner in Excel)
+  s = s.replace(/"/g, '');
+  return s.trim();
+};
+
 // Custom rounding rule: ≤0.29 rounds down, >0.29 rounds up
 // Applied to weights (whole numbers) and prices (whole dollars)
 const roundCustom = (num) => {
@@ -1744,7 +1759,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/LB,Your $/LF,Your Total,Lead Time,Notes\n';
     
     stockList.forEach(stock => {
-      csv += `${stock.size},${stock.stockLength},${stock.totalStocks},${stock.weightPerFoot.toFixed(2)},${roundCustom(stock.totalWeight)},,,,\n`;
+      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${stock.weightPerFoot.toFixed(2)},${roundCustom(stock.totalWeight)},,,,\n`;
     });
     
     csv += '\n';

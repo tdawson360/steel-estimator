@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
 
+// ── SHAPE SIZE NORMALIZATION ──────────────────────────────────────────────────
+
+// Fixes UTF-8 mojibake (× encoded as Windows-1252 → "Ã—") and strips inch marks.
+// Preserves industry conventions: fractions for plates (3/4), decimals for HSS (.25).
+function normalizeShapeSize(raw) {
+  if (!raw) return raw;
+  let s = raw;
+  // Fix mojibake: × (U+00D7) mis-decoded as Windows-1252 produces "Ã" + 0x97
+  s = s.replace(/Ã[\u0097\u00d7×—]/g, 'x');
+  // Replace any remaining true Unicode multiplication sign
+  s = s.replace(/[×\u00d7]/g, 'x');
+  // Strip inch marks
+  s = s.replace(/"/g, '');
+  return s.trim();
+}
+
 // ── LABOR OPERATION MAPS ─────────────────────────────────────────────────────
 
 const END_LABOR_MAP = {
@@ -124,7 +140,7 @@ function parseTakeoffCSV(text) {
       memberMark:     col(values, 'Member_Mark', 'Member Mark'),
       partLabel:      col(values, 'Part_Label', 'Part Label'),
       drawingRef:     col(values, 'Drawing_Ref', 'Drawing Ref'),
-      shapeSize:      col(values, 'Shape_Size', 'Shape Size', '(Non-Flat) Mat Size', 'Mat Size'),
+      shapeSize:      normalizeShapeSize(col(values, 'Shape_Size', 'Shape Size', '(Non-Flat) Mat Size', 'Mat Size')),
       quantity:       qty,
       lengthFt:       lengthFt,
       end1Labor:      col(values, 'End_1_Labor', 'End 1 Labor'),
