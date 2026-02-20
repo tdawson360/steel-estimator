@@ -1268,6 +1268,24 @@ const translateSizeToAISC = (revuSize) => {
     }
   }
   
+  // Pattern 9: Plate "PL 3/8 x 6", "PL 1/2 x 8", "PL 0.375 x 6"
+  const plateMatch = normalized.match(/^PL\s+(\S+)\s*x\s*(\S+)/i);
+  if (plateMatch) {
+    const thicknessStr = plateMatch[1];
+    const widthStr = plateMatch[2];
+    let thickness = 0;
+    if (thicknessStr.includes('/')) {
+      const [num, den] = thicknessStr.split('/');
+      thickness = parseInt(num) / parseInt(den);
+    } else {
+      thickness = parseFloat(thicknessStr);
+    }
+    const width = parseFloat(widthStr);
+    if (thickness > 0 && width > 0) {
+      return { size: normalized, category: 'Plate', plateThickness: thickness, plateWidth: width, matched: true };
+    }
+  }
+
   // No match found - return as custom with original normalized value
   return { size: normalized, category: 'Custom', matched: false };
 };
@@ -2586,6 +2604,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           priceBy: 'LB',
           unitPrice: 0,
           galvanized: member.galvanized || false,
+          // Plate dimensions — dual fields: frontend calc + DB save
+          plateThickness: translated.plateThickness || null,
+          plateWidth: translated.plateWidth || null,
+          thickness: translated.plateThickness || null,
+          width: translated.plateWidth || null,
           fabrication: (member.fabrication || []).map(op => ({
             id: Date.now() + Math.random(),
             operation: op.operation,
@@ -3875,7 +3898,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         {mat.category === 'Custom' ? (
                                           <input type="number" step="0.01" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right" />
                                         ) : mat.category === 'Plate' ? (
-                                          <span className="block text-right">{mat.weightPerFoot?.toFixed(1) || '—'}</span>
+                                          <span className="block text-right">{mat.weightPerFoot?.toFixed(2) || '—'}</span>
                                         ) : (
                                           <span className="block text-right">{mat.weightPerFoot?.toFixed(2)}</span>
                                         )}
@@ -4173,7 +4196,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           {child.category === 'Custom' ? (
                                             <input type="number" step="0.01" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50" />
                                           ) : child.category === 'Plate' ? (
-                                            <span className="block text-right">{child.weightPerFoot?.toFixed(1) || '—'}</span>
+                                            <span className="block text-right">{child.weightPerFoot?.toFixed(2) || '—'}</span>
                                           ) : (
                                             <span className="block text-right">{child.weightPerFoot?.toFixed(2)}</span>
                                           )}
