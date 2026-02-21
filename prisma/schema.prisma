@@ -432,3 +432,68 @@ model ItemSnapshot {
   itemId    Int
   item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
 }
+
+// =============================================================================
+// CONNECTION WEIGHTS & PRICING
+// =============================================================================
+// Lookup tables for connection costs used in estimating W-shapes and C/MC channels.
+// PricingRates is a singleton (id=1) that drives all derived cost calculations.
+
+model PricingRates {
+  id                         Int      @id @default(1)
+  shopLaborRatePerHr         Float    @default(65.00)
+  materialAvgPricePerLb      Float    @default(0.789)
+  quantityDiscountOver20Pct  Float    @default(5.0)
+  quantityDiscountOver100Pct Float    @default(7.5)
+  updatedAt                  DateTime @updatedAt
+  updatedBy                  String?
+}
+
+model ConnectionCategory {
+  id                   String   @id @default(cuid())
+  shapeType            String   // "WF" or "C"
+  name                 String   @unique
+  shapesIncluded       String
+  beamSizeRange        String?
+  laborHours           Float
+  connxWeightLbs       Int
+  momentConnxWeightLbs Int
+  providesTakeoffCost  Boolean  @default(false)
+  connxCost            Float?
+  momentConnxCost      Float?
+  singleCopeCost       Float
+  doubleCopeCost       Float
+  straightCutCost      Float
+  miterCutCost         Float
+  doubleMiterCost      Float
+  singleCopeMiterCost  Float
+  doubleCopeMiterCost  Float
+  beams                BeamConnectionData[]
+  updatedAt            DateTime @updatedAt
+
+  @@index([shapeType])
+}
+
+model BeamConnectionData {
+  id                       String             @id @default(cuid())
+  beamSize                 String             @unique
+  shapeType                String
+  categoryId               String
+  category                 ConnectionCategory @relation(fields: [categoryId], references: [id])
+  connxWeightLbs           Int
+  momentConnxWeightLbs     Int
+  connxCostProvideTO       Boolean            @default(false)
+  connxCost                Float?
+  momentConnxCostProvideTO Boolean            @default(false)
+  momentConnxCost          Float?
+  singleCopeCost           Float
+  doubleCopeCost           Float
+  straightCutCost          Float?
+  miterCutCost             Float?
+  doubleMiterCost          Float?
+  singleCopeMiterCost      Float?
+  doubleCopeMiterCost      Float?
+  updatedAt                DateTime           @updatedAt
+
+  @@index([shapeType])
+}

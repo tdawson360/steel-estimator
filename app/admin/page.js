@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { Plus, X, Shield, UserCheck, Eye, Wrench, Pencil } from 'lucide-react';
+import { Plus, X, Shield, UserCheck, Eye, Wrench, Pencil, DollarSign } from 'lucide-react';
+import Link from 'next/link';
 import AppHeader from '../../components/AppHeader';
 
 const ROLE_OPTIONS = [
@@ -160,14 +161,23 @@ export default function AdminPage() {
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin Panel</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage users and roles</p>
           </div>
-          <button
-            onClick={() => { setShowAddForm(true); setError(''); }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-            data-testid="button-add-user"
-          >
-            <Plus size={16} />
-            Add User
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/connection-pricing"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium border border-gray-300 dark:border-gray-600"
+            >
+              <DollarSign size={16} />
+              Connection Pricing
+            </Link>
+            <button
+              onClick={() => { setShowAddForm(true); setError(''); }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+              data-testid="button-add-user"
+            >
+              <Plus size={16} />
+              Add User
+            </button>
+          </div>
         </div>
 
         {showAddForm && (
