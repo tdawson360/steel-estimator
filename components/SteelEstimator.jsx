@@ -1527,7 +1527,7 @@ const aggregateImportData = (rows) => {
 const categories = [...new Set(Object.values(steelDatabase).map(s => s.category)), 'Plate'].filter(c => c !== 'Flats').sort();
 
 const STATUS_COLORS = {
-  DRAFT: 'bg-gray-100 text-gray-700 border-gray-300',
+  DRAFT: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600',
   IN_REVIEW: 'bg-amber-100 text-amber-700 border-amber-300',
   PUBLISHED: 'bg-green-100 text-green-700 border-green-300',
   REOPENED: 'bg-purple-100 text-purple-700 border-purple-300',
@@ -3577,19 +3577,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const stockList = useMemo(() => getStockList(), [items]);
 
   return (
-    <div className="max-w-7xl mx-auto p-4 bg-gray-100 min-h-screen">
-      <div className="bg-white rounded shadow">
+    <div className="max-w-7xl mx-auto p-4 bg-gray-100 dark:bg-gray-700 min-h-screen">
+      <div className="bg-white dark:bg-gray-900 rounded shadow">
         {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-300">
+        <div className="flex justify-between items-center p-4 border-b border-gray-300 dark:border-gray-600">
           <div className="flex items-center gap-3">
-            <a href="/projects" className="text-gray-500 hover:text-gray-800" title="Back to Projects" data-testid="button-back">
+            <a href="/projects" className="text-gray-500 dark:text-gray-400 hover:text-gray-800" title="Back to Projects" data-testid="button-back">
               <ArrowLeft size={20} />
             </a>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Steel Estimator</h1>
-              <p className="text-sm text-gray-600">Professional Estimating System</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Steel Estimator</h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Professional Estimating System</p>
             </div>
-            <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 text-gray-700 border-gray-300'}`} data-testid="text-project-status">
+            <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`} data-testid="text-project-status">
               {STATUS_LABELS[projectStatus] || projectStatus}
             </span>
             {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
@@ -3601,19 +3601,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               <button
                 onClick={handleSave}
                 disabled={saveStatus === 'saving'}
-                className="flex items-center gap-1 bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50"
+                className="flex items-center gap-1 bg-gray-700 dark:bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50"
                 data-testid="button-save"
               >
                 <Save size={16} /> {saveStatus === 'saving' ? 'Saving...' : 'Save'}
               </button>
             )}
-            <button className="flex items-center gap-1 bg-gray-700 text-white px-3 py-2 rounded text-sm hover:bg-gray-800">
+            <button className="flex items-center gap-1 bg-gray-700 dark:bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-800">
               <Download size={16} /> Export
             </button>
             {/* Status transition buttons */}
             {projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
               <button onClick={() => handleStatusChange('IN_REVIEW')} disabled={statusChanging}
-                className="px-3 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 disabled:opacity-50" data-testid="button-submit-review">
+                className="px-3 py-2 bg-amber-50 dark:bg-amber-9500 text-white rounded text-sm hover:bg-amber-600 disabled:opacity-50" data-testid="button-submit-review">
                 Submit for Review
               </button>
             )}
@@ -3645,12 +3645,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-300 overflow-x-auto">
+        <div className="flex border-b border-gray-300 dark:border-gray-600 overflow-x-auto">
           {['project', 'estimate', 'stocklist', 'recap', 'summary', 'quote'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === tab ? 'bg-gray-700 dark:bg-gray-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             >
               {tab === 'project' ? 'Project Info' : tab === 'estimate' ? 'Estimate' : tab === 'recap' ? 'Recap' : tab === 'stocklist' ? 'Stock List' : tab === 'summary' ? 'Summary' : 'Quote'}
             </button>
@@ -3662,89 +3662,89 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           {activeTab === 'project' && (
             <div className="space-y-6">
               {/* Customer Info */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Customer Information</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Company Name</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Company Name</label>
                     <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Billing Address</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Billing Address</label>
                     <input type="text" value={billingAddress} onChange={e => setBillingAddress(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Contact Name</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Contact Name</label>
                     <input type="text" value={customerContact} onChange={e => setCustomerContact(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Phone</label>
                     <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                     <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                 </div>
               </div>
 
               {/* Project Details */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Project Details</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project Name</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project Name</label>
                     <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project Address</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project Address</label>
                     <input type="text" value={projectAddress} onChange={e => setProjectAddress(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Drawing Date</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Drawing Date</label>
                     <input type="date" value={drawingDate} onChange={e => setDrawingDate(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Drawing Revision</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Drawing Revision</label>
                     <input type="text" value={drawingRevision} onChange={e => setDrawingRevision(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Architect</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Architect</label>
                     <input type="text" value={architect} onChange={e => setArchitect(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Estimate Date</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Estimate Date</label>
                     <input type="date" value={estimateDate} onChange={e => setEstimateDate(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Estimated By</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Estimated By</label>
                     <input type="text" value={estimatedBy} onChange={e => setEstimatedBy(e.target.value)}
-                      className="w-full p-2 border rounded text-sm" />
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                 </div>
               </div>
 
               {/* Bid & Dashboard */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Bid &amp; Dashboard</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Estimator</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Estimator</label>
                     <select
                       value={estimatorId || ''}
                       onChange={e => setEstimatorId(e.target.value ? parseInt(e.target.value) : null)}
-                      className="w-full p-2 border rounded text-sm"
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                     >
                       <option value="">— Unassigned —</option>
                       {usersList.map(u => (
@@ -3755,11 +3755,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Dashboard Status</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dashboard Status</label>
                     <select
                       value={dashboardStatus}
                       onChange={e => setDashboardStatus(e.target.value)}
-                      className="w-full p-2 border rounded text-sm"
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                     >
                       <option value="">— None —</option>
                       <option value="Bidding">Bidding</option>
@@ -3770,11 +3770,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">New / C.O.</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">New / C.O.</label>
                     <select
                       value={newOrCo}
                       onChange={e => setNewOrCo(e.target.value)}
-                      className="w-full p-2 border rounded text-sm"
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                     >
                       <option value="">— None —</option>
                       <option value="NEW_PROJECT">New Project</option>
@@ -3782,12 +3782,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </select>
                   </div>
                   <div className="col-span-2 md:col-span-4">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
                     <textarea
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
                       rows={3}
-                      className="w-full p-2 border rounded text-sm resize-y"
+                      className="w-full p-2 border rounded text-sm resize-y dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                       placeholder="Internal notes about this bid..."
                     />
                   </div>
@@ -3795,7 +3795,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* Project Type */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Project Type</h2>
                 <div className="flex gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -3817,11 +3817,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <span className="text-sm font-medium">Ornamental</span>
                   </label>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
               </div>
 
               {/* Delivery Options */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Delivery Options</h2>
                 <div className="flex gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -3843,20 +3843,20 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <span className="text-sm font-medium">Will Call</span>
                   </label>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
               </div>
 
               {/* Tax Category */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Tax Category</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {Object.entries(taxCategoryDescriptions).map(([key, info]) => {
                     const isSelected = taxCategory === key;
                     const colorMap = {
-                      blue: isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400',
-                      green: isSelected ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:border-green-400',
-                      amber: isSelected ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-700 border-gray-300 hover:border-amber-400',
-                      gray: isSelected ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+                      blue: isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400',
+                      green: isSelected ? 'bg-green-600 text-white border-green-600' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-green-400',
+                      amber: isSelected ? 'bg-amber-600 text-white border-amber-600' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-amber-400',
+                      gray: isSelected ? 'bg-gray-600 text-white border-gray-600' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-gray-400'
                     };
                     return (
                       <button
@@ -3865,15 +3865,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         className={`p-3 rounded border-2 text-left transition-all ${colorMap[info.color]}`}
                       >
                         <div className="font-semibold text-sm">{info.label}</div>
-                        <div className={`text-xs mt-1 ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>{info.description}</div>
+                        <div className={`text-xs mt-1 ${isSelected ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>{info.description}</div>
                       </button>
                     );
                   })}
                 </div>
                 <div className="flex items-center justify-between mt-3">
-                  <p className="text-xs text-gray-500">Local rate: {(TAX_RATE * 100).toFixed(2)}% — Select a category to auto-generate the tax column on the Recap tab.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Local rate: {(TAX_RATE * 100).toFixed(2)}% — Select a category to auto-generate the tax column on the Recap tab.</p>
                   {taxCategory && (
-                    <span className="text-xs font-medium px-2 py-1 rounded bg-gray-200 text-gray-700">
+                    <span className="text-xs font-medium px-2 py-1 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
                       Active: {taxCategoryDescriptions[taxCategory].label}
                     </span>
                   )}
@@ -3881,7 +3881,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* Exclusions */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Exclusions</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
                   {standardExclusions.map(exc => (
@@ -3897,7 +3897,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <p className="text-sm font-medium mb-2">Custom Exclusions:</p>
                   <div className="flex gap-2 mb-2">
                     <input type="text" value={newCustomExclusion} onChange={e => setNewCustomExclusion(e.target.value)}
-                      placeholder="Add custom exclusion" className="flex-1 p-2 border rounded text-sm"
+                      placeholder="Add custom exclusion" className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                       onKeyDown={e => e.key === 'Enter' && addCustomExclusion()} />
                     <button onClick={addCustomExclusion} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Add</button>
                   </div>
@@ -3913,7 +3913,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* Qualifications */}
-              <div className="bg-gray-50 p-4 rounded border">
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Qualifications</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
                   {standardQualifications.map(qual => (
@@ -3929,7 +3929,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <p className="text-sm font-medium mb-2">Custom Qualifications:</p>
                   <div className="flex gap-2 mb-2">
                     <input type="text" value={newCustomQualification} onChange={e => setNewCustomQualification(e.target.value)}
-                      placeholder="Add custom qualification" className="flex-1 p-2 border rounded text-sm"
+                      placeholder="Add custom qualification" className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                       onKeyDown={e => e.key === 'Enter' && addCustomQualification()} />
                     <button onClick={addCustomQualification} className="bg-green-600 text-white px-3 py-1 rounded text-sm">Add</button>
                   </div>
@@ -3950,7 +3950,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           {activeTab === 'estimate' && (
             <div className="space-y-4">
               {/* Import/Export Controls */}
-              <div className="flex justify-between items-center bg-gray-100 p-3 rounded border">
+              <div className="flex justify-between items-center bg-gray-100 dark:bg-gray-700 p-3 rounded border">
                 <div className="flex items-center gap-2">
                   <input
                     type="file"
@@ -3975,17 +3975,17 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
               {items.map(item => (
                 <div key={item.id} className="border rounded">
-                  <div className="bg-gray-200 p-3 flex items-center justify-between">
+                  <div className="bg-gray-200 dark:bg-gray-600 p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
-                      <button onClick={() => toggleItemExpansion(item.id)} className="text-gray-600">
+                      <button onClick={() => toggleItemExpansion(item.id)} className="text-gray-600 dark:text-gray-400">
                         {expandedItems[item.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                       </button>
                       <input type="text" value={item.itemNumber} onChange={e => updateItem(item.id, 'itemNumber', e.target.value)}
-                        className="w-16 p-1 border rounded text-sm font-mono" />
+                        className="w-16 p-1 border rounded text-sm font-mono dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                       <input type="text" value={item.itemName} onChange={e => updateItem(item.id, 'itemName', e.target.value)}
-                        className="flex-1 p-1 border rounded text-sm font-semibold" />
+                        className="flex-1 p-1 border rounded text-sm font-semibold dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                       <input type="text" value={item.drawingRef} onChange={e => updateItem(item.id, 'drawingRef', e.target.value)}
-                        className="w-24 p-1 border rounded text-sm" placeholder="Dwg Ref" />
+                        className="w-24 p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Dwg Ref" />
                     </div>
                     <button onClick={() => deleteItem(item.id)} className="text-red-600 hover:text-red-800 ml-2"><Trash2 size={16} /></button>
                   </div>
@@ -3995,21 +3995,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       {/* Materials */}
                       <div>
                         <div className="flex justify-between items-center mb-2">
-                          <h3 className="font-semibold text-gray-800">Materials</h3>
+                          <h3 className="font-semibold text-gray-800 dark:text-gray-200">Materials</h3>
                           <button onClick={() => addMaterial(item.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs"><Plus size={14} /> Add Material</button>
                         </div>
                         {item.materials.length > 0 && (
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs border-collapse">
                               <thead>
-                                <tr className="bg-gray-100">
+                                <tr className="bg-gray-100 dark:bg-gray-700">
                                   <th className="border p-1 text-center w-10">Seq</th>
                                   <th className="border p-1 text-center">Description</th>
                                   <th className="border p-1 text-center w-28">Category</th>
                                   <th className="border p-1 text-center w-32">Size</th>
                                   <th className="border p-1 text-center w-12">Wt/ft</th>
                                   <th className="border p-1 text-center w-14">Qty</th>
-                                  <th className="border p-1 text-center w-14">Length<div className="text-[9px] font-normal text-gray-500">(Lin/Ft)</div></th>
+                                  <th className="border p-1 text-center w-14">Length<div className="text-[9px] font-normal text-gray-500 dark:text-gray-400">(Lin/Ft)</div></th>
                                   <th className="border p-1 text-center w-16">Fab Wt</th>
                                   <th className="border p-1 text-center w-10">Galv</th>
                                   <th className="border p-1 text-center w-16" title="* indicates optimal length">Stock*</th>
@@ -4026,48 +4026,48 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                 {getParentMaterials(item.materials).map(mat => (
                                   <React.Fragment key={mat.id}>
                                     {/* Parent row */}
-                                    <tr className="bg-white">
+                                    <tr className="bg-white dark:bg-gray-900">
                                       <td className="border p-1 font-bold text-blue-700">{mat.sequence || 'A'}</td>
-                                      <td className="border p-1"><input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs" placeholder="Description" /></td>
+                                      <td className="border p-1"><input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" /></td>
                                       <td className="border p-1">
-                                        <select value={mat.category} onChange={e => updateMaterial(item.id, mat.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs">
+                                        <select value={mat.category} onChange={e => updateMaterial(item.id, mat.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                           {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                           <option value="Custom">Custom</option>
                                         </select>
                                       </td>
                                       <td className="border p-1">
                                         {mat.category === 'Custom' ? (
-                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs" />
+                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                         ) : mat.category === 'Plate' ? (
                                           <div className="flex items-center gap-1">
                                             <select 
                                               value={mat.plateThickness || ''} 
                                               onChange={e => updateMaterial(item.id, mat.id, 'plateThickness', e.target.value)} 
-                                              className="flex-1 p-1 border rounded text-xs"
+                                              className="flex-1 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                                             >
                                               <option value="">Thick</option>
                                               {plateThicknesses.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
                                             </select>
-                                            <span className="text-gray-500">×</span>
+                                            <span className="text-gray-500 dark:text-gray-400">×</span>
                                             <input 
                                               type="number" 
                                               step="0.5" 
                                               value={mat.plateWidth || ''} 
                                               onChange={e => updateMaterial(item.id, mat.id, 'plateWidth', parseFloat(e.target.value) || 0)} 
-                                              className="w-12 p-1 border rounded text-xs text-right" 
+                                              className="w-12 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="W"
                                             />
-                                            <span className="text-gray-500 text-xs">"</span>
+                                            <span className="text-gray-500 dark:text-gray-400 text-xs">"</span>
                                           </div>
                                         ) : (
-                                          <select value={mat.size} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs">
+                                          <select value={mat.size} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                             {getShapesForCategory(mat.category).map(s => <option key={s} value={s}>{s}</option>)}
                                           </select>
                                         )}
                                       </td>
                                       <td className="border p-1">
                                         {mat.category === 'Custom' ? (
-                                          <input type="number" step="0.01" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right" />
+                                          <input type="number" step="0.01" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                         ) : mat.category === 'Plate' ? (
                                           <span className="block text-right">{mat.weightPerFoot?.toFixed(2) || '—'}</span>
                                         ) : (
@@ -4078,22 +4078,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <div className="flex items-center justify-center gap-0.5">
                                           <button 
                                             onClick={() => updateMaterial(item.id, mat.id, 'pieces', Math.max(1, (mat.pieces || 1) - 1))}
-                                            className="px-1 py-0.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-bold"
+                                            className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 rounded text-xs font-bold"
                                           >−</button>
                                           <input 
                                             type="number" 
                                             value={mat.pieces || ''} 
                                             onChange={e => updateMaterial(item.id, mat.id, 'pieces', parseInt(e.target.value) || 0)} 
-                                            className="w-10 p-1 border rounded text-xs text-center" 
+                                            className="w-10 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" 
                                           />
                                           <button 
                                             onClick={() => updateMaterial(item.id, mat.id, 'pieces', (mat.pieces || 0) + 1)}
-                                            className="px-1 py-0.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-bold"
+                                            className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 rounded text-xs font-bold"
                                           >+</button>
                                         </div>
                                       </td>
-                                      <td className="border p-1"><input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right" placeholder="0.00" /></td>
-                                      <td className="border p-1 text-right bg-blue-50">{fmtWt(mat.fabWeight || 0)}</td>
+                                      <td className="border p-1"><input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
+                                      <td className="border p-1 text-right bg-blue-50 dark:bg-blue-950">{fmtWt(mat.fabWeight || 0)}</td>
                                       <td className="border p-1 text-center">
                                         <input type="checkbox" checked={mat.galvanized || false} 
                                           onChange={e => updateMaterial(item.id, mat.id, 'galvanized', e.target.checked)} 
@@ -4103,7 +4103,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <select 
                                           value={mat.stockLength} 
                                           onChange={e => updateMaterial(item.id, mat.id, 'stockLength', parseInt(e.target.value))} 
-                                          className={`w-full p-1 border rounded text-xs ${mat.isManualOverride ? 'bg-yellow-50 border-yellow-400' : ''}`}
+                                          className={`w-full p-1 border rounded text-xs dark:border-gray-600 dark:text-gray-100 ${mat.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : 'dark:bg-gray-800'}`}
                                           title={mat.isManualOverride ? `Optimal: ${mat.optimalStockLength}'` : `Optimal stock length`}
                                         >
                                           {getStockLengthsForCategory(mat.category).map(sl => (
@@ -4113,18 +4113,18 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           ))}
                                         </select>
                                         {mat.piecesPerStock > 0 && (
-                                          <div className="text-xs text-gray-500 mt-0.5">{mat.piecesPerStock}/stk</div>
+                                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{mat.piecesPerStock}/stk</div>
                                         )}
                                       </td>
-                                      <td className="border p-1 text-right bg-gray-50">{mat.stocksRequired || 0}</td>
-                                      <td className="border p-1 text-right bg-gray-50">{fmtWt(mat.stockWeight || 0)}</td>
+                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.stocksRequired || 0}</td>
+                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{fmtWt(mat.stockWeight || 0)}</td>
                                       <td className="border p-1">
-                                        <select value={mat.priceBy} onChange={e => updateMaterial(item.id, mat.id, 'priceBy', e.target.value)} className="w-full p-1 border rounded text-xs">
+                                        <select value={mat.priceBy} onChange={e => updateMaterial(item.id, mat.id, 'priceBy', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                           <option value="LB">LB</option><option value="LF">LF</option><option value="EA">EA</option>
                                         </select>
                                       </td>
-                                      <td className="border p-1"><input type="number" step="0.01" value={mat.unitPrice || ''} onChange={e => updateMaterial(item.id, mat.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right" /></td>
-                                      <td className="border p-1 text-right font-semibold bg-green-50">{fmtPrice(mat.totalCost || 0)}</td>
+                                      <td className="border p-1"><input type="number" step="0.01" value={mat.unitPrice || ''} onChange={e => updateMaterial(item.id, mat.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                                      <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(mat.totalCost || 0)}</td>
                                       <td className="border p-1">
                                         <div className="flex gap-1">
                                           <button onClick={() => addChildMaterial(item.id, mat.id)} className="text-blue-600 hover:text-blue-800" title="Add Attachment"><Plus size={12} /></button>
@@ -4140,7 +4140,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       const isConnection = CONNECTION_WEIGHT_OPS.has(fab.operation);
                                       
                                       return (
-                                      <tr key={fab.id} className="bg-green-50">
+                                      <tr key={fab.id} className="bg-green-50 dark:bg-green-950">
                                         {/* Seq */}
                                         <td className="border p-1 text-green-600 text-center text-xs font-medium">[Fab]</td>
                                         {/* Description - Operation dropdown */}
@@ -4161,7 +4161,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <select
                                             value={fab.operation}
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)}
-                                            className="w-full p-1 border rounded text-xs bg-green-50"
+                                            className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                           >
                                             <optgroup label="Cutting">
                                               {fabricationOperations.cutting.map(op => <option key={op} value={op}>{op}</option>)}
@@ -4217,7 +4217,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               step="1" 
                                               value={fab.quantity || ''} 
                                               onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} 
-                                              className="w-10 p-1 border rounded text-xs text-center bg-green-50" 
+                                              className="w-10 p-1 border rounded text-xs text-center bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="qty"
                                             />
                                             <button 
@@ -4236,7 +4236,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               step="0.1" 
                                               value={fab.length || ''} 
                                               onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'length', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-green-50" 
+                                              className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="len"
                                             />
                                           ) : (
@@ -4278,7 +4278,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <select 
                                             value={fab.unit} 
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unit', e.target.value)} 
-                                            className="w-full p-1 border rounded text-xs bg-green-50"
+                                            className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                           >
                                             <option value="EA">EA</option>
                                             <option value="IN">IN</option>
@@ -4295,7 +4295,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             step="0.01" 
                                             value={fab.unitPrice || ''} 
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-1 border rounded text-xs text-right bg-green-50" 
+                                            className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                             placeholder="$0.00"
                                           />
                                         </td>
@@ -4310,7 +4310,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                     })}
                                     {/* Auto-generated galv fab row (if any) */}
                                     {(mat.fabrication || []).filter(f => f.isAutoGalv || f.isConnGalv).map(fab => (
-                                      <tr key={fab.id} className="bg-yellow-50">
+                                      <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-950">
                                         <td className="border p-1 text-yellow-600 text-center text-xs font-medium">[Galv]</td>
                                         <td className="border p-1 text-xs text-yellow-700">{fab.description}</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
@@ -4330,7 +4330,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             step="0.01" 
                                             value={fab.unitPrice || ''} 
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-1 border rounded text-xs text-right bg-yellow-50" 
+                                            className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-950 dark:border-gray-600 dark:text-gray-100" 
                                             placeholder="$/lb"
                                           />
                                         </td>
@@ -4341,48 +4341,48 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                     {/* Child rows (attachments) */}
                                     {getChildMaterials(item.materials, mat.id).map(child => (
                                       <React.Fragment key={child.id}>
-                                      <tr className="bg-gray-50">
-                                        <td className="border p-1 pl-4 text-gray-600 font-medium">{child.sequence}</td>
-                                        <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50" placeholder="Attachment desc" /></td>
+                                      <tr className="bg-gray-50 dark:bg-gray-800">
+                                        <td className="border p-1 pl-4 text-gray-600 dark:text-gray-400 font-medium">{child.sequence}</td>
+                                        <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Attachment desc" /></td>
                                         <td className="border p-1">
-                                          <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50">
+                                          <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                             <option value="Custom">Custom</option>
                                           </select>
                                         </td>
                                         <td className="border p-1">
                                           {child.category === 'Custom' ? (
-                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50" />
+                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                           ) : child.category === 'Plate' ? (
                                             <div className="flex items-center gap-1">
                                               <select 
                                                 value={child.plateThickness || ''} 
                                                 onChange={e => updateMaterial(item.id, child.id, 'plateThickness', e.target.value)} 
-                                                className="flex-1 p-1 border rounded text-xs bg-gray-50"
+                                                className="flex-1 p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                                               >
                                                 <option value="">Thick</option>
                                                 {plateThicknesses.map(t => <option key={t.label} value={t.value}>{t.label}</option>)}
                                               </select>
-                                              <span className="text-gray-500">×</span>
+                                              <span className="text-gray-500 dark:text-gray-400">×</span>
                                               <input 
                                                 type="number" 
                                                 step="0.5" 
                                                 value={child.plateWidth || ''} 
                                                 onChange={e => updateMaterial(item.id, child.id, 'plateWidth', parseFloat(e.target.value) || 0)} 
-                                                className="w-12 p-1 border rounded text-xs text-right bg-gray-50" 
+                                                className="w-12 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" 
                                                 placeholder="W"
                                               />
-                                              <span className="text-gray-500 text-xs">"</span>
+                                              <span className="text-gray-500 dark:text-gray-400 text-xs">"</span>
                                             </div>
                                           ) : (
-                                            <select value={child.size} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50">
+                                            <select value={child.size} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                               {getShapesForCategory(child.category).map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
                                           )}
                                         </td>
                                         <td className="border p-1">
                                           {child.category === 'Custom' ? (
-                                            <input type="number" step="0.01" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50" />
+                                            <input type="number" step="0.01" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                           ) : child.category === 'Plate' ? (
                                             <span className="block text-right">{child.weightPerFoot?.toFixed(2) || '—'}</span>
                                           ) : (
@@ -4393,23 +4393,23 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <div className="flex items-center justify-center gap-0.5">
                                             <button 
                                               onClick={() => updateMaterial(item.id, child.id, 'pieces', Math.max(1, (child.pieces || 1) - 1))}
-                                              className="px-1 py-0.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-bold"
+                                              className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 rounded text-xs font-bold"
                                             >−</button>
                                             <input 
                                               type="number" 
                                               value={child.pieces || ''} 
                                               onChange={e => updateMaterial(item.id, child.id, 'pieces', parseInt(e.target.value) || 0)} 
-                                              className={`w-10 p-1 border rounded text-xs text-center ${child.inheritPieces ? 'bg-blue-50 border-blue-300' : 'bg-gray-50'}`}
+                                              className={`w-10 p-1 border rounded text-xs text-center dark:border-gray-600 dark:text-gray-100 ${child.inheritPieces ? 'bg-blue-50 dark:bg-blue-950 border-blue-300' : 'bg-gray-50 dark:bg-gray-800'}`}
                                               title={child.inheritPieces ? 'Inherited from parent' : 'Custom quantity'}
                                             />
                                             <button 
                                               onClick={() => updateMaterial(item.id, child.id, 'pieces', (child.pieces || 0) + 1)}
-                                              className="px-1 py-0.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-bold"
+                                              className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 rounded text-xs font-bold"
                                             >+</button>
                                           </div>
                                         </td>
-                                        <td className="border p-1"><input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50" placeholder="0.00" /></td>
-                                        <td className="border p-1 text-right bg-blue-50">{fmtWt(child.fabWeight || 0)}</td>
+                                        <td className="border p-1"><input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
+                                        <td className="border p-1 text-right bg-blue-50 dark:bg-blue-950">{fmtWt(child.fabWeight || 0)}</td>
                                         <td className="border p-1 text-center">
                                           <input type="checkbox" checked={child.galvanized || false} 
                                             onChange={e => updateMaterial(item.id, child.id, 'galvanized', e.target.checked)} 
@@ -4419,7 +4419,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <select 
                                             value={child.stockLength} 
                                             onChange={e => updateMaterial(item.id, child.id, 'stockLength', parseInt(e.target.value))} 
-                                            className={`w-full p-1 border rounded text-xs bg-gray-50 ${child.isManualOverride ? 'bg-yellow-50 border-yellow-400' : ''}`}
+                                            className={`w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 ${child.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : ''}`}
                                           >
                                             {getStockLengthsForCategory(child.category).map(sl => (
                                               <option key={sl} value={sl}>
@@ -4428,15 +4428,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             ))}
                                           </select>
                                         </td>
-                                        <td className="border p-1 text-right bg-gray-100">{child.stocksRequired || 0}</td>
-                                        <td className="border p-1 text-right bg-gray-100">{fmtWt(child.stockWeight || 0)}</td>
+                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.stocksRequired || 0}</td>
+                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{fmtWt(child.stockWeight || 0)}</td>
                                         <td className="border p-1">
-                                          <select value={child.priceBy} onChange={e => updateMaterial(item.id, child.id, 'priceBy', e.target.value)} className="w-14 p-1 border rounded text-xs bg-gray-50">
+                                          <select value={child.priceBy} onChange={e => updateMaterial(item.id, child.id, 'priceBy', e.target.value)} className="w-14 p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                             <option value="LB">LB</option><option value="LF">LF</option><option value="EA">EA</option>
                                           </select>
                                         </td>
-                                        <td className="border p-1"><input type="number" step="0.01" value={child.unitPrice || ''} onChange={e => updateMaterial(item.id, child.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right bg-gray-50" /></td>
-                                        <td className="border p-1 text-right font-semibold bg-green-50">{fmtPrice(child.totalCost || 0)}</td>
+                                        <td className="border p-1"><input type="number" step="0.01" value={child.unitPrice || ''} onChange={e => updateMaterial(item.id, child.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                                        <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(child.totalCost || 0)}</td>
                                         <td className="border p-1">
                                           <div className="flex gap-1">
                                             <button onClick={() => addMaterialFab(item.id, child.id)} className="text-green-600 hover:text-green-800" title="Add Fabrication"><Plus size={12} className="bg-green-100 rounded" /></button>
@@ -4463,7 +4463,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           : fabricationOperations.welding;
                                         
                                         return (
-                                        <tr key={fab.id} className="bg-green-50">
+                                        <tr key={fab.id} className="bg-green-50 dark:bg-green-950">
                                           {/* Seq */}
                                           <td className="border p-1 text-green-600 text-center text-xs font-medium">[Fab]</td>
                                           {/* Description - shows ↳ A: prefix + operation */}
@@ -4473,7 +4473,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                 <select 
                                                   value={fab.applyTo || 'self'} 
                                                   onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'applyTo', e.target.value === 'self' ? 'self' : parseInt(e.target.value) || e.target.value)} 
-                                                  className="p-1 border rounded text-xs bg-green-100 w-16"
+                                                  className="p-1 border rounded text-xs bg-green-100 dark:bg-gray-700 w-16 dark:border-gray-600 dark:text-gray-100"
                                                   title="Apply To"
                                                 >
                                                   <option value="self">Self</option>
@@ -4487,7 +4487,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                 <select 
                                                   value={fab.applyTo || 'self'} 
                                                   onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'applyTo', e.target.value === 'self' ? 'self' : parseInt(e.target.value) || e.target.value)} 
-                                                  className="p-1 border rounded text-xs bg-green-50 w-16"
+                                                  className="p-1 border rounded text-xs bg-green-50 dark:bg-green-950 w-16 dark:border-gray-600 dark:text-gray-100"
                                                   title="Apply To"
                                                 >
                                                   <option value="self">Self</option>
@@ -4513,7 +4513,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               <select
                                                 value={fab.operation}
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)}
-                                                className="flex-1 p-1 border rounded text-xs bg-green-50"
+                                                className="flex-1 p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                               >
                                                 {isApplyToSelf ? (
                                                   <>
@@ -4569,7 +4569,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                 step="1" 
                                                 value={fab.quantity || ''} 
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} 
-                                                className="w-10 p-1 border rounded text-xs text-center bg-green-50" 
+                                                className="w-10 p-1 border rounded text-xs text-center bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                                 placeholder="qty"
                                               />
                                               <button 
@@ -4586,7 +4586,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                 step="0.1" 
                                                 value={fab.length || ''} 
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'length', parseFloat(e.target.value) || 0)} 
-                                                className="w-full p-1 border rounded text-xs text-right bg-green-50" 
+                                                className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                                 placeholder="len"
                                               />
                                             ) : (
@@ -4610,7 +4610,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             <select 
                                               value={fab.unit} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unit', e.target.value)} 
-                                              className="w-full p-1 border rounded text-xs bg-green-50"
+                                              className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                             >
                                               <option value="EA">EA</option>
                                               <option value="IN">IN</option>
@@ -4627,7 +4627,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               step="0.01" 
                                               value={fab.unitPrice || ''} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-green-50" 
+                                              className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="$0.00"
                                             />
                                           </td>
@@ -4642,7 +4642,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       })}
                                       {/* Auto-generated galv fab row for child (if any) */}
                                       {(child.fabrication || []).filter(f => f.isAutoGalv || f.isConnGalv).map(fab => (
-                                        <tr key={fab.id} className="bg-yellow-50">
+                                        <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-950">
                                           <td className="border p-1 text-yellow-600 text-center text-xs font-medium">[Galv]</td>
                                           <td className="border p-1 text-xs text-yellow-700">{fab.description}</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
@@ -4662,7 +4662,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               step="0.01" 
                                               value={fab.unitPrice || ''} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-yellow-50" 
+                                              className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-950 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="$/lb"
                                             />
                                           </td>
@@ -4683,14 +4683,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       {/* Item-Level Fabrication (General) */}
                       <div>
                         <div className="flex justify-between items-center mb-2">
-                          <h3 className="font-semibold text-gray-800">Item Fabrication (General)</h3>
+                          <h3 className="font-semibold text-gray-800 dark:text-gray-200">Item Fabrication (General)</h3>
                           <button onClick={() => addFabrication(item.id)} className="flex items-center gap-1 bg-green-600 text-white px-2 py-1 rounded text-xs"><Plus size={14} /> Add General Fab</button>
                         </div>
                         {item.fabrication.length > 0 && (
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs border-collapse">
                               <thead>
-                                <tr className="bg-gray-100">
+                                <tr className="bg-gray-100 dark:bg-gray-700">
                                   <th className="border p-1 text-left">Operation</th>
                                   <th className="border p-1 text-left">Description</th>
                                   <th className="border p-1 text-right">Qty</th>
@@ -4717,7 +4717,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <button onClick={() => updateFabrication(item.id, fab.id, 'operation', 'Handling')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
                                         </div>
                                       ) : (
-                                      <select value={fab.operation} onChange={e => updateFabrication(item.id, fab.id, 'operation', e.target.value)} className="w-full p-1 border rounded text-xs">
+                                      <select value={fab.operation} onChange={e => updateFabrication(item.id, fab.id, 'operation', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                         <optgroup label="Handling">
                                           {fabricationOperations.handling.map(op => <option key={op} value={op}>{op}</option>)}
                                         </optgroup>
@@ -4745,15 +4745,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       </select>
                                       )}
                                     </td>
-                                    <td className="border p-1"><input type="text" value={fab.description || ''} onChange={e => updateFabrication(item.id, fab.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs" placeholder="description" /></td>
-                                    <td className="border p-1"><input type="number" step="0.1" value={fab.quantity || ''} onChange={e => updateFabrication(item.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right" placeholder="qty" /></td>
+                                    <td className="border p-1"><input type="text" value={fab.description || ''} onChange={e => updateFabrication(item.id, fab.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="description" /></td>
+                                    <td className="border p-1"><input type="number" step="0.1" value={fab.quantity || ''} onChange={e => updateFabrication(item.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="qty" /></td>
                                     <td className="border p-1">
-                                      <select value={fab.unit} onChange={e => updateFabrication(item.id, fab.id, 'unit', e.target.value)} className="w-14 p-1 border rounded text-xs">
+                                      <select value={fab.unit} onChange={e => updateFabrication(item.id, fab.id, 'unit', e.target.value)} className="w-14 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                         <option value="EA">EA</option><option value="HR">HR</option><option value="LF">LF</option><option value="LB">LB</option><option value="SF">SF</option><option value="LS">LS</option>
                                       </select>
                                     </td>
-                                    <td className="border p-1"><input type="number" step="0.01" value={fab.unitPrice || ''} onChange={e => updateFabrication(item.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right" placeholder="$0.00" /></td>
-                                    <td className="border p-1 text-right font-semibold bg-green-50">{fmtPrice(fab.totalCost || 0)}</td>
+                                    <td className="border p-1"><input type="number" step="0.01" value={fab.unitPrice || ''} onChange={e => updateFabrication(item.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="$0.00" /></td>
+                                    <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(fab.totalCost || 0)}</td>
                                     <td className="border p-1"><button onClick={() => deleteFabrication(item.id, fab.id)} className="text-red-600"><Trash2 size={12} /></button></td>
                                   </tr>
                                 ))}
@@ -4764,21 +4764,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       </div>
 
                       {/* Item Summary + Snapshots */}
-                      <div className="bg-gray-200 rounded p-3 mt-2 flex gap-4 items-start">
+                      <div className="bg-gray-200 dark:bg-gray-600 rounded p-3 mt-2 flex gap-4 items-start">
 
                         {/* Blueprint Snapshots — left panel */}
                         <div
                           className="flex-1 min-w-0"
                           onPaste={(e) => handleSnapshotPaste(item.id, e)}
                         >
-                          <div className="text-xs font-semibold text-gray-500 mb-1">Blueprint Snapshots</div>
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Blueprint Snapshots</div>
                           <div className="flex flex-wrap gap-2">
                             {(item.snapshots || []).map(snap => (
                               <div key={snap.id} className="relative group w-28">
                                 <img
                                   src={snap.imageData}
                                   alt={snap.caption || 'Snapshot'}
-                                  className="w-28 h-20 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-90"
+                                  className="w-28 h-20 object-cover rounded border border-gray-300 dark:border-gray-600 cursor-pointer hover:opacity-90"
                                   onClick={() => setLightboxSrc(snap.imageData)}
                                 />
                                 <button
@@ -4791,13 +4791,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                   value={snap.caption}
                                   onChange={e => updateSnapshotCaption(item.id, snap.id, e.target.value)}
                                   placeholder="Caption..."
-                                  className="w-full mt-0.5 p-0.5 text-xs border border-gray-300 rounded bg-white"
+                                  className="w-full mt-0.5 p-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900"
                                 />
                               </div>
                             ))}
 
                             {/* Add snapshot cell */}
-                            <label className="w-28 h-20 flex flex-col items-center justify-center border-2 border-dashed border-gray-400 rounded cursor-pointer hover:bg-gray-100 text-gray-400 text-xs gap-1">
+                            <label className="w-28 h-20 flex flex-col items-center justify-center border-2 border-dashed border-gray-400 dark:border-gray-500 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 text-xs gap-1">
                               <span className="text-2xl leading-none">+</span>
                               <span>Add Image</span>
                               <input
@@ -4819,7 +4819,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         {/* Cost Summary — right panel */}
                         <div className="shrink-0">
                         <div className="grid grid-cols-2 gap-y-1 text-xs">
-                          <div className="text-right text-gray-600 pr-2">Total Fab Wt:</div>
+                          <div className="text-right text-gray-600 dark:text-gray-400 pr-2">Total Fab Wt:</div>
                           <div className="text-right text-blue-800 font-bold">
                             {fmtWt(
                               item.materials.reduce((sum, m) => sum + (m.fabWeight || 0), 0) +
@@ -4831,54 +4831,54 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             )} lbs
                           </div>
 
-                          <div className="text-right text-gray-600 pr-2">Material Cost:</div>
-                          <div className="text-right text-gray-700 font-semibold">
+                          <div className="text-right text-gray-600 dark:text-gray-400 pr-2">Material Cost:</div>
+                          <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
                             {fmtPrice(item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0))}
                           </div>
 
-                          <div className="text-right text-gray-600 pr-2 flex items-center justify-end gap-1">
+                          <div className="text-right text-gray-600 dark:text-gray-400 pr-2 flex items-center justify-end gap-1">
                             Material Markup
                             <input 
                               type="number" 
                               step="0.5" 
                               value={item.materialMarkup || ''} 
                               onChange={e => updateItem(item.id, 'materialMarkup', parseFloat(e.target.value) || 0)} 
-                              className="w-14 p-1 border rounded text-xs text-right" 
+                              className="w-14 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" 
                               placeholder="0"
                             />%:
                           </div>
-                          <div className="text-right text-gray-700 font-semibold">
+                          <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
                             {fmtPrice(item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0) * (item.materialMarkup || 0) / 100)}
                           </div>
 
-                          <div className="text-right text-gray-600 pr-2 pt-1 border-t border-gray-300">Fabrication Cost:</div>
-                          <div className="text-right text-gray-700 font-semibold pt-1 border-t border-gray-300">
+                          <div className="text-right text-gray-600 dark:text-gray-400 pr-2 pt-1 border-t border-gray-300 dark:border-gray-600">Fabrication Cost:</div>
+                          <div className="text-right text-gray-700 dark:text-gray-300 font-semibold pt-1 border-t border-gray-300 dark:border-gray-600">
                             {fmtPrice(
                               item.materials.reduce((sum, m) => sum + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0) +
                               item.fabrication.reduce((sum, f) => sum + (f.totalCost || 0), 0)
                             )}
                           </div>
 
-                          <div className="text-right text-gray-600 pr-2 flex items-center justify-end gap-1">
+                          <div className="text-right text-gray-600 dark:text-gray-400 pr-2 flex items-center justify-end gap-1">
                             Fab Markup
                             <input 
                               type="number" 
                               step="0.5" 
                               value={item.fabMarkup || ''} 
                               onChange={e => updateItem(item.id, 'fabMarkup', parseFloat(e.target.value) || 0)} 
-                              className="w-14 p-1 border rounded text-xs text-right" 
+                              className="w-14 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" 
                               placeholder="0"
                             />%:
                           </div>
-                          <div className="text-right text-gray-700 font-semibold">
+                          <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
                             {fmtPrice(
                               (item.materials.reduce((sum, m) => sum + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0) +
                               item.fabrication.reduce((sum, f) => sum + (f.totalCost || 0), 0)) * (item.fabMarkup || 0) / 100
                             )}
                           </div>
 
-                          <div className="text-right text-green-800 font-bold pr-2 pt-1 border-t-2 border-gray-400">Total Item Cost:</div>
-                          <div className="text-right text-green-800 font-bold pt-1 border-t-2 border-gray-400">
+                          <div className="text-right text-green-800 font-bold pr-2 pt-1 border-t-2 border-gray-400 dark:border-gray-500">Total Item Cost:</div>
+                          <div className="text-right text-green-800 font-bold pt-1 border-t-2 border-gray-400 dark:border-gray-500">
                             {fmtPrice(
                               // Material cost with material markup
                               (item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0)) * (1 + (item.materialMarkup || 0) / 100) +
@@ -4894,19 +4894,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   )}
                 </div>
               ))}
-              <button onClick={addItem} className="w-full p-3 border-2 border-dashed border-gray-400 rounded text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2">
+              <button onClick={addItem} className="w-full p-3 border-2 border-dashed border-gray-400 dark:border-gray-500 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-center gap-2">
                 <Plus size={18} /> Add New Item
               </button>
 
               {/* Totals */}
-              <div className="bg-gray-100 p-4 rounded border grid grid-cols-2 md:grid-cols-7 gap-4">
-                <div className="text-right"><span className="text-xs text-gray-600">Total Fab Wt: </span><span className="text-lg font-bold text-blue-700">{fmtWt(totals.totalFabWeight + totals.totalConnectionWeight)} lbs</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Stock Weight: </span><span className="text-lg font-bold">{fmtWt(totals.totalStockWeight)} lbs</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Material: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialCost)}</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Mat Markup: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialMarkup)}</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Fabrication: </span><span className="text-lg font-bold">{fmtPrice(totals.totalFabricationCost)}</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Fab Markup: </span><span className="text-lg font-bold">{fmtPrice(totals.totalFabMarkup)}</span></div>
-                <div className="text-right"><span className="text-xs text-gray-600">Grand Total: </span><span className="text-xl font-bold text-green-700">{fmtPrice(totals.grandTotal)}</span></div>
+              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded border grid grid-cols-2 md:grid-cols-7 gap-4">
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Total Fab Wt: </span><span className="text-lg font-bold text-blue-700">{fmtWt(totals.totalFabWeight + totals.totalConnectionWeight)} lbs</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Stock Weight: </span><span className="text-lg font-bold">{fmtWt(totals.totalStockWeight)} lbs</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Material: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialCost)}</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Mat Markup: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialMarkup)}</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Fabrication: </span><span className="text-lg font-bold">{fmtPrice(totals.totalFabricationCost)}</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Fab Markup: </span><span className="text-lg font-bold">{fmtPrice(totals.totalFabMarkup)}</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Grand Total: </span><span className="text-xl font-bold text-green-700">{fmtPrice(totals.grandTotal)}</span></div>
               </div>
             </div>
           )}
@@ -4914,14 +4914,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           {/* STOCK LIST TAB */}
           {activeTab === 'stocklist' && (
             <div className="space-y-4">
-              <div className="bg-gray-700 text-white p-4 rounded flex justify-between items-center">
+              <div className="bg-gray-700 dark:bg-gray-600 text-white p-4 rounded flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold">Stock Material Buy List</h2>
                   <p className="text-sm text-gray-300">{projectName || 'Project'}</p>
                 </div>
                 <button 
                   onClick={() => setShowRfqModal(true)}
-                  className="bg-white text-gray-700 px-4 py-2 rounded font-semibold hover:bg-gray-100"
+                  className="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-4 py-2 rounded font-semibold hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Request Vendor Pricing
                 </button>
@@ -4929,7 +4929,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-gray-200">
+                  <tr className="bg-gray-200 dark:bg-gray-600">
                     <th className="border p-2 text-left">Size</th>
                     <th className="border p-2 text-right">Stock Length</th>
                     <th className="border p-2 text-right">Qty Stocks</th>
@@ -4939,7 +4939,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </thead>
                 <tbody>
                   {stockList.map((stock, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
+                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="border p-2 font-semibold">{stock.size}</td>
                       <td className="border p-2 text-right">{stock.stockLength}'</td>
                       <td className="border p-2 text-right font-bold">{stock.totalStocks}</td>
@@ -4949,7 +4949,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-gray-200 font-bold">
+                  <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
                     <td className="border p-2" colSpan={4}>TOTAL</td>
                     <td className="border p-2 text-right">{fmtWt(totals.totalStockWeight)} lbs</td>
                   </tr>
@@ -4959,40 +4959,40 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               {/* RFQ Modal */}
               {showRfqModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
-                    <div className="bg-gray-700 text-white p-4 rounded-t-lg flex justify-between items-center">
+                  <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
+                    <div className="bg-gray-700 dark:bg-gray-600 text-white p-4 rounded-t-lg flex justify-between items-center">
                       <h3 className="text-lg font-bold">Request for Quotation (RFQ)</h3>
                       <button onClick={() => { setShowRfqModal(false); setRfqUploadResult(null); }} className="text-white hover:text-gray-300 text-2xl">&times;</button>
                     </div>
                     
                     <div className="p-6 space-y-6">
                       {/* Project Info Summary */}
-                      <div className="bg-gray-50 p-4 rounded border">
+                      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                         <h4 className="font-semibold mb-2">Project Information</h4>
                         <div className="grid grid-cols-2 gap-2 text-sm">
-                          <p><span className="text-gray-600">Project:</span> {projectName || 'Not specified'}</p>
-                          <p><span className="text-gray-600">Location:</span> {projectAddress || 'Not specified'}</p>
+                          <p><span className="text-gray-600 dark:text-gray-400">Project:</span> {projectName || 'Not specified'}</p>
+                          <p><span className="text-gray-600 dark:text-gray-400">Location:</span> {projectAddress || 'Not specified'}</p>
                         </div>
                       </div>
 
                       {/* RFQ Details */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Quote Needed By</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quote Needed By</label>
                           <input 
                             type="date" 
                             value={rfqResponseDate} 
                             onChange={e => setRfqResponseDate(e.target.value)}
-                            className="w-full p-2 border rounded text-sm"
+                            className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Required By</label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delivery Required By</label>
                           <input 
                             type="date" 
                             value={rfqDeliveryDate} 
                             onChange={e => setRfqDeliveryDate(e.target.value)}
-                            className="w-full p-2 border rounded text-sm"
+                            className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           />
                         </div>
                       </div>
@@ -5002,7 +5002,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         <h4 className="font-semibold mb-2">Material Summary ({stockList.length} items, {fmtWt(totals.totalStockWeight)} lbs total)</h4>
                         <div className="max-h-48 overflow-y-auto border rounded">
                           <table className="w-full text-xs">
-                            <thead className="bg-gray-100 sticky top-0">
+                            <thead className="bg-gray-100 dark:bg-gray-700 sticky top-0">
                               <tr>
                                 <th className="p-2 text-left">Size</th>
                                 <th className="p-2 text-right">Length</th>
@@ -5028,11 +5028,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                       {/* Special Instructions */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Special Instructions / Notes</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Special Instructions / Notes</label>
                         <textarea 
                           value={rfqNotes}
                           onChange={e => setRfqNotes(e.target.value)}
-                          className="w-full p-2 border rounded text-sm"
+                          className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           rows={3}
                           placeholder="Mill certs required, specific mill preferences, delivery instructions, etc."
                         />
@@ -5044,7 +5044,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <h4 className="font-semibold">Vendor Contact List</h4>
                           <button 
                             onClick={addRfqVendor}
-                            className="text-sm bg-gray-200 px-2 py-1 rounded hover:bg-gray-300"
+                            className="text-sm bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded hover:bg-gray-300"
                           >
                             + Add Vendor
                           </button>
@@ -5057,21 +5057,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                 placeholder="Vendor Name"
                                 value={vendor.name}
                                 onChange={e => updateRfqVendor(vendor.id, 'name', e.target.value)}
-                                className="col-span-4 p-2 border rounded text-sm"
+                                className="col-span-4 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                               />
                               <input 
                                 type="email" 
                                 placeholder="Email"
                                 value={vendor.email}
                                 onChange={e => updateRfqVendor(vendor.id, 'email', e.target.value)}
-                                className="col-span-4 p-2 border rounded text-sm"
+                                className="col-span-4 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                               />
                               <input 
                                 type="tel" 
                                 placeholder="Phone"
                                 value={vendor.phone}
                                 onChange={e => updateRfqVendor(vendor.id, 'phone', e.target.value)}
-                                className="col-span-3 p-2 border rounded text-sm"
+                                className="col-span-3 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                               />
                               <button 
                                 onClick={() => removeRfqVendor(vendor.id)}
@@ -5091,30 +5091,30 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         <div className="grid grid-cols-3 gap-4">
                           <button 
                             onClick={copyRfqToClipboard}
-                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 hover:border-gray-400"
+                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400"
                           >
-                            <Copy size={24} className="text-gray-600" />
+                            <Copy size={24} className="text-gray-600 dark:text-gray-400" />
                             <span className="font-medium">Copy to Clipboard</span>
-                            <span className="text-xs text-gray-500">Paste into email</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Paste into email</span>
                           </button>
                           <button 
                             onClick={downloadRfqCsv}
-                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 hover:border-gray-400"
+                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400"
                           >
-                            <Download size={24} className="text-gray-600" />
+                            <Download size={24} className="text-gray-600 dark:text-gray-400" />
                             <span className="font-medium">Download CSV</span>
-                            <span className="text-xs text-gray-500">Opens in Excel</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Opens in Excel</span>
                           </button>
                           <button 
                             onClick={() => {
                               setShowRfqModal(false);
                               setActiveTab('rfqprint');
                             }}
-                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 hover:border-gray-400"
+                            className="flex flex-col items-center gap-2 p-4 border-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400"
                           >
-                            <FileText size={24} className="text-gray-600" />
+                            <FileText size={24} className="text-gray-600 dark:text-gray-400" />
                             <span className="font-medium">Print RFQ</span>
-                            <span className="text-xs text-gray-500">Professional format</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Professional format</span>
                           </button>
                         </div>
                       </div>
@@ -5122,7 +5122,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       {/* Import Vendor Response */}
                       <div className="border-t pt-4">
                         <h4 className="font-semibold mb-1">Import Vendor Response</h4>
-                        <p className="text-xs text-gray-500 mb-3">Upload the completed RFQ CSV to apply vendor pricing to the estimate.</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Upload the completed RFQ CSV to apply vendor pricing to the estimate.</p>
                         <div className="flex items-center gap-3 flex-wrap">
                           <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer text-sm font-medium">
                             <Upload size={16} />
@@ -5144,7 +5144,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                     </div>
 
-                    <div className="bg-gray-100 p-4 rounded-b-lg flex justify-end gap-2">
+                    <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-b-lg flex justify-end gap-2">
                       <button
                         onClick={() => { setShowRfqModal(false); setRfqUploadResult(null); }}
                         className="px-4 py-2 border rounded hover:bg-gray-200"
@@ -5161,7 +5161,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
           {/* RFQ PRINT TAB (hidden from tab bar) */}
           {activeTab === 'rfqprint' && (
-            <div className="bg-white max-w-4xl mx-auto" style={{ padding: '0.5in' }}>
+            <div className="bg-white dark:bg-gray-900 max-w-4xl mx-auto" style={{ padding: '0.5in' }}>
               <style>{`
                 @media print {
                   body * { visibility: hidden; }
@@ -5190,38 +5190,38 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
 
                 <div className="mb-6">
-                  <h3 className="font-bold border-b border-gray-400 pb-1 mb-2">MATERIAL LIST</h3>
+                  <h3 className="font-bold border-b border-gray-400 dark:border-gray-500 pb-1 mb-2">MATERIAL LIST</h3>
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="bg-gray-200">
-                        <th className="border border-gray-400 p-2 text-left">Size</th>
-                        <th className="border border-gray-400 p-2 text-center">Length</th>
-                        <th className="border border-gray-400 p-2 text-center">Qty</th>
-                        <th className="border border-gray-400 p-2 text-center">Wt/ft</th>
-                        <th className="border border-gray-400 p-2 text-center">Est. Weight</th>
-                        <th className="border border-gray-400 p-2 text-center">Your $/LB</th>
-                        <th className="border border-gray-400 p-2 text-center">Your Total</th>
+                      <tr className="bg-gray-200 dark:bg-gray-600">
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-left">Size</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Length</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Qty</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Wt/ft</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Est. Weight</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Your $/LB</th>
+                        <th className="border border-gray-400 dark:border-gray-500 p-2 text-center">Your Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stockList.map((stock, i) => (
                         <tr key={i}>
-                          <td className="border border-gray-400 p-2">{stock.size}</td>
-                          <td className="border border-gray-400 p-2 text-center">{stock.stockLength}'</td>
-                          <td className="border border-gray-400 p-2 text-center">{stock.totalStocks}</td>
-                          <td className="border border-gray-400 p-2 text-center">{stock.weightPerFoot.toFixed(2)}</td>
-                          <td className="border border-gray-400 p-2 text-center">{fmtWt(stock.totalWeight)} lbs</td>
-                          <td className="border border-gray-400 p-2 text-center">$</td>
-                          <td className="border border-gray-400 p-2 text-center">$</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2">{stock.size}</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.stockLength}'</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.totalStocks}</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.weightPerFoot.toFixed(2)}</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{fmtWt(stock.totalWeight)} lbs</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">$</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">$</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-gray-200 font-bold">
-                        <td className="border border-gray-400 p-2" colSpan={4}>TOTALS</td>
-                        <td className="border border-gray-400 p-2 text-center">{fmtWt(totals.totalStockWeight)} lbs</td>
-                        <td className="border border-gray-400 p-2"></td>
-                        <td className="border border-gray-400 p-2">$</td>
+                      <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
+                        <td className="border border-gray-400 dark:border-gray-500 p-2" colSpan={4}>TOTALS</td>
+                        <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{fmtWt(totals.totalStockWeight)} lbs</td>
+                        <td className="border border-gray-400 dark:border-gray-500 p-2"></td>
+                        <td className="border border-gray-400 dark:border-gray-500 p-2">$</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -5229,7 +5229,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                 {rfqNotes && (
                   <div className="mb-6">
-                    <h3 className="font-bold border-b border-gray-400 pb-1 mb-2">SPECIAL INSTRUCTIONS</h3>
+                    <h3 className="font-bold border-b border-gray-400 dark:border-gray-500 pb-1 mb-2">SPECIAL INSTRUCTIONS</h3>
                     <p className="text-sm">{rfqNotes}</p>
                   </div>
                 )}
@@ -5273,13 +5273,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               <div className="no-print mt-6 flex justify-center gap-4">
                 <button 
                   onClick={() => setActiveTab('stocklist')}
-                  className="px-4 py-2 border rounded hover:bg-gray-100"
+                  className="px-4 py-2 border rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Back to Stock List
                 </button>
                 <button 
                   onClick={() => window.print()}
-                  className="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800"
+                  className="bg-gray-700 dark:bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-800"
                 >
                   Print RFQ
                 </button>
@@ -5290,7 +5290,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           {/* RECAP TAB */}
           {activeTab === 'recap' && (
             <div className="space-y-4">
-              <div className="bg-gray-700 text-white p-4 rounded flex justify-between items-center">
+              <div className="bg-gray-700 dark:bg-gray-600 text-white p-4 rounded flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold">Cost Recap by Item</h2>
                   <p className="text-sm text-gray-300">Assign installation, drafting, engineering, PM, shipping, and custom costs with markups</p>
@@ -5299,7 +5299,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <input
                     type="text"
                     placeholder="New column name..."
-                    className="px-2 py-1 rounded text-gray-800 text-sm w-40"
+                    className="px-2 py-1 rounded text-gray-800 dark:text-gray-200 text-sm w-40"
                     onKeyDown={e => {
                       if (e.key === 'Enter' && e.target.value.trim()) {
                         addCustomRecapColumn(e.target.value);
@@ -5315,7 +5315,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         input.value = '';
                       }
                     }}
-                    className="bg-white text-gray-700 px-3 py-1 rounded text-sm font-medium hover:bg-gray-100"
+                    className="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-3 py-1 rounded text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     + Add Column
                   </button>
@@ -5325,7 +5325,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-gray-200">
+                    <tr className="bg-gray-200 dark:bg-gray-600">
                       <th className="border p-2 text-left" rowSpan={2}>Item</th>
                       <th className="border p-2 text-center" colSpan={2}>Installation</th>
                       <th className="border p-2 text-center" colSpan={2}>Drafting</th>
@@ -5350,7 +5350,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       )}
                       <th className="border p-2 text-right" rowSpan={2}>Item Total</th>
                     </tr>
-                    <tr className="bg-gray-100">
+                    <tr className="bg-gray-100 dark:bg-gray-700">
                       <th className="border p-1 text-center text-xs">Cost</th>
                       <th className="border p-1 text-center text-xs">Markup %</th>
                       <th className="border p-1 text-center text-xs">Cost</th>
@@ -5363,8 +5363,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       <th className="border p-1 text-center text-xs">Markup %</th>
                       {customRecapColumns.map(col => (
                         <React.Fragment key={col.key}>
-                          <th className="border p-1 text-center text-xs bg-blue-50">Cost</th>
-                          <th className="border p-1 text-center text-xs bg-blue-50">Markup %</th>
+                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-950">Cost</th>
+                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-950">Markup %</th>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -5382,37 +5382,37 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       const itemTotal = matCost + matMarkupAmt + fabCost + fabMarkupAmt + recapTotal + itemTax;
                       
                       return (
-                        <tr key={item.id} className="hover:bg-gray-50">
+                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                           <td className="border p-2">
                             <span className="font-mono text-xs">{item.itemNumber}</span> - <span className="font-semibold">{item.itemName}</span>
-                            <div className="text-xs text-gray-500">Mat: {fmtPrice(matCost)}{matMarkupAmt > 0 ? ` (+${fmtPrice(matMarkupAmt)})` : ''} | Fab: {fmtPrice(fabCost)}{fabMarkupAmt > 0 ? ` (+${fmtPrice(fabMarkupAmt)})` : ''}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Mat: {fmtPrice(matCost)}{matMarkupAmt > 0 ? ` (+${fmtPrice(matMarkupAmt)})` : ''} | Fab: {fmtPrice(fabCost)}{fabMarkupAmt > 0 ? ` (+${fmtPrice(fabMarkupAmt)})` : ''}</div>
                           </td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.installation?.cost || ''} onChange={e => updateRecapCost(item.id, 'installation', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.installation?.markup || ''} onChange={e => updateRecapCost(item.id, 'installation', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.drafting?.cost || ''} onChange={e => updateRecapCost(item.id, 'drafting', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.drafting?.markup || ''} onChange={e => updateRecapCost(item.id, 'drafting', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.engineering?.cost || ''} onChange={e => updateRecapCost(item.id, 'engineering', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.engineering?.markup || ''} onChange={e => updateRecapCost(item.id, 'engineering', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="0.5" value={item.recapCosts.projectManagement?.hours || ''} onChange={e => updateRecapCost(item.id, 'projectManagement', 'hours', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.projectManagement?.rate || ''} onChange={e => updateRecapCost(item.id, 'projectManagement', 'rate', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.shipping?.cost || ''} onChange={e => updateRecapCost(item.id, 'shipping', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center" /></td>
-                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.shipping?.markup || ''} onChange={e => updateRecapCost(item.id, 'shipping', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.installation?.cost || ''} onChange={e => updateRecapCost(item.id, 'installation', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.installation?.markup || ''} onChange={e => updateRecapCost(item.id, 'installation', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.drafting?.cost || ''} onChange={e => updateRecapCost(item.id, 'drafting', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.drafting?.markup || ''} onChange={e => updateRecapCost(item.id, 'drafting', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.engineering?.cost || ''} onChange={e => updateRecapCost(item.id, 'engineering', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.engineering?.markup || ''} onChange={e => updateRecapCost(item.id, 'engineering', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="0.5" value={item.recapCosts.projectManagement?.hours || ''} onChange={e => updateRecapCost(item.id, 'projectManagement', 'hours', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.projectManagement?.rate || ''} onChange={e => updateRecapCost(item.id, 'projectManagement', 'rate', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.shipping?.cost || ''} onChange={e => updateRecapCost(item.id, 'shipping', 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                          <td className="border p-1"><input type="number" step="1" value={item.recapCosts.shipping?.markup || ''} onChange={e => updateRecapCost(item.id, 'shipping', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
                           {customRecapColumns.map(col => (
                             <React.Fragment key={col.key}>
-                              <td className="border p-1 bg-blue-50"><input type="number" step="1" value={item.recapCosts[col.key]?.cost || ''} onChange={e => updateRecapCost(item.id, col.key, 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center bg-blue-50" /></td>
-                              <td className="border p-1 bg-blue-50"><input type="number" step="1" value={item.recapCosts[col.key]?.markup || ''} onChange={e => updateRecapCost(item.id, col.key, 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center bg-blue-50" /></td>
+                              <td className="border p-1 bg-blue-50 dark:bg-blue-950"><input type="number" step="1" value={item.recapCosts[col.key]?.cost || ''} onChange={e => updateRecapCost(item.id, col.key, 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-950 dark:border-gray-600 dark:text-gray-100" /></td>
+                              <td className="border p-1 bg-blue-50 dark:bg-blue-950"><input type="number" step="1" value={item.recapCosts[col.key]?.markup || ''} onChange={e => updateRecapCost(item.id, col.key, 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-950 dark:border-gray-600 dark:text-gray-100" /></td>
                             </React.Fragment>
                           ))}
                           {taxCategory && (
-                            <td className="border p-2 text-right bg-amber-50 font-medium text-amber-800">{fmtPrice(itemTax)}</td>
+                            <td className="border p-2 text-right bg-amber-50 dark:bg-amber-950 font-medium text-amber-800">{fmtPrice(itemTax)}</td>
                           )}
-                          <td className="border p-2 text-right font-bold bg-green-50">{fmtPrice(itemTotal)}</td>
+                          <td className="border p-2 text-right font-bold bg-green-50 dark:bg-green-950">{fmtPrice(itemTotal)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-gray-200 font-bold">
+                    <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
                       <td className="border p-2">TOTALS</td>
                       <td className="border p-2 text-center" colSpan={2}>{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.installation?.total || 0), 0))}</td>
                       <td className="border p-2 text-center" colSpan={2}>{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.drafting?.total || 0), 0))}</td>
@@ -5432,28 +5432,28 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* Recap Summary */}
-              <div className="bg-gray-100 p-4 rounded border">
+              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded border">
                 <div className={`grid gap-4 ${customRecapColumns.length > 0 ? 'grid-cols-3 md:grid-cols-' + (6 + customRecapColumns.length) : 'grid-cols-2 md:grid-cols-6'}`}>
-                  <div className="text-center"><p className="text-xs text-gray-600">Installation</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.installation?.total || 0), 0))}</p></div>
-                  <div className="text-center"><p className="text-xs text-gray-600">Drafting</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.drafting?.total || 0), 0))}</p></div>
-                  <div className="text-center"><p className="text-xs text-gray-600">Engineering</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.engineering?.total || 0), 0))}</p></div>
-                  <div className="text-center"><p className="text-xs text-gray-600">Project Mgmt</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.projectManagement?.total || 0), 0))}</p></div>
-                  <div className="text-center"><p className="text-xs text-gray-600">Shipping</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.shipping?.total || 0), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Installation</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.installation?.total || 0), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Drafting</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.drafting?.total || 0), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Engineering</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.engineering?.total || 0), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Project Mgmt</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.projectManagement?.total || 0), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Shipping</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.shipping?.total || 0), 0))}</p></div>
                   {customRecapColumns.map(col => (
-                    <div key={col.key} className="text-center bg-blue-50 p-2 rounded"><p className="text-xs text-blue-700">{col.name}</p><p className="text-lg font-bold text-blue-800">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts[col.key]?.total || 0), 0))}</p></div>
+                    <div key={col.key} className="text-center bg-blue-50 dark:bg-blue-950 p-2 rounded"><p className="text-xs text-blue-700">{col.name}</p><p className="text-lg font-bold text-blue-800">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts[col.key]?.total || 0), 0))}</p></div>
                   ))}
                   {taxCategory && (
-                    <div className="text-center bg-amber-50 p-2 rounded">
+                    <div className="text-center bg-amber-50 dark:bg-amber-950 p-2 rounded">
                       <p className="text-xs text-amber-700">Tax ({taxCategoryDescriptions[taxCategory].label})</p>
                       <p className="text-lg font-bold text-amber-800">{fmtPrice(items.reduce((s, i) => s + calculateItemTax(i), 0))}</p>
                     </div>
                   )}
-                  <div className="text-center"><p className="text-xs text-gray-600">Recap Total</p><p className="text-lg font-bold text-blue-700">{fmtPrice(totals.totalRecapCosts + items.reduce((s, i) => s + calculateItemTax(i), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Recap Total</p><p className="text-lg font-bold text-blue-700">{fmtPrice(totals.totalRecapCosts + items.reduce((s, i) => s + calculateItemTax(i), 0))}</p></div>
                 </div>
               </div>
 
               {taxCategory && taxCategory !== 'resale' && taxCategory !== 'noTax' && (
-                <div className="bg-amber-50 border border-amber-200 rounded p-4">
+                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 rounded p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-amber-900 flex items-center gap-2">
                       <Calculator size={16} />
@@ -5468,24 +5468,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </button>
                   </div>
 
-                  <div className="bg-white rounded border border-amber-100 p-3 mb-3">
-                    <p className="text-sm text-gray-700 mb-2">{taxCategoryDescriptions[taxCategory].description}</p>
+                  <div className="bg-white dark:bg-gray-900 rounded border border-amber-100 p-3 mb-3">
+                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{taxCategoryDescriptions[taxCategory].description}</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="font-semibold text-green-800">Taxable:</p>
-                        {taxCategory === 'newConstruction' && <p className="text-gray-600">Materials + Material Markup</p>}
-                        {taxCategory === 'fob' && <p className="text-gray-600">Materials + Material Markup + Fabrication + Fab Markup</p>}
+                        {taxCategory === 'newConstruction' && <p className="text-gray-600 dark:text-gray-400">Materials + Material Markup</p>}
+                        {taxCategory === 'fob' && <p className="text-gray-600 dark:text-gray-400">Materials + Material Markup + Fabrication + Fab Markup</p>}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-500">Not Taxed:</p>
-                        {taxCategory === 'newConstruction' && <p className="text-gray-600">Fabrication, Fab Markup, Installation, Drafting, Engineering, PM, Shipping</p>}
-                        {taxCategory === 'fob' && <p className="text-gray-600">Installation, Drafting, Engineering, PM, Shipping</p>}
+                        <p className="font-semibold text-gray-500 dark:text-gray-400">Not Taxed:</p>
+                        {taxCategory === 'newConstruction' && <p className="text-gray-600 dark:text-gray-400">Fabrication, Fab Markup, Installation, Drafting, Engineering, PM, Shipping</p>}
+                        {taxCategory === 'fob' && <p className="text-gray-600 dark:text-gray-400">Installation, Drafting, Engineering, PM, Shipping</p>}
                       </div>
                     </div>
                   </div>
 
                   {showTaxBreakdown && (
-                    <table className="w-full text-xs border-collapse bg-white rounded" data-testid="table-tax-breakdown">
+                    <table className="w-full text-xs border-collapse bg-white dark:bg-gray-900 rounded" data-testid="table-tax-breakdown">
                       <thead>
                         <tr className="bg-amber-100">
                           <th className="border border-amber-200 p-2 text-left">Item</th>
@@ -5495,14 +5495,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           {taxCategory === 'fob' && <th className="border border-amber-200 p-2 text-right">Fab Markup</th>}
                           <th className="border border-amber-200 p-2 text-right font-bold">Taxable Base</th>
                           <th className="border border-amber-200 p-2 text-right font-bold">Tax ({(TAX_RATE * 100).toFixed(2)}%)</th>
-                          <th className="border border-amber-200 p-2 text-right text-gray-500">Not Taxed</th>
+                          <th className="border border-amber-200 p-2 text-right text-gray-500 dark:text-gray-400">Not Taxed</th>
                         </tr>
                       </thead>
                       <tbody>
                         {items.map(item => {
                           const bd = getItemTaxBreakdown(item);
                           return (
-                            <tr key={item.id} className="hover:bg-amber-50" data-testid={`row-tax-breakdown-${item.id}`}>
+                            <tr key={item.id} className="hover:bg-amber-50 dark:hover:bg-amber-950" data-testid={`row-tax-breakdown-${item.id}`}>
                               <td className="border border-amber-200 p-2">
                                 <span className="font-mono">{item.itemNumber}</span> - {item.itemName}
                               </td>
@@ -5512,7 +5512,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                               {taxCategory === 'fob' && <td className="border border-amber-200 p-2 text-right">{bd.fabMarkup > 0 ? fmtPrice(bd.fabMarkup) : '-'}</td>}
                               <td className="border border-amber-200 p-2 text-right font-semibold text-green-800">{fmtPrice(bd.taxableBase)}</td>
                               <td className="border border-amber-200 p-2 text-right font-bold text-amber-800">{fmtPrice(bd.taxAmount)}</td>
-                              <td className="border border-amber-200 p-2 text-right text-gray-500">
+                              <td className="border border-amber-200 p-2 text-right text-gray-500 dark:text-gray-400">
                                 {bd.notTaxed.length > 0 ? bd.notTaxed.join(', ') : '-'}
                               </td>
                             </tr>
@@ -5528,7 +5528,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           {taxCategory === 'fob' && <td className="border border-amber-200 p-2 text-right">{fmtPrice(totals.totalFabMarkup)}</td>}
                           <td className="border border-amber-200 p-2 text-right font-bold text-green-800">{fmtPrice(items.reduce((s, i) => s + getItemTaxBreakdown(i).taxableBase, 0))}</td>
                           <td className="border border-amber-200 p-2 text-right font-bold text-amber-800">{fmtPrice(totals.totalTax)}</td>
-                          <td className="border border-amber-200 p-2 text-right text-gray-500">{fmtPrice(items.reduce((s, i) => { const bd = getItemTaxBreakdown(i); return s + bd.fabCost + bd.fabMarkup + bd.recapTotal; }, 0))}</td>
+                          <td className="border border-amber-200 p-2 text-right text-gray-500 dark:text-gray-400">{fmtPrice(items.reduce((s, i) => { const bd = getItemTaxBreakdown(i); return s + bd.fabCost + bd.fabMarkup + bd.recapTotal; }, 0))}</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -5541,7 +5541,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           {/* SUMMARY TAB */}
           {activeTab === 'summary' && (
             <div className="space-y-4">
-              <div className="bg-gray-700 text-white p-4 rounded">
+              <div className="bg-gray-700 dark:bg-gray-600 text-white p-4 rounded">
                 <h2 className="text-xl font-bold">Estimate Summary</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2 text-sm">
                   <p><span className="text-gray-400">Project:</span> {projectName || '-'}</p>
@@ -5575,7 +5575,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               {/* Item Summary */}
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-gray-200">
+                  <tr className="bg-gray-200 dark:bg-gray-600">
                     <th className="border p-2 text-left">Item</th>
                     <th className="border p-2 text-left">Breakout</th>
                     <th className="border p-2 text-right">Fab Wt</th>
@@ -5595,13 +5595,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     const recapCost = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
                     const group = breakoutGroups.find(g => g.id === item.breakoutGroupId);
                     return (
-                      <tr key={item.id} className="hover:bg-gray-50">
+                      <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                         <td className="border p-2"><span className="font-mono text-xs">{item.itemNumber}</span> - {item.itemName}</td>
                         <td className="border p-1">
                           <select
                             value={item.breakoutGroupId || ''}
                             onChange={e => updateItem(item.id, 'breakoutGroupId', e.target.value ? parseInt(e.target.value) : null)}
-                            className="w-full p-1 border rounded text-xs"
+                            className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           >
                             <option value="">Base Bid</option>
                             {breakoutGroups.map(g => (
@@ -5623,7 +5623,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </table>
 
               {/* Breakout Groups Management */}
-              <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
+              <div className="bg-yellow-50 dark:bg-yellow-950 p-4 rounded border border-yellow-200">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-semibold text-yellow-800">Breakout Groups (Alternates)</h3>
                   <button
@@ -5642,18 +5642,18 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       const groupItems = items.filter(i => i.breakoutGroupId === group.id);
                       const groupTotal = groupItems.reduce((s, i) => s + getItemTotal(i), 0);
                       return (
-                        <div key={group.id} className="flex items-center gap-2 bg-white p-2 rounded border">
+                        <div key={group.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border">
                           <input
                             type="text"
                             placeholder="Group Name (e.g., Canopy, Stair #1)"
                             value={group.name}
                             onChange={e => updateBreakoutGroup(group.id, 'name', e.target.value)}
-                            className="flex-1 p-1 border rounded text-sm"
+                            className="flex-1 p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           />
                           <select
                             value={group.type}
                             onChange={e => updateBreakoutGroup(group.id, 'type', e.target.value)}
-                            className="p-1 border rounded text-sm"
+                            className="p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                           >
                             <option value="base">Base</option>
                             <option value="deduct">Deduct</option>
@@ -5662,7 +5662,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <span className="text-sm font-mono w-24 text-right">
                             {fmtPrice(groupTotal)}
                           </span>
-                          <span className="text-xs text-gray-500 w-16">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 w-16">
                             ({groupItems.length} items)
                           </span>
                           <button
@@ -5687,7 +5687,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <p className="font-bold">Base Bid: {fmtPrice(breakouts.baseBid)}</p>
                           {breakouts.deducts.length > 0 && (
                             <div className="ml-4">
-                              <p className="text-xs text-gray-600">DEDUCT OPTIONS:</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">DEDUCT OPTIONS:</p>
                               {breakouts.deducts.map(d => (
                                 <p key={d.id} className="text-red-700">- {d.name || 'Unnamed'}: -{fmtPrice(d.total)}</p>
                               ))}
@@ -5695,7 +5695,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           )}
                           {breakouts.adds.length > 0 && (
                             <div className="ml-4">
-                              <p className="text-xs text-gray-600">ADD OPTIONS:</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">ADD OPTIONS:</p>
                               {breakouts.adds.map(a => (
                                 <p key={a.id} className="text-green-700">+ {a.name || 'Unnamed'}: +{fmtPrice(a.total)}</p>
                               ))}
@@ -5709,7 +5709,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* General Adjustments */}
-              <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
+              <div className="bg-yellow-50 dark:bg-yellow-950 p-4 rounded border border-yellow-200">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-semibold text-yellow-800">General Adjustments (Internal Only)</h3>
                   <button
@@ -5725,22 +5725,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 ) : (
                   <div className="space-y-2">
                     {adjustments.map(adj => (
-                      <div key={adj.id} className="flex items-center gap-2 bg-white p-2 rounded border">
-                        <span className="text-sm text-gray-600">$</span>
+                      <div key={adj.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">$</span>
                         <input
                           type="number"
                           step="1"
                           placeholder="+/- Amount"
                           value={adj.amount || ''}
                           onChange={e => updateAdjustment(adj.id, 'amount', e.target.value)}
-                          className="w-28 p-1 border rounded text-sm text-right"
+                          className="w-28 p-1 border rounded text-sm text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                         />
                         <input
                           type="text"
                           placeholder="Note (e.g., Rounding, Contingency, GC Discount)"
                           value={adj.note}
                           onChange={e => updateAdjustment(adj.id, 'note', e.target.value)}
-                          className="flex-1 p-1 border rounded text-sm"
+                          className="flex-1 p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                         />
                         <button
                           onClick={() => deleteAdjustment(adj.id)}
@@ -5759,7 +5759,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               </div>
 
               {/* Grand Totals */}
-              <div className="bg-gray-100 p-4 rounded border">
+              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded border">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm">Fab Weight: <span className="font-bold text-blue-700">{fmtWt(totals.totalFabWeight)} lbs</span></p>
@@ -5783,7 +5783,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
               {/* Exclusions & Qualifications */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-red-50 p-4 rounded border border-red-200">
+                <div className="bg-red-50 dark:bg-red-950 p-4 rounded border border-red-200">
                   <h3 className="font-semibold text-red-800 mb-2">Exclusions</h3>
                   <ul className="text-sm space-y-1">
                     {[...selectedExclusions, ...customExclusions].map((exc, i) => (
@@ -5791,7 +5791,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     ))}
                   </ul>
                 </div>
-                <div className="bg-blue-50 p-4 rounded border border-blue-200">
+                <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded border border-blue-200">
                   <h3 className="font-semibold text-blue-800 mb-2">Qualifications</h3>
                   <ul className="text-sm space-y-1">
                     {[...selectedQualifications, ...customQualifications].map((qual, i) => (
@@ -5805,7 +5805,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
           {/* QUOTE TAB */}
           {activeTab === 'quote' && (
-            <div className="bg-white max-w-4xl mx-auto" style={{ minHeight: '11in', padding: '0.5in' }}>
+            <div className="bg-white dark:bg-gray-900 max-w-4xl mx-auto" style={{ minHeight: '11in', padding: '0.5in' }}>
               {/* Print styles */}
               <style>{`
                 @media print {
@@ -5820,11 +5820,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 {/* Company Header */}
                 <div className="border-b-2 border-gray-800 pb-4 mb-4">
                   <img src={COMPANY_LOGO} alt="Company Logo" style={{ height: '60px' }} />
-                  <h1 className="text-2xl font-bold text-gray-900 text-center mt-2">QUOTATION</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 text-center mt-2">QUOTATION</h1>
                 </div>
 
                 {/* Legal Terms Block */}
-                <div className="mb-4 text-gray-700 leading-relaxed" style={{ fontSize: '9px' }}>
+                <div className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed" style={{ fontSize: '9px' }}>
                   <p className="mb-1">
                     We propose to furnish the following described materials for the above structure, in accordance with the conditions of the Code of Standard Practice of American Institute of Steel Construction and the following terms and conditions, which upon acceptance by you of this proposal, are agreed to and accepted by you.
                   </p>
@@ -5839,7 +5839,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
 
                 {/* Project Information */}
-                <div className="mb-6 border-t border-gray-300 pt-4">
+                <div className="mb-6 border-t border-gray-300 dark:border-gray-600 pt-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p>{customerName || '_______________'}</p>
@@ -5892,7 +5892,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           </thead>
                           <tbody>
                             {baseItems.map(item => (
-                              <tr key={item.id} className="border-b border-gray-300">
+                              <tr key={item.id} className="border-b border-gray-300 dark:border-gray-600">
                                 <td className="p-2 font-mono">{item.itemNumber}</td>
                                 <td className="p-2">{item.itemName}</td>
                                 <td className="p-2">{item.drawingRef || '-'}</td>
@@ -5903,11 +5903,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         
                         {addItems.length > 0 && (
                           <div className="mt-4">
-                            <p className="text-xs text-gray-500 mb-1">Additional items available (see Add Options below):</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Additional items available (see Add Options below):</p>
                             <table className="w-full text-sm border-collapse">
                               <tbody>
                                 {addItems.map(item => (
-                                  <tr key={item.id} className="border-b border-gray-200 text-gray-500">
+                                  <tr key={item.id} className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
                                     <td className="p-1 font-mono text-xs">{item.itemNumber}</td>
                                     <td className="p-1 text-xs">{item.itemName}</td>
                                     <td className="p-1 text-xs">{item.drawingRef || '-'}</td>
@@ -5934,7 +5934,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   
                   return (
                     <>
-                      <div className="mb-4 p-4 bg-gray-100 border-2 border-gray-800 text-center">
+                      <div className="mb-4 p-4 bg-gray-100 dark:bg-gray-700 border-2 border-gray-800 text-center">
                         <p className="text-lg">
                           <span className="font-semibold">{hasBreakouts ? 'BASE BID' : 'ALL FOR THE SUM OF'}</span>
                           <span> ..........</span>
@@ -5943,14 +5943,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <span className="inline-block text-right" style={{ minWidth: '0' }}>
                             <span className="text-xl font-bold block" style={{ borderBottom: '2px solid #111827', paddingBottom: '1px', letterSpacing: '0.025em' }}>{fmtQuotePrice(breakouts.baseBid)}</span>
                             {taxCategory && taxCategory !== 'resale' && taxCategory !== 'noTax' && totals.totalTax > 0 && (
-                              <span className="block text-xs font-semibold text-gray-700 mt-1 tracking-wide text-center">TAX INCLUDED</span>
+                              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mt-1 tracking-wide text-center">TAX INCLUDED</span>
                             )}
                           </span>
                         </p>
                       </div>
                       
                       {breakouts.deducts.length > 0 && (
-                        <div className="mb-4 p-3 border border-red-300 bg-red-50">
+                        <div className="mb-4 p-3 border border-red-300 bg-red-50 dark:bg-red-950">
                           <p className="font-semibold text-sm mb-2 text-red-800">DEDUCT OPTIONS:</p>
                           {breakouts.deducts.map(d => (
                             <p key={d.id} className="text-sm mb-1 flex justify-between">
@@ -5962,7 +5962,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       )}
                       
                       {breakouts.adds.length > 0 && (
-                        <div className="mb-4 p-3 border border-green-300 bg-green-50">
+                        <div className="mb-4 p-3 border border-green-300 bg-green-50 dark:bg-green-950">
                           <p className="font-semibold text-sm mb-2 text-green-800">ADD OPTIONS:</p>
                           {breakouts.adds.map(a => (
                             <p key={a.id} className="text-sm mb-1 flex justify-between">
@@ -5978,7 +5978,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                 {/* Qualifications */}
                 <div className="mb-6">
-                  <h3 className="font-semibold text-sm border-b border-gray-400 pb-1 mb-2">QUALIFICATIONS:</h3>
+                  <h3 className="font-semibold text-sm border-b border-gray-400 dark:border-gray-500 pb-1 mb-2">QUALIFICATIONS:</h3>
                   <ul className="text-xs space-y-1">
                     {[...selectedQualifications, ...customQualifications].map((qual, i) => (
                       <li key={i}>- {qual}</li>
@@ -5988,7 +5988,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                 {/* Exclusions */}
                 <div className="mb-8">
-                  <h3 className="font-semibold text-sm border-b border-gray-400 pb-1 mb-2">EXCLUSIONS:</h3>
+                  <h3 className="font-semibold text-sm border-b border-gray-400 dark:border-gray-500 pb-1 mb-2">EXCLUSIONS:</h3>
                   <ul className="text-xs space-y-1">
                     {[...selectedExclusions, ...customExclusions].map((exc, i) => (
                       <li key={i}>- {exc}</li>
@@ -5997,13 +5997,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
 
                 {/* Signature Section */}
-                <div className="mt-8 pt-4 border-t border-gray-400">
+                <div className="mt-8 pt-4 border-t border-gray-400 dark:border-gray-500">
                   <div className="grid grid-cols-2 gap-8">
                     <div>
                       <p className="text-sm mb-1">Respectfully submitted,</p>
                       <div className="mt-8 border-b border-gray-800 w-48"></div>
                       <p className="text-sm mt-1">{estimatedBy || 'Estimator'}</p>
-                      <p className="text-xs text-gray-600">Date: {estimateDate ? new Date(estimateDate).toLocaleDateString() : '_______________'}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Date: {estimateDate ? new Date(estimateDate).toLocaleDateString() : '_______________'}</p>
                     </div>
                     <div className="flex flex-col items-end">
                       <div className="flex items-end gap-2 mb-6">
@@ -6023,7 +6023,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 pt-4 border-t border-gray-300 text-center text-xs text-gray-500">
+                <div className="mt-8 pt-4 border-t border-gray-300 dark:border-gray-600 text-center text-xs text-gray-500 dark:text-gray-400">
                   <p>All agreements contingent upon Fires, Strikes, Embargoes, or all other causes beyond our control.</p>
                 </div>
               </div>
@@ -6032,7 +6032,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               <div className="no-print mt-6 text-center">
                 <button 
                   onClick={() => window.print()}
-                  className="bg-gray-700 text-white px-6 py-2 rounded hover:bg-gray-800"
+                  className="bg-gray-700 dark:bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-800"
                 >
                   Print Quote
                 </button>
@@ -6043,7 +6043,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       {/* Import Preview Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
             <div className="bg-green-700 text-white p-4 rounded-t-lg flex justify-between items-center">
               <h3 className="text-lg font-bold">Import from Revu CSV</h3>
               <button onClick={cancelImport} className="text-white hover:text-gray-300 text-2xl">&times;</button>
@@ -6051,7 +6051,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             
             <div className="p-6 space-y-4">
               {importError && (
-                <div className="bg-red-50 border border-red-200 rounded p-4 flex items-start gap-3">
+                <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded p-4 flex items-start gap-3">
                   <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
                   <div>
                     <p className="font-semibold text-red-800">Import Error</p>
@@ -6062,20 +6062,20 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               
               {importPreview && (
                 <>
-                  <div className="bg-green-50 border border-green-200 rounded p-4">
+                  <div className="bg-green-50 dark:bg-green-950 border border-green-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Check className="text-green-600" size={20} />
                       <span className="font-semibold text-green-800">Ready to Import</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div><span className="text-gray-600">Items:</span> <span className="font-semibold">{importPreview.items.length}</span></div>
-                      <div><span className="text-gray-600">Material Lines:</span> <span className="font-semibold">{importPreview.items.reduce((sum, item) => sum + item.materials.length, 0)}</span></div>
-                      <div><span className="text-gray-600">Total Pieces:</span> <span className="font-semibold">{importPreview.items.reduce((sum, item) => sum + item.materials.reduce((msum, mat) => msum + mat.pieces, 0), 0)}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Items:</span> <span className="font-semibold">{importPreview.items.length}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Material Lines:</span> <span className="font-semibold">{importPreview.items.reduce((sum, item) => sum + item.materials.length, 0)}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Total Pieces:</span> <span className="font-semibold">{importPreview.items.reduce((sum, item) => sum + item.materials.reduce((msum, mat) => msum + mat.pieces, 0), 0)}</span></div>
                     </div>
                   </div>
 
                   {importPreview.unmatchedSizes.length > 0 && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 rounded p-4">
                       <div className="flex items-start gap-3">
                         <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
                         <div>
@@ -6093,7 +6093,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
                   <div className="border rounded overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-100">
+                      <thead className="bg-gray-100 dark:bg-gray-700">
                         <tr>
                           <th className="p-2 text-left">Item #</th>
                           <th className="p-2 text-left">Description</th>
@@ -6104,24 +6104,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       </thead>
                       <tbody>
                         {importPreview.items.slice(0, 10).map((item, i) => (
-                          <tr key={i} className="border-t hover:bg-gray-50">
+                          <tr key={i} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800">
                             <td className="p-2 font-mono">{item.itemNumber}</td>
                             <td className="p-2">{item.itemName}</td>
-                            <td className="p-2 text-gray-600">{item.drawingRef || '-'}</td>
+                            <td className="p-2 text-gray-600 dark:text-gray-400">{item.drawingRef || '-'}</td>
                             <td className="p-2 text-right">{item.materials.length}</td>
                             <td className="p-2 text-right font-semibold">{item.materials.reduce((sum, mat) => sum + mat.pieces, 0)}</td>
                           </tr>
                         ))}
                         {importPreview.items.length > 10 && (
-                          <tr className="border-t bg-gray-50">
-                            <td colSpan={5} className="p-2 text-center text-gray-600">... and {importPreview.items.length - 10} more items</td>
+                          <tr className="border-t bg-gray-50 dark:bg-gray-800">
+                            <td colSpan={5} className="p-2 text-center text-gray-600 dark:text-gray-400">... and {importPreview.items.length - 10} more items</td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4 text-sm">
                     <p className="font-semibold text-blue-800 mb-1">Merge Behavior:</p>
                     <ul className="text-blue-700 space-y-1">
                       <li>- Matching material lines: Quantity will be replaced</li>
@@ -6135,7 +6135,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               )}
             </div>
 
-            <div className="bg-gray-100 p-4 rounded-b-lg flex justify-end gap-2">
+            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-b-lg flex justify-end gap-2">
               <button onClick={cancelImport} className="px-4 py-2 border rounded hover:bg-gray-200">Cancel</button>
               {importPreview && (
                 <button onClick={executeImport} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
@@ -6150,7 +6150,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       {/* Takeoff Import Modal (Neilsoft 19-column) */}
       {showTakeoffModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
             <div className="bg-blue-700 text-white p-4 rounded-t-lg flex justify-between items-center">
               <h3 className="text-lg font-bold">Import Takeoff CSV</h3>
               <button onClick={cancelTakeoffImport} className="text-white hover:text-gray-300 text-2xl">&times;</button>
@@ -6158,7 +6158,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
             <div className="p-6 space-y-4">
               {takeoffError && (
-                <div className="bg-red-50 border border-red-200 rounded p-4 flex items-start gap-3">
+                <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded p-4 flex items-start gap-3">
                   <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
                   <div>
                     <p className="font-semibold text-red-800">Import Error</p>
@@ -6169,20 +6169,20 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
               {takeoffPreview && (
                 <>
-                  <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Check className="text-blue-600" size={20} />
                       <span className="font-semibold text-blue-800">Ready to Import</span>
                     </div>
                     <div className="flex gap-8 text-sm">
-                      <div><span className="text-gray-600">Items:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalItems}</span></div>
-                      <div><span className="text-gray-600">Members:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalMembers}</span></div>
-                      <div><span className="text-gray-600">Fab Operations:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalFabOps}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Items:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalItems}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Members:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalMembers}</span></div>
+                      <div><span className="text-gray-600 dark:text-gray-400">Fab Operations:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalFabOps}</span></div>
                     </div>
                   </div>
 
                   {takeoffPreview.items.some(i => i.coatingMixed) && (
-                    <div className="bg-yellow-50 border border-yellow-300 rounded p-4 text-sm">
+                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-300 rounded p-4 text-sm">
                       <p className="font-semibold text-yellow-800 mb-1">Mixed Coating Warning</p>
                       <p className="text-yellow-700 mb-2">The following items have rows with different or missing coating values. No item-level coating operation will be added — review manually:</p>
                       <ul className="list-disc list-inside text-yellow-700 space-y-0.5">
@@ -6201,7 +6201,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead>
-                        <tr className="bg-gray-100">
+                        <tr className="bg-gray-100 dark:bg-gray-700">
                           <th className="border p-2 text-left">Item #</th>
                           <th className="border p-2 text-left">Description</th>
                           <th className="border p-2 text-left">Drawing Ref</th>
@@ -6218,10 +6218,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             (m.children || []).reduce((nc, c) => nc + (c.fabrication || []).length, 0), 0
                           );
                           return (
-                            <tr key={item.itemNumber} className="hover:bg-gray-50">
+                            <tr key={item.itemNumber} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                               <td className="border p-2 font-mono">{item.itemNumber}</td>
                               <td className="border p-2">{item.itemName}</td>
-                              <td className="border p-2 text-gray-600">{item.drawingRef}</td>
+                              <td className="border p-2 text-gray-600 dark:text-gray-400">{item.drawingRef}</td>
                               <td className="border p-2 text-center">{memberCount}</td>
                               <td className="border p-2 text-center">{fabOpCount}</td>
                               <td className="border p-2 text-sm">
@@ -6237,7 +6237,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         })}
                         {takeoffPreview.items.length > 10 && (
                           <tr>
-                            <td colSpan={6} className="p-2 text-center text-gray-500">
+                            <td colSpan={6} className="p-2 text-center text-gray-500 dark:text-gray-400">
                               ... and {takeoffPreview.items.length - 10} more items
                             </td>
                           </tr>
@@ -6246,7 +6246,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </table>
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4 text-sm">
                     <p className="font-semibold text-blue-800 mb-1">Import Behavior:</p>
                     <ul className="text-blue-700 space-y-1">
                       <li>- Each member mark becomes a material line (parents + children)</li>
@@ -6261,7 +6261,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               )}
             </div>
 
-            <div className="bg-gray-100 p-4 rounded-b-lg flex justify-end gap-2">
+            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-b-lg flex justify-end gap-2">
               <button onClick={cancelTakeoffImport} className="px-4 py-2 border rounded hover:bg-gray-200">Cancel</button>
               {takeoffPreview && (
                 <button onClick={executeTakeoffImport} className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">

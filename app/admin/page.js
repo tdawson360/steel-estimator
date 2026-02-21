@@ -141,24 +141,24 @@ export default function AdminPage() {
 
   if (session?.user?.role !== 'ADMIN') {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <AppHeader />
         <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-          <h1 className="text-xl font-bold text-gray-900">Access Denied</h1>
-          <p className="text-gray-500 mt-2">You do not have permission to access the Admin Panel.</p>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Access Denied</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-2">You do not have permission to access the Admin Panel.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader />
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
-            <p className="text-sm text-gray-500 mt-1">Manage users and roles</p>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Admin Panel</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage users and roles</p>
           </div>
           <button
             onClick={() => { setShowAddForm(true); setError(''); }}
@@ -171,16 +171,16 @@ export default function AdminPage() {
         </div>
 
         {showAddForm && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Add New User</h2>
-              <button onClick={() => setShowAddForm(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Add New User</h2>
+              <button onClick={() => setShowAddForm(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <X size={20} />
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700" data-testid="text-add-user-error">
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-400" data-testid="text-add-user-error">
                 {error}
               </div>
             )}
@@ -188,49 +188,49 @@ export default function AdminPage() {
             <form onSubmit={handleAdd}>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First Name</label>
                   <input
                     type="text" required value={formData.firstName}
                     onChange={(e) => setFormData(p => ({ ...p, firstName: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                     data-testid="input-first-name"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last Name</label>
                   <input
                     type="text" required value={formData.lastName}
                     onChange={(e) => setFormData(p => ({ ...p, lastName: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                     data-testid="input-last-name"
                   />
                 </div>
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                 <input
                   type="email" required value={formData.email}
                   onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                   data-testid="input-user-email"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Temporary Password</label>
                   <input
                     type="text" required value={formData.password}
                     onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                     data-testid="input-user-password"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                     data-testid="select-user-role"
                   >
                     {ROLE_OPTIONS.map(r => (
@@ -249,7 +249,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="button" onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-sm"
                 >
                   Cancel
                 </button>
@@ -259,27 +259,27 @@ export default function AdminPage() {
         )}
 
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading users...</div>
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading users...</div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Last Login</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Role</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Last Login</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-100" data-testid={`row-user-${user.id}`}>
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                  <tr key={user.id} className="border-b border-gray-100 dark:border-gray-700" data-testid={`row-user-${user.id}`}>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       {user.firstName} {user.lastName}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{user.email}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{user.email}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getRoleColor(user.role)}`}>
                         {getRoleLabel(user.role)}
@@ -292,7 +292,7 @@ export default function AdminPage() {
                         {user.active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(user.lastLoginAt)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{formatDate(user.lastLoginAt)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -327,55 +327,55 @@ export default function AdminPage() {
       {/* Edit User Modal */}
       {editingUser !== null && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg border border-gray-200 p-6 w-full max-w-md mx-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Edit User</h2>
-              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit User</h2>
+              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <X size={20} />
               </button>
             </div>
 
             {editError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-400">
                 {editError}
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First Name</label>
                 <input
                   type="text" required value={editForm.firstName || ''}
                   onChange={(e) => setEditForm(p => ({ ...p, firstName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last Name</label>
                 <input
                   type="text" required value={editForm.lastName || ''}
                   onChange={(e) => setEditForm(p => ({ ...p, lastName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                 />
               </div>
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
               <input
                 type="email" required value={editForm.email || ''}
                 onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
                 <select
                   value={editForm.role || ''}
                   onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                 >
                   {ROLE_OPTIONS.map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -383,12 +383,12 @@ export default function AdminPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
                 <input
                   type="text" value={editForm.password || ''}
                   onChange={(e) => setEditForm(p => ({ ...p, password: e.target.value }))}
                   placeholder="Leave blank to keep current"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                 />
               </div>
             </div>
@@ -403,7 +403,7 @@ export default function AdminPage() {
               </button>
               <button
                 onClick={() => setEditingUser(null)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 text-sm"
               >
                 Cancel
               </button>

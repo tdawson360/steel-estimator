@@ -1,5 +1,6 @@
 import './globals.css';
 import SessionProvider from '../components/SessionProvider';
+import Providers from '../components/Providers';
 
 export const metadata = {
   title: 'Steel Estimator',
@@ -8,11 +9,13 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        <SessionProvider>
-          {children}
-        </SessionProvider>
+        <Providers>
+          <SessionProvider>
+            {children}
+          </SessionProvider>
+        </Providers>
       </body>
     </html>
   );

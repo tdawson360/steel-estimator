@@ -60,7 +60,7 @@ function SortHeader({ col, label, sortCol, sortDir, onSort, className = '' }) {
   const active = sortCol === col;
   return (
     <th
-      className={`px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none whitespace-nowrap hover:bg-gray-100 transition-colors ${className}`}
+      className={`px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300 cursor-pointer select-none whitespace-nowrap hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${className}`}
       onClick={() => onSort(col)}
     >
       <span className="flex items-center gap-1">
@@ -223,7 +223,7 @@ function DashboardContent() {
   const sortProps = { sortCol, sortDir, onSort: handleSort };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -231,8 +231,8 @@ function DashboardContent() {
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Bid Board</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Bid Board</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {loading ? 'Loading...' : `${displayed.length} project${displayed.length !== 1 ? 's' : ''}`}
             </p>
           </div>
@@ -247,15 +247,15 @@ function DashboardContent() {
         </div>
 
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-lg px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
 
           {/* Status filter */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600 whitespace-nowrap">Status</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Status</label>
             <select
               value={statusFilter}
               onChange={e => updateParam('status', e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="">All Statuses</option>
               {DASHBOARD_STATUSES.map(s => (
@@ -266,11 +266,11 @@ function DashboardContent() {
 
           {/* Estimator filter */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600 whitespace-nowrap">Estimator</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Estimator</label>
             <select
               value={estimatorFilter}
               onChange={e => updateParam('estimator', e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="">All Estimators</option>
               {users.map(u => (
@@ -289,7 +289,7 @@ function DashboardContent() {
               onChange={e => updateParam('archived', e.target.checked ? '1' : '')}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-600">Show Archived</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Show Archived</span>
           </label>
 
           {/* Clear filters */}
@@ -310,9 +310,9 @@ function DashboardContent() {
 
         {/* Table */}
         {loading ? (
-          <div className="text-center py-16 text-gray-500">Loading projects...</div>
+          <div className="text-center py-16 text-gray-500 dark:text-gray-400">Loading projects...</div>
         ) : displayed.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">
+          <div className="text-center py-16 text-gray-500 dark:text-gray-400">
             {statusFilter || estimatorFilter
               ? 'No projects match the current filters.'
               : showArchived
@@ -320,17 +320,17 @@ function DashboardContent() {
                 : 'No projects yet.'}
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                   <SortHeader col="name"       label="Name"       {...sortProps} />
                   <SortHeader col="estimator"  label="Estimator"  {...sortProps} />
                   <SortHeader col="bidDate"    label="Bid Date"   {...sortProps} />
                   <SortHeader col="status"     label="Status"     {...sortProps} />
                   <SortHeader col="bidAmount"  label="Bid Amount" {...sortProps} className="text-right" />
                   <SortHeader col="newOrCo"    label="New / C.O." {...sortProps} />
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-300">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -339,7 +339,7 @@ function DashboardContent() {
                   return (
                     <tr
                       key={project.id}
-                      className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${project.isArchived ? 'opacity-60' : ''}`}
+                      className={`border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${project.isArchived ? 'opacity-60' : ''}`}
                     >
                       {/* Name */}
                       <td className="px-4 py-3">
@@ -355,14 +355,14 @@ function DashboardContent() {
                       </td>
 
                       {/* Estimator */}
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                         {estimatorName(project) || (
                           <span className="text-gray-400 italic">Unassigned</span>
                         )}
                       </td>
 
                       {/* Bid Date */}
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
                         {formatDate(project.bidDate)}
                       </td>
 
@@ -378,12 +378,12 @@ function DashboardContent() {
                       </td>
 
                       {/* Bid Amount */}
-                      <td className="px-4 py-3 text-right text-gray-700 font-mono tabular-nums whitespace-nowrap">
+                      <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300 font-mono tabular-nums whitespace-nowrap">
                         {formatCurrency(project.bidAmount)}
                       </td>
 
                       {/* New / C.O. */}
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                         {project.newOrCo === 'NEW_PROJECT' ? 'New Project'
                           : project.newOrCo === 'CHANGE_ORDER' ? 'Change Order'
                           : <span className="text-gray-400 italic">—</span>}
@@ -399,14 +399,14 @@ function DashboardContent() {
                               <button
                                 onClick={() => handleEdit(project.id)}
                                 title="Open in Estimator"
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 rounded transition-colors"
                               >
                                 <Pencil size={15} />
                               </button>
                               <button
                                 onClick={() => handleDuplicate(project)}
                                 title="Duplicate (deep copy)"
-                                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors"
+                                className="p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                               >
                                 <Copy size={15} />
                               </button>
@@ -414,7 +414,7 @@ function DashboardContent() {
                                 <button
                                   onClick={() => handleArchive(project)}
                                   title="Archive"
-                                  className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                  className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 rounded transition-colors"
                                 >
                                   <Archive size={15} />
                                 </button>
@@ -440,10 +440,10 @@ function DashboardContent() {
 export default function DashboardPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gray-50">
-        <div className="h-12 bg-white border-b border-gray-200" />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="h-12 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700" />
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center py-16 text-gray-500">Loading...</div>
+          <div className="text-center py-16 text-gray-500 dark:text-gray-400">Loading...</div>
         </div>
       </div>
     }>
