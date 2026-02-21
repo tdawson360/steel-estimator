@@ -167,7 +167,7 @@ export default function AdminPage() {
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium border border-gray-300 dark:border-gray-600"
             >
               <DollarSign size={16} />
-              Connection Pricing
+              Global Pricing Data
             </Link>
             <button
               onClick={() => { setShowAddForm(true); setError(''); }}

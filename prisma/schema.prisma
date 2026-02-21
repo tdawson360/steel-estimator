@@ -445,6 +445,26 @@ model PricingRates {
   materialAvgPricePerLb      Float    @default(0.789)
   quantityDiscountOver20Pct  Float    @default(5.0)
   quantityDiscountOver100Pct Float    @default(7.5)
+
+  // Drilling rates ($/hole)
+  drillHolesRate             Float?
+  drillCSinkRate             Float?
+  drillTapRate               Float?
+  drillThruRate              Float?
+
+  // Prep operation rates ($/ea)
+  easeRate                   Float?
+  spliceRate                 Float?
+  ninetyRate                 Float?
+  camberRate                 Float?
+  rollRate                   Float?
+
+  // Welding rates ($/in of weld)
+  weldFilletRate             Float?
+  weldBevelRate              Float?
+  weldPjpRate                Float?
+  weldCjpRate                Float?
+
   updatedAt                  DateTime @updatedAt
   updatedBy                  String?
 }

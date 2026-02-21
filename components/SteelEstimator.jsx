@@ -859,6 +859,7 @@ const steelDatabase = {
 
 // Maps operation name → pricing field returned by getFabPricingForSize
 const OP_PRICING_FIELD = {
+  // Cutting (beam-size dependent)
   'Cut- Straight':            'straightCutCost',
   'Cut- Miter':               'miterCutCost',
   'Cut- Double Miter':        'doubleMiterCost',
@@ -866,10 +867,27 @@ const OP_PRICING_FIELD = {
   'Cut- Double Cope End':     'doubleCopeCost',
   'Cut- Single Cope + Miter': 'singleCopeMiterCost',
   'Cut- Double Cope + Miter': 'doubleCopeMiterCost',
+  // Connections (beam-size dependent)
   'WF Connx':                 'connxCost',
   'WF Moment Connx':          'momentConnxCost',
   'C Connx':                  'connxCost',
   'C Moment Connx':           'momentConnxCost',
+  // Drilling (global rates)
+  'Drill Holes':              'drillHolesRate',
+  'Drill & C\'sink Holes':    'drillCSinkRate',
+  'Drill & Tap Holes':        'drillTapRate',
+  'Drill Thru Holes':         'drillThruRate',
+  // Prep (global rates)
+  'Ease':                     'easeRate',
+  'Splice':                   'spliceRate',
+  '90\'s':                    'ninetyRate',
+  'Camber':                   'camberRate',
+  'Roll':                     'rollRate',
+  // Welding (global rates)
+  'Welding- Fillet':          'weldFilletRate',
+  'Welding- Bevel/Grind':     'weldBevelRate',
+  'Welding- PJP':             'weldPjpRate',
+  'Welding- CJP':             'weldCjpRate',
 };
 
 // Maps connection operation → weight field in pricing result
@@ -878,6 +896,14 @@ const OP_WEIGHT_FIELD = {
   'WF Moment Connx': 'momentConnxWeightLbs',
   'C Connx':         'connxWeightLbs',
   'C Moment Connx':  'momentConnxWeightLbs',
+};
+
+// Default unit for each operation type (omitted = 'EA')
+const OP_DEFAULT_UNIT = {
+  'Welding- Fillet':      'IN',
+  'Welding- Bevel/Grind': 'IN',
+  'Welding- PJP':         'IN',
+  'Welding- CJP':         'IN',
 };
 
 // Fabrication operations - organized by category
@@ -3203,8 +3229,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     const isChild = !!material?.parentMaterialId;
     const defaultOp = isChild ? 'Welding- Fillet' : 'Cut- Straight';
 
-    // Fetch pricing for the default cut op (skip for child/weld — no DB pricing)
-    const pricing = (!isChild && material?.size) ? await getPricingForSize(material.size) : null;
+    // Fetch pricing for the default op (covers drilling/prep/welding global rates too)
+    const pricing = material?.size ? await getPricingForSize(material.size) : null;
     const rate = pricing?.[OP_PRICING_FIELD[defaultOp]] ?? 0;
 
     setItems(prevItems => prevItems.map(item => {
@@ -3221,9 +3247,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         operation: defaultOp,
         quantity: 1,
         length: null,
-        unit: 'IN',
-        unitPrice: 0,
-        totalCost: 0,
+        unit: OP_DEFAULT_UNIT[defaultOp] ?? 'IN',
+        unitPrice: rate,
+        totalCost: rate, // qty=1 × rate
       } : {
         id: Date.now(),
         applyTo: null,
@@ -3289,7 +3315,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               updated.connWeight = null;
               updated.galvanized = false;
               updated.galvWeight = null;
-              updated.unit = 'EA';
+              updated.unit = OP_DEFAULT_UNIT[newOp] ?? 'EA';
             }
           }
           

@@ -114,7 +114,7 @@ function RatesEditor({ rates }) {
 
 // ─── Section 2 & 3: Category Table ────────────────────────────────────────────
 
-function CategoryTable({ categories, shapeType }) {
+function CategoryTable({ categories, shapeType, shopLaborRate = 65 }) {
   const [editing, setEditing] = useState({}); // id → field → value
   const [saving, setSaving] = useState(null);
   const [saved, setSaved] = useState(null);
@@ -157,7 +157,17 @@ function CategoryTable({ categories, shapeType }) {
     setEditing(prev => { const n = { ...prev }; delete n[id]; return n; });
   };
 
-  const EditableCell = ({ id, field, value, provideTO = false }) => {
+  // For WF categories, connxCost is null — computed as laborHours × shopLaborRate
+  const getComputedConnxCost = (cat, isMoment) => {
+    const stored = isMoment ? cat.momentConnxCost : cat.connxCost;
+    if (stored != null) return null; // has explicit value, no computed needed
+    if (cat.providesTakeoffCost) return null; // "Provide T/O"
+    const hrs = cat.laborHours;
+    if (hrs == null) return null;
+    return parseFloat((hrs * shopLaborRate).toFixed(2));
+  };
+
+  const EditableCell = ({ id, field, value, provideTO = false, computedVal = null }) => {
     const isEditing = editing[id] && field in editing[id];
     if (provideTO) return <ProvideTO />;
     if (isEditing) {
@@ -171,6 +181,18 @@ function CategoryTable({ categories, shapeType }) {
           onKeyDown={e => { if (e.key === 'Enter') handleSave(id); if (e.key === 'Escape') cancelEdit(id); }}
           autoFocus
         />
+      );
+    }
+    // Show computed value (from laborHours × shopRate) when no explicit value is stored
+    if (value == null && computedVal != null) {
+      return (
+        <span
+          className="cursor-pointer px-1 rounded text-gray-400 dark:text-gray-500 italic"
+          onClick={() => startEdit(id, field, computedVal)}
+          title={`Computed: labor hrs × $${shopLaborRate}/hr. Click to set override.`}
+        >
+          {fmt(computedVal)}
+        </span>
       );
     }
     return (
@@ -216,10 +238,10 @@ function CategoryTable({ categories, shapeType }) {
                 <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{cat.laborHours.toFixed(4)}</td>
                 <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{cat.connxWeightLbs} lbs</td>
                 <td className="px-3 py-2 text-right">
-                  <EditableCell id={cat.id} field="connxCost" value={cat.connxCost} provideTO={cat.providesTakeoffCost} />
+                  <EditableCell id={cat.id} field="connxCost" value={cat.connxCost} provideTO={cat.providesTakeoffCost} computedVal={getComputedConnxCost(cat, false)} />
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <EditableCell id={cat.id} field="momentConnxCost" value={cat.momentConnxCost} provideTO={cat.providesTakeoffCost} />
+                  <EditableCell id={cat.id} field="momentConnxCost" value={cat.momentConnxCost} provideTO={cat.providesTakeoffCost} computedVal={getComputedConnxCost(cat, true)} />
                 </td>
                 <td className="px-3 py-2 text-right">
                   <EditableCell id={cat.id} field="singleCopeCost" value={cat.singleCopeCost} />
@@ -401,6 +423,110 @@ function BeamSearchEditor() {
   );
 }
 
+// ─── Section 5: Operation Rates ───────────────────────────────────────────────
+
+const OP_RATE_GROUPS = [
+  {
+    label: 'Drilling ($/hole)',
+    fields: [
+      { key: 'drillHolesRate',  label: 'Drill Holes' },
+      { key: 'drillCSinkRate',  label: 'Drill & C\'sink' },
+      { key: 'drillTapRate',   label: 'Drill & Tap' },
+      { key: 'drillThruRate',  label: 'Drill Thru' },
+    ],
+  },
+  {
+    label: 'Prep Operations ($/ea)',
+    fields: [
+      { key: 'easeRate',    label: 'Ease' },
+      { key: 'spliceRate',  label: 'Splice' },
+      { key: 'ninetyRate',  label: '90\'s' },
+      { key: 'camberRate',  label: 'Camber' },
+      { key: 'rollRate',    label: 'Roll' },
+    ],
+  },
+  {
+    label: 'Welding ($/in of weld)',
+    fields: [
+      { key: 'weldFilletRate', label: 'Fillet' },
+      { key: 'weldBevelRate',  label: 'Bevel/Grind' },
+      { key: 'weldPjpRate',   label: 'PJP' },
+      { key: 'weldCjpRate',   label: 'CJP' },
+    ],
+  },
+];
+
+const OP_RATE_KEYS = OP_RATE_GROUPS.flatMap(g => g.fields.map(f => f.key));
+
+function OpRatesEditor({ rates }) {
+  const initial = {};
+  for (const key of OP_RATE_KEYS) {
+    initial[key] = rates?.[key] ?? '';
+  }
+  const [values, setValues] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const data = {};
+      for (const key of OP_RATE_KEYS) {
+        const v = values[key];
+        data[key] = v === '' || v == null ? null : parseFloat(v);
+      }
+      await updatePricingRates(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {OP_RATE_GROUPS.map(group => (
+        <div key={group.label}>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{group.label}</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {group.fields.map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-gray-500 dark:text-gray-400 text-xs">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="—"
+                    value={values[key]}
+                    onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save Operation Rates'}
+        </button>
+        {saved && <span className="text-green-600 text-sm">✓ Saved</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
 export default function ConnectionPricingClient({ rates, wfCategories, cCategories }) {
@@ -409,9 +535,9 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
       <AppHeader />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Connection Pricing Data</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Global Pricing Data</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Shop labor rates, material pricing, and connection cost lookup tables.
+            Shop labor rates, material pricing, operation rates, and connection cost lookup tables.
           </p>
         </div>
 
@@ -424,7 +550,16 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <RatesEditor rates={rates} />
         </section>
 
-        {/* Section 2: WF Categories */}
+        {/* Section 2: Operation Rates */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Operation Rates</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Per-unit rates for drilling, prep, and welding operations. These are applied automatically when a fab op is added to an estimate.
+          </p>
+          <OpRatesEditor rates={rates} />
+        </section>
+
+        {/* Section 3: WF Categories */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             W-Shape Connection Categories
@@ -432,10 +567,10 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             13 categories covering W4–W44. W44 and W40 costs are "Provide Takeoff" — entered manually per project.
           </p>
-          <CategoryTable categories={wfCategories} shapeType="WF" />
+          <CategoryTable categories={wfCategories} shapeType="WF" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
         </section>
 
-        {/* Section 3: C/MC Categories */}
+        {/* Section 4: C/MC Categories */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             C/MC Channel Connection Categories
@@ -443,10 +578,10 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             6 categories covering C3–C15 and MC3–MC18.
           </p>
-          <CategoryTable categories={cCategories} shapeType="C" />
+          <CategoryTable categories={cCategories} shapeType="C" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
         </section>
 
-        {/* Section 4: Beam Lookup */}
+        {/* Section 5: Beam Lookup */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             Beam Size Lookup &amp; Override

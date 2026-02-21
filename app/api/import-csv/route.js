@@ -450,6 +450,23 @@ const CONN_PRICING = {
   'C Moment Connx':  { costField: 'momentConnxCost',  weightField: 'momentConnxWeightLbs' },
 };
 
+// Global op rate field (from PricingRates) for drilling/prep/welding operations
+const GLOBAL_OP_FIELD = {
+  'Drill Holes':           'drillHolesRate',
+  "Drill & C'sink Holes":  'drillCSinkRate',
+  'Drill & Tap Holes':     'drillTapRate',
+  'Drill Thru Holes':      'drillThruRate',
+  'Ease':                  'easeRate',
+  'Splice':                'spliceRate',
+  "90's":                  'ninetyRate',
+  'Camber':                'camberRate',
+  'Roll':                  'rollRate',
+  'Welding- Fillet':       'weldFilletRate',
+  'Welding- Bevel/Grind':  'weldBevelRate',
+  'Welding- PJP':          'weldPjpRate',
+  'Welding- CJP':          'weldCjpRate',
+};
+
 // Enrich each member's fabrication ops with rate and connWeight from the DB.
 // Uses BeamConnectionData for exact beam matches; falls back to ConnectionCategory.
 async function enrichItemsWithPricing(items) {
@@ -463,7 +480,6 @@ async function enrichItemsWithPricing(items) {
     }
   };
   for (const item of items) walkMembers(item.members);
-  if (sizeKeys.size === 0) return;
 
   // Fetch shop labor rate (needed to compute WF connection costs from laborHours)
   const rates = await prisma.pricingRates.findUnique({ where: { id: 1 } });
@@ -518,8 +534,14 @@ async function enrichItemsWithPricing(items) {
     return null;
   };
 
-  // Add rate and connWeight to a fabrication op given the pricing row
+  // Add rate and connWeight to a fabrication op given the pricing row + global rates
   const enrichOp = (op, pricingRow) => {
+    // Global op rates (drilling/prep/welding) — applied regardless of shape type
+    const globalField = GLOBAL_OP_FIELD[op.operation];
+    if (globalField && rates?.[globalField] != null) {
+      return { ...op, rate: rates[globalField] };
+    }
+
     if (!pricingRow) return op;
 
     // Cut operations — direct field lookup
@@ -550,9 +572,8 @@ async function enrichItemsWithPricing(items) {
   const enrichMember = (member) => {
     const key = normalizeToBeamSizeKey(member.size);
     const pricingRow = key ? getPricing(key) : null;
-    if (pricingRow) {
-      member.fabrication = member.fabrication.map(op => enrichOp(op, pricingRow));
-    }
+    // Always enrich — global rates apply even when no beam-specific pricing exists
+    member.fabrication = member.fabrication.map(op => enrichOp(op, pricingRow));
     if (member.children?.length) member.children.forEach(enrichMember);
   };
 
