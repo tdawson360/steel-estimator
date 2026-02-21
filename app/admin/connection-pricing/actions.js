@@ -45,3 +45,26 @@ export async function updateBeamOverride(beamSize, data) {
   revalidatePath('/admin/connection-pricing');
   return { success: true };
 }
+
+export async function createCustomOp({ name, category, defaultUnit, rate }) {
+  await requireAdmin();
+  const op = await prisma.customFabOperation.create({
+    data: { name: name.trim(), category, defaultUnit, rate: parseFloat(rate) || 0 },
+  });
+  revalidatePath('/admin/connection-pricing');
+  return op;
+}
+
+export async function updateCustomOp(id, data) {
+  await requireAdmin();
+  await prisma.customFabOperation.update({ where: { id }, data });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}
+
+export async function deleteCustomOp(id) {
+  await requireAdmin();
+  await prisma.customFabOperation.delete({ where: { id } });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}

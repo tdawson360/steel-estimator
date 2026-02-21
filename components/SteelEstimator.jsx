@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { getFabPricingForSize } from '../lib/fab-pricing';
+import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator } from 'lucide-react';
 
 // Company Logo (Base64 encoded)
@@ -876,7 +876,6 @@ const OP_PRICING_FIELD = {
   'Drill Holes':              'drillHolesRate',
   'Drill & C\'sink Holes':    'drillCSinkRate',
   'Drill & Tap Holes':        'drillTapRate',
-  'Drill Thru Holes':         'drillThruRate',
   // Prep (global rates)
   'Ease':                     'easeRate',
   'Splice':                   'spliceRate',
@@ -1975,6 +1974,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
   const pricingCacheRef = useRef(new Map()); // sizeKey → getFabPricingForSize result
+
+  // Custom fab operations from the admin-defined DB table
+  const [customOps, setCustomOps] = useState([]);
+  useEffect(() => { getCustomOps().then(setCustomOps).catch(() => {}); }, []);
+
+  const customOpRateMap = useMemo(() => {
+    const m = {};
+    for (const op of customOps) m[op.name] = { rate: op.rate, unit: op.defaultUnit };
+    return m;
+  }, [customOps]);
 
   // Fetch pricing for a beam size, using an in-memory cache to avoid repeat server calls.
   const getPricingForSize = useCallback(async (rawSize) => {
@@ -3296,7 +3305,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             const newOp = value;
             const isConnOp = CONNECTION_WEIGHT_OPS.has(newOp);
             const pricingField = OP_PRICING_FIELD[newOp];
-            const rate = (pricing && pricingField) ? (pricing[pricingField] ?? 0) : 0;
+            const rate = pricingField
+              ? (pricing?.[pricingField] ?? 0)
+              : (customOpRateMap[newOp]?.rate ?? 0);
             const weightField = OP_WEIGHT_FIELD[newOp];
             const connWeight = (pricing && weightField)
               ? (pricing[weightField] ?? getConnectionWeight(mat.size, mat.category))
@@ -3315,7 +3326,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               updated.connWeight = null;
               updated.galvanized = false;
               updated.galvWeight = null;
-              updated.unit = OP_DEFAULT_UNIT[newOp] ?? 'EA';
+              updated.unit = OP_DEFAULT_UNIT[newOp] ?? customOpRateMap[newOp]?.unit ?? 'EA';
             }
           }
           
@@ -4264,6 +4275,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             <optgroup label="Connections">
                                               {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
+                                            {Object.entries(
+                                              customOps.reduce((acc, op) => {
+                                                (acc[op.category] = acc[op.category] || []).push(op);
+                                                return acc;
+                                              }, {})
+                                            ).map(([cat, ops]) => (
+                                              <optgroup key={`custom-${cat}`} label={cat}>
+                                                {ops.map(op => <option key={op.name} value={op.name}>{op.name}</option>)}
+                                              </optgroup>
+                                            ))}
                                             <optgroup label="Other">
                                               <option value="Custom">— Custom —</option>
                                             </optgroup>
@@ -4621,6 +4642,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                                     {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
                                                   </optgroup>
                                                 )}
+                                                {Object.entries(
+                                                  customOps.reduce((acc, op) => {
+                                                    (acc[op.category] = acc[op.category] || []).push(op);
+                                                    return acc;
+                                                  }, {})
+                                                ).map(([cat, ops]) => (
+                                                  <optgroup key={`custom-${cat}`} label={cat}>
+                                                    {ops.map(op => <option key={op.name} value={op.name}>{op.name}</option>)}
+                                                  </optgroup>
+                                                ))}
                                                 <optgroup label="Other">
                                                   <option value="Custom">— Custom —</option>
                                                 </optgroup>

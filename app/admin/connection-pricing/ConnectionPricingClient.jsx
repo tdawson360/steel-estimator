@@ -7,6 +7,9 @@ import {
   updateConnectionCategory,
   getBeamBySize,
   updateBeamOverride,
+  createCustomOp,
+  updateCustomOp,
+  deleteCustomOp,
 } from './actions';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -432,7 +435,6 @@ const OP_RATE_GROUPS = [
       { key: 'drillHolesRate',  label: 'Drill Holes' },
       { key: 'drillCSinkRate',  label: 'Drill & C\'sink' },
       { key: 'drillTapRate',   label: 'Drill & Tap' },
-      { key: 'drillThruRate',  label: 'Drill Thru' },
     ],
   },
   {
@@ -527,9 +529,229 @@ function OpRatesEditor({ rates }) {
   );
 }
 
+// ─── Section 6: Custom Fab Operations ─────────────────────────────────────────
+
+const CATEGORY_OPTIONS = ['Cutting', 'Drilling', 'Prep', 'Welding', 'Coating', 'Finishing', 'Handling', 'Other'];
+const UNIT_OPTIONS = ['EA', 'IN', 'LF', 'SQFT', 'HR', 'LB', 'LS'];
+
+function CustomOpsEditor({ initialOps }) {
+  const [ops, setOps] = useState(initialOps || []);
+  const [editingRate, setEditingRate] = useState({}); // id → string value
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('Other');
+  const [newUnit, setNewUnit] = useState('EA');
+  const [newRate, setNewRate] = useState('');
+  const [addError, setAddError] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const handleAdd = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setAddError('Name is required.'); return; }
+    setAdding(true);
+    setAddError('');
+    try {
+      const created = await createCustomOp({
+        name: trimmed,
+        category: newCategory,
+        defaultUnit: newUnit,
+        rate: parseFloat(newRate) || 0,
+      });
+      setOps(prev => [...prev, created].sort((a, b) =>
+        a.category.localeCompare(b.category) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+      ));
+      setNewName('');
+      setNewRate('');
+    } catch (e) {
+      if (e.message?.includes('Unique') || e.message?.includes('unique')) {
+        setAddError(`"${trimmed}" already exists.`);
+      } else {
+        setAddError('Failed to add: ' + e.message);
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleRateSave = async (op) => {
+    const val = editingRate[op.id];
+    if (val === undefined) return;
+    const rate = val === '' ? 0 : parseFloat(val);
+    startTransition(async () => {
+      try {
+        await updateCustomOp(op.id, { rate });
+        setOps(prev => prev.map(o => o.id === op.id ? { ...o, rate } : o));
+        setEditingRate(prev => { const n = { ...prev }; delete n[op.id]; return n; });
+      } catch (e) {
+        alert('Save failed: ' + e.message);
+      }
+    });
+  };
+
+  const handleToggleActive = async (op) => {
+    const active = !op.active;
+    startTransition(async () => {
+      try {
+        await updateCustomOp(op.id, { active });
+        setOps(prev => prev.map(o => o.id === op.id ? { ...o, active } : o));
+      } catch (e) {
+        alert('Update failed: ' + e.message);
+      }
+    });
+  };
+
+  const handleDelete = async (op) => {
+    if (!confirm(`Delete "${op.name}"? This cannot be undone.`)) return;
+    startTransition(async () => {
+      try {
+        await deleteCustomOp(op.id);
+        setOps(prev => prev.filter(o => o.id !== op.id));
+      } catch (e) {
+        alert('Delete failed: ' + e.message);
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Existing ops table */}
+      {ops.length === 0 ? (
+        <p className="text-sm text-gray-400 dark:text-gray-500 italic">No custom operations defined yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Name</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Category</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Unit</th>
+                <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Rate</th>
+                <th className="text-center px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Active</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ops.map(op => {
+                const isEditingRate = op.id in editingRate;
+                return (
+                  <tr key={op.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-200">{op.name}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{op.category}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{op.defaultUnit}</td>
+                    <td className="px-3 py-2 text-right">
+                      {isEditingRate ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-20 px-1 py-0.5 border border-blue-400 rounded text-xs dark:bg-gray-800 dark:text-gray-100 focus:outline-none"
+                          value={editingRate[op.id]}
+                          onChange={e => setEditingRate(prev => ({ ...prev, [op.id]: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleRateSave(op);
+                            if (e.key === 'Escape') setEditingRate(prev => { const n = { ...prev }; delete n[op.id]; return n; });
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950 px-1 rounded"
+                          onClick={() => setEditingRate(prev => ({ ...prev, [op.id]: op.rate ?? '' }))}
+                          title="Click to edit"
+                        >
+                          {fmt(op.rate)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        onClick={() => handleToggleActive(op)}
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${op.active ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                        title={op.active ? 'Click to deactivate' : 'Click to activate'}
+                      >
+                        {op.active ? 'Active' : 'Inactive'}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => handleDelete(op)}
+                        className="text-red-500 hover:text-red-700 text-xs"
+                        title="Delete"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Click any rate cell to edit inline. Press Enter to save or Esc to cancel.</p>
+        </div>
+      )}
+
+      {/* Add new operation form */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Add Operation</h3>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
+            <input
+              type="text"
+              value={newName}
+              onChange={e => { setNewName(e.target.value); setAddError(''); }}
+              placeholder="e.g. Sandblast"
+              className="w-40 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category</label>
+            <select
+              value={newCategory}
+              onChange={e => setNewCategory(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Unit</label>
+            <select
+              value={newUnit}
+              onChange={e => setNewUnit(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Rate ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={newRate}
+              onChange={e => setNewRate(e.target.value)}
+              placeholder="0.00"
+              className="w-24 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {adding ? 'Adding…' : 'Add Operation'}
+          </button>
+        </div>
+        {addError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{addError}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
-export default function ConnectionPricingClient({ rates, wfCategories, cCategories }) {
+export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader />
@@ -559,7 +781,16 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <OpRatesEditor rates={rates} />
         </section>
 
-        {/* Section 3: WF Categories */}
+        {/* Section 3: Custom Fab Operations */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Custom Fab Operations</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Define arbitrary operations (e.g. "Sandblast") that appear in the estimator's fab ops dropdown with a default rate and unit. No code changes required.
+          </p>
+          <CustomOpsEditor initialOps={customOps} />
+        </section>
+
+        {/* Section 4: WF Categories */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             W-Shape Connection Categories
@@ -570,7 +801,7 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <CategoryTable categories={wfCategories} shapeType="WF" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
         </section>
 
-        {/* Section 4: C/MC Categories */}
+        {/* Section 5: C/MC Categories */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             C/MC Channel Connection Categories
@@ -581,7 +812,7 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <CategoryTable categories={cCategories} shapeType="C" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
         </section>
 
-        {/* Section 5: Beam Lookup */}
+        {/* Section 6: Beam Lookup */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             Beam Size Lookup &amp; Override

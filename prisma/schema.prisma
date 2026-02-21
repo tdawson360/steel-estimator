@@ -439,6 +439,18 @@ model ItemSnapshot {
 // Lookup tables for connection costs used in estimating W-shapes and C/MC channels.
 // PricingRates is a singleton (id=1) that drives all derived cost calculations.
 
+model CustomFabOperation {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique           // "Sandblast", "Forge", etc.
+  category    String   @default("Other") // groups the estimator dropdown optgroup
+  defaultUnit String   @default("EA")    // EA, IN, LF, SQFT, HR, LB, LS
+  rate        Float    @default(0)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model PricingRates {
   id                         Int      @id @default(1)
   shopLaborRatePerHr         Float    @default(65.00)
@@ -450,7 +462,6 @@ model PricingRates {
   drillHolesRate             Float?
   drillCSinkRate             Float?
   drillTapRate               Float?
-  drillThruRate              Float?
 
   // Prep operation rates ($/ea)
   easeRate                   Float?

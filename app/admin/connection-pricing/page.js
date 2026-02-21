@@ -15,10 +15,13 @@ export default async function ConnectionPricingPage() {
     return n(a.name) - n(b.name);
   };
 
-  const [rates, wfCategories, cCategories] = await Promise.all([
+  const [rates, wfCategories, cCategories, customOps] = await Promise.all([
     prisma.pricingRates.findUnique({ where: { id: 1 } }),
     prisma.connectionCategory.findMany({ where: { shapeType: 'WF' } }),
     prisma.connectionCategory.findMany({ where: { shapeType: 'C' } }),
+    prisma.customFabOperation.findMany({
+      orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    }),
   ]);
 
   wfCategories.sort(byFirstNumber);
@@ -29,6 +32,7 @@ export default async function ConnectionPricingPage() {
       rates={rates}
       wfCategories={wfCategories}
       cCategories={cCategories}
+      customOps={customOps}
     />
   );
 }
