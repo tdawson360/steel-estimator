@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
+import prisma from '../../../lib/db';
 
 // ── SHAPE SIZE NORMALIZATION ──────────────────────────────────────────────────
 
@@ -414,6 +415,150 @@ function aggregateTakeoffData(rawRows) {
   };
 }
 
+// ── CONNECTION PRICING ENRICHMENT ─────────────────────────────────────────────
+
+// Convert "W 16 x 26" or "W16x26" to the DB key format "W16X26"
+function normalizeToBeamSizeKey(shapeSize) {
+  if (!shapeSize) return null;
+  return shapeSize.replace(/\s+/g, '').replace(/x/g, 'X').toUpperCase();
+}
+
+// Determine DB shapeType ("WF" or "C") from a normalized beam size key
+function getShapeTypeFromKey(key) {
+  if (!key) return null;
+  if (/^W\d/.test(key)) return 'WF';
+  if (/^(C|MC)\d/.test(key)) return 'C';
+  return null;
+}
+
+// Cut operation → cost field name on BeamConnectionData / ConnectionCategory
+const CUT_COST_FIELD = {
+  'Cut- Straight':           'straightCutCost',
+  'Cut- Miter':              'miterCutCost',
+  'Cut- Double Miter':       'doubleMiterCost',
+  'Cut- Single Cope End':    'singleCopeCost',
+  'Cut- Double Cope End':    'doubleCopeCost',
+  'Cut- Single Cope + Miter':'singleCopeMiterCost',
+  'Cut- Double Cope + Miter':'doubleCopeMiterCost',
+};
+
+// Connection operation → cost + weight field names
+const CONN_PRICING = {
+  'WF Connx':        { costField: 'connxCost',       weightField: 'connxWeightLbs' },
+  'WF Moment Connx': { costField: 'momentConnxCost',  weightField: 'momentConnxWeightLbs' },
+  'C Connx':         { costField: 'connxCost',        weightField: 'connxWeightLbs' },
+  'C Moment Connx':  { costField: 'momentConnxCost',  weightField: 'momentConnxWeightLbs' },
+};
+
+// Enrich each member's fabrication ops with rate and connWeight from the DB.
+// Uses BeamConnectionData for exact beam matches; falls back to ConnectionCategory.
+async function enrichItemsWithPricing(items) {
+  // Collect all unique normalized beam size keys
+  const sizeKeys = new Set();
+  const walkMembers = (members) => {
+    for (const m of members) {
+      const key = normalizeToBeamSizeKey(m.size);
+      if (key) sizeKeys.add(key);
+      if (m.children?.length) walkMembers(m.children);
+    }
+  };
+  for (const item of items) walkMembers(item.members);
+  if (sizeKeys.size === 0) return;
+
+  // Fetch shop labor rate (needed to compute WF connection costs from laborHours)
+  const rates = await prisma.pricingRates.findUnique({ where: { id: 1 } });
+  const shopLaborRate = rates?.shopLaborRatePerHr ?? 65;
+
+  // Batch-fetch beam-specific records, including their parent category (for laborHours)
+  const beamRows = await prisma.beamConnectionData.findMany({
+    where: { beamSize: { in: [...sizeKeys] } },
+    include: { category: true },
+  });
+  const beamMap = new Map(beamRows.map(b => [b.beamSize, b]));
+
+  // Fetch all categories for fallback (small table, always cheap)
+  const cats = await prisma.connectionCategory.findMany();
+  const catByPrefix = new Map();
+  for (const cat of cats) {
+    for (const prefix of cat.shapesIncluded.split(',').map(s => s.trim())) {
+      catByPrefix.set(`${cat.shapeType}:${prefix}`, cat);
+    }
+  }
+
+  // Look up pricing data for a given normalized size key
+  const getPricing = (key) => {
+    if (beamMap.has(key)) return beamMap.get(key);
+    const shapeType = getShapeTypeFromKey(key);
+    if (!shapeType) return null;
+    const m = key.match(/^(MC\d+|W\d+|C\d+)/);
+    if (!m) return null;
+    return catByPrefix.get(`${shapeType}:${m[1]}`) ?? null;
+  };
+
+  // Resolve connection cost from a pricing row.
+  // WF categories store no connxCost — cost is laborHours × shopLaborRate.
+  // C/MC categories store an explicit connxCost.
+  // "Provide T/O" beams (W44/W40/W36/W33) return null — estimator fills in manually.
+  const getConnxCost = (row, isMoment) => {
+    const costField = isMoment ? 'momentConnxCost' : 'connxCost';
+
+    // Explicit dollar value present (C/MC beams/categories, or beam-level override)
+    if (row[costField] != null) return row[costField];
+
+    // Check "provide T/O" flag — beam rows have per-type flags, categories have one flag
+    const provideTO = isMoment
+      ? (row.momentConnxCostProvideTO ?? row.providesTakeoffCost ?? false)
+      : (row.connxCostProvideTO ?? row.providesTakeoffCost ?? false);
+    if (provideTO) return null;
+
+    // Compute from laborHours (WF connections — beam row defers to its category)
+    const laborHours = row.laborHours ?? row.category?.laborHours;
+    if (laborHours != null) return parseFloat((laborHours * shopLaborRate).toFixed(2));
+
+    return null;
+  };
+
+  // Add rate and connWeight to a fabrication op given the pricing row
+  const enrichOp = (op, pricingRow) => {
+    if (!pricingRow) return op;
+
+    // Cut operations — direct field lookup
+    const cutField = CUT_COST_FIELD[op.operation];
+    if (cutField) {
+      const cost = pricingRow[cutField];
+      if (cost != null) return { ...op, rate: cost };
+      return op;
+    }
+
+    // Connection operations — computed cost + weight
+    const connFields = CONN_PRICING[op.operation];
+    if (connFields) {
+      const isMoment = op.operation.includes('Moment');
+      const cost = getConnxCost(pricingRow, isMoment);
+      const weight = pricingRow[connFields.weightField];
+      return {
+        ...op,
+        ...(cost != null ? { rate: cost } : {}),
+        ...(weight != null ? { connWeight: weight } : {}),
+      };
+    }
+
+    return op;
+  };
+
+  // Walk all members and enrich fabrication ops in-place
+  const enrichMember = (member) => {
+    const key = normalizeToBeamSizeKey(member.size);
+    const pricingRow = key ? getPricing(key) : null;
+    if (pricingRow) {
+      member.fabrication = member.fabrication.map(op => enrichOp(op, pricingRow));
+    }
+    if (member.children?.length) member.children.forEach(enrichMember);
+  };
+
+  for (const item of items) item.members.forEach(enrichMember);
+}
+
 // ── ROUTE HANDLER ─────────────────────────────────────────────────────────────
 
 export async function POST(request) {
@@ -438,6 +583,7 @@ export async function POST(request) {
     }
 
     const result = aggregateTakeoffData(rawRows);
+    await enrichItemsWithPricing(result.items);
 
     return NextResponse.json({ success: true, ...result });
 

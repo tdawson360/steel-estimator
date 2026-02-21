@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { getFabPricingForSize } from '../lib/fab-pricing';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator } from 'lucide-react';
 
 // Company Logo (Base64 encoded)
@@ -856,14 +857,39 @@ const steelDatabase = {
   'FL 1x12': { weight: 40.80, category: 'Flats' }
 };
 
+// Maps operation name → pricing field returned by getFabPricingForSize
+const OP_PRICING_FIELD = {
+  'Cut- Straight':            'straightCutCost',
+  'Cut- Miter':               'miterCutCost',
+  'Cut- Double Miter':        'doubleMiterCost',
+  'Cut- Single Cope End':     'singleCopeCost',
+  'Cut- Double Cope End':     'doubleCopeCost',
+  'Cut- Single Cope + Miter': 'singleCopeMiterCost',
+  'Cut- Double Cope + Miter': 'doubleCopeMiterCost',
+  'WF Connx':                 'connxCost',
+  'WF Moment Connx':          'momentConnxCost',
+  'C Connx':                  'connxCost',
+  'C Moment Connx':           'momentConnxCost',
+};
+
+// Maps connection operation → weight field in pricing result
+const OP_WEIGHT_FIELD = {
+  'WF Connx':        'connxWeightLbs',
+  'WF Moment Connx': 'momentConnxWeightLbs',
+  'C Connx':         'connxWeightLbs',
+  'C Moment Connx':  'momentConnxWeightLbs',
+};
+
 // Fabrication operations - organized by category
 const fabricationOperations = {
   cutting: [
     'Cut- Straight',
-    'Cut- Miter', 
+    'Cut- Miter',
     'Cut- Double Miter',
     'Cut- Single Cope End',
+    'Cut- Single Cope + Miter',
     'Cut- Double Cope End',
+    'Cut- Double Cope + Miter',
     'Cut- Profile'
   ],
   drilling: [
@@ -1922,6 +1948,17 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [importPreview, setImportPreview] = useState(null);
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
+  const pricingCacheRef = useRef(new Map()); // sizeKey → getFabPricingForSize result
+
+  // Fetch pricing for a beam size, using an in-memory cache to avoid repeat server calls.
+  const getPricingForSize = useCallback(async (rawSize) => {
+    if (!rawSize) return null;
+    const key = rawSize.replace(/\s+/g, '').replace(/x/g, 'X').toUpperCase();
+    if (pricingCacheRef.current.has(key)) return pricingCacheRef.current.get(key);
+    const pricing = await getFabPricingForSize(rawSize);
+    pricingCacheRef.current.set(key, pricing); // cache null too (no entry in DB)
+    return pricing;
+  }, []);
 
   // Takeoff CSV Import State (Neilsoft 19-column)
   const [showTakeoffModal, setShowTakeoffModal] = useState(false);
@@ -2720,19 +2757,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           plateWidth: translated.plateWidth || null,
           thickness: translated.plateThickness || null,
           width: translated.plateWidth || null,
-          fabrication: (member.fabrication || []).map(op => ({
-            id: Date.now() + Math.random(),
-            operation: op.operation,
-            quantity: op.quantity,
-            unit: op.unit || 'EA',
-            length: null,
-            unitPrice: 0,
-            totalCost: 0,
-            connWeight: null,
-            galvanized: false,
-            galvWeight: null,
-            isGalvLine: false,
-          })),
+          fabrication: (member.fabrication || []).map(op => {
+            const qty = op.quantity || 0;
+            const rate = op.rate || 0;
+            const connWeight = op.connWeight || null;
+            return {
+              id: Date.now() + Math.random(),
+              operation: op.operation,
+              quantity: qty,
+              unit: op.unit || 'EA',
+              length: null,
+              unitPrice: rate,
+              totalCost: qty * rate,
+              connWeight,
+              galvanized: false,
+              galvWeight: null,
+              isGalvLine: false,
+            };
+          }),
         };
         flatMaterials.push(calculateMaterial(newMat));
         parentIdMap.set(member.mark, matId);
@@ -3154,91 +3196,100 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   };
 
   // Material-level Fabrication functions
-  const addMaterialFab = (itemId, materialId) => {
-    setItems(items.map(item => {
+  const addMaterialFab = async (itemId, materialId) => {
+    // Snapshot current state before async work
+    const currentItem = items.find(i => i.id === itemId);
+    const material = currentItem?.materials.find(m => m.id === materialId);
+    const isChild = !!material?.parentMaterialId;
+    const defaultOp = isChild ? 'Welding- Fillet' : 'Cut- Straight';
+
+    // Fetch pricing for the default cut op (skip for child/weld — no DB pricing)
+    const pricing = (!isChild && material?.size) ? await getPricingForSize(material.size) : null;
+    const rate = pricing?.[OP_PRICING_FIELD[defaultOp]] ?? 0;
+
+    setItems(prevItems => prevItems.map(item => {
       if (item.id !== itemId) return item;
-      const material = item.materials.find(m => m.id === materialId);
-      if (!material) return item;
-      
-      const isChild = !!material.parentMaterialId;
-      const parent = isChild ? item.materials.find(m => m.id === material.parentMaterialId) : null;
-      
-      let newFab;
-      
-      if (isChild) {
-        // Child material - defaults to applying to parent with welding
-        newFab = {
-          id: Date.now(),
-          applyTo: parent ? parent.id : 'self',
-          operation: 'Welding- Fillet',
-          quantity: 1, // per piece
-          length: null, // length per operation (null = N/A)
-          unit: 'IN',
-          unitPrice: 0,
-          totalCost: 0
-        };
-      } else {
-        // Parent material - defaults to cut
-        newFab = {
-          id: Date.now(),
-          applyTo: null,
-          operation: 'Cut- Straight',
-          quantity: 1,
-          length: null,
-          unit: 'EA',
-          unitPrice: 0,
-          totalCost: 0
-        };
-      }
-      
-      // Calculate total: qty × pieces × rate (or qty × length × pieces × rate for IN/LF)
-      const pieces = material.pieces || 1;
-      const qty = newFab.quantity || 0;
-      const len = newFab.length || 0;
-      const rate = newFab.unitPrice || 0;
-      
-      if ((newFab.unit === 'IN' || newFab.unit === 'LF') && len > 0) {
-        newFab.totalCost = qty * len * pieces * rate;
-      } else {
-        newFab.totalCost = qty * pieces * rate;
-      }
-      
-      const updatedMaterials = item.materials.map(m => {
-        if (m.id === materialId) {
-          return { ...m, fabrication: [...(m.fabrication || []), newFab] };
-        }
-        return m;
-      });
-      
-      return { ...item, materials: updatedMaterials };
+      const mat = item.materials.find(m => m.id === materialId);
+      if (!mat) return item;
+      const parent = mat.parentMaterialId
+        ? item.materials.find(m => m.id === mat.parentMaterialId)
+        : null;
+
+      const newFab = isChild ? {
+        id: Date.now(),
+        applyTo: parent ? parent.id : 'self',
+        operation: defaultOp,
+        quantity: 1,
+        length: null,
+        unit: 'IN',
+        unitPrice: 0,
+        totalCost: 0,
+      } : {
+        id: Date.now(),
+        applyTo: null,
+        operation: defaultOp,
+        quantity: 1,
+        length: null,
+        unit: 'EA',
+        unitPrice: rate,
+        totalCost: rate, // qty=1 × rate
+        connWeight: null,
+      };
+
+      return {
+        ...item,
+        materials: item.materials.map(m =>
+          m.id === materialId ? { ...m, fabrication: [...(m.fabrication || []), newFab] } : m
+        ),
+      };
     }));
   };
 
-  const updateMaterialFab = (itemId, materialId, fabId, field, value) => {
-    setItems(items.map(item => {
+  const updateMaterialFab = async (itemId, materialId, fabId, field, value) => {
+    // Pre-fetch pricing before entering setItems when the operation is changing
+    let pricing = null;
+    if (field === 'operation') {
+      const currentItem = items.find(i => i.id === itemId);
+      const currentMat = currentItem?.materials.find(m => m.id === materialId);
+      if (currentMat?.size) pricing = await getPricingForSize(currentMat.size);
+    }
+
+    setItems(prevItems => prevItems.map(item => {
       if (item.id !== itemId) return item;
-      
+
       const updatedMaterials = item.materials.map(mat => {
         if (mat.id !== materialId) return mat;
-        
+
         const updatedFab = (mat.fabrication || []).map(fab => {
           if (fab.id !== fabId) return fab;
-          
+
           const updated = { ...fab, [field]: value };
-          
-          // Handle operation change for connection types
+
+          // Handle operation change — apply DB pricing for the new operation
           if (field === 'operation') {
-            if (CONNECTION_WEIGHT_OPS.has(value)) {
-              const connWeight = getConnectionWeight(mat.size, mat.category);
-              updated.connWeight = connWeight; // Store in connWeight, not quantity
-              updated.quantity = 1; // Default to 1 connection
-              updated.unit = 'LB';
-              updated.length = null;
+            const newOp = value;
+            const isConnOp = CONNECTION_WEIGHT_OPS.has(newOp);
+            const pricingField = OP_PRICING_FIELD[newOp];
+            const rate = (pricing && pricingField) ? (pricing[pricingField] ?? 0) : 0;
+            const weightField = OP_WEIGHT_FIELD[newOp];
+            const connWeight = (pricing && weightField)
+              ? (pricing[weightField] ?? getConnectionWeight(mat.size, mat.category))
+              : (isConnOp ? getConnectionWeight(mat.size, mat.category) : null);
+
+            updated.unitPrice = rate;
+            updated.length = null;
+
+            if (isConnOp) {
+              updated.connWeight = connWeight;
+              updated.quantity = 1;
+              updated.unit = 'EA';
+              updated.galvanized = false;
+              updated.galvWeight = null;
             } else {
-              // Clear connWeight and galvanized if switching away from connection operation
               updated.connWeight = null;
               updated.galvanized = false;
               updated.galvWeight = null;
+              updated.unit = 'EA';
             }
           }
           
