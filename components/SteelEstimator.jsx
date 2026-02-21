@@ -3701,7 +3701,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             {/* Status transition buttons */}
             {projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
               <button onClick={() => handleStatusChange('IN_REVIEW')} disabled={statusChanging}
-                className="px-3 py-2 bg-amber-50 dark:bg-amber-9500 text-white rounded text-sm hover:bg-amber-600 disabled:opacity-50" data-testid="button-submit-review">
+                className="px-3 py-2 bg-amber-500 dark:bg-amber-600 text-white rounded text-sm hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50" data-testid="button-submit-review">
                 Submit for Review
               </button>
             )}
