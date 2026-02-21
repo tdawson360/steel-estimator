@@ -4970,13 +4970,29 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <h2 className="text-xl font-bold">Stock Material Buy List</h2>
                   <p className="text-sm text-gray-300">{projectName || 'Project'}</p>
                 </div>
-                <button 
-                  onClick={() => setShowRfqModal(true)}
-                  className="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-4 py-2 rounded font-semibold hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  Request Vendor Pricing
-                </button>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded font-semibold hover:bg-green-700 cursor-pointer text-sm">
+                    <Upload size={16} />
+                    Upload Vendor CSV
+                    <input type="file" accept=".csv" className="hidden" onChange={handleRfqPricingUpload} />
+                  </label>
+                  <button
+                    onClick={() => setShowRfqModal(true)}
+                    className="bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-4 py-2 rounded font-semibold hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Request Vendor Pricing
+                  </button>
+                </div>
               </div>
+              {rfqUploadResult && (
+                <div className={`text-sm px-3 py-2 rounded ${rfqUploadResult.error ? 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400' : 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400'}`}>
+                  {rfqUploadResult.error
+                    ? rfqUploadResult.error
+                    : <>✓ Pricing applied to {rfqUploadResult.matched} of {rfqUploadResult.total} shapes.
+                        {rfqUploadResult.unmatched?.length > 0 && <span className="text-amber-600 dark:text-amber-400"> Not matched: {rfqUploadResult.unmatched.join(', ')}</span>}</>
+                  }
+                </div>
+              )}
               
               <table className="w-full text-sm border-collapse">
                 <thead>
