@@ -19,6 +19,7 @@ export async function GET(request) {
         id: true,
         projectName: true,
         bidDate: true,
+        bidTime: true,
         dashboardStatus: true,
         bidAmount: true,
         newOrCo: true,

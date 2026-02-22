@@ -45,6 +45,18 @@ function formatDate(value) {
   }
 }
 
+function formatTime(value) {
+  if (!value) return '';
+  try {
+    const [h, m] = value.split(':').map(Number);
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const hour = h % 12 || 12;
+    return `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
+  } catch {
+    return value;
+  }
+}
+
 function formatCurrency(value) {
   if (value == null) return '—';
   return new Intl.NumberFormat('en-US', {
@@ -378,9 +390,14 @@ function DashboardContent() {
                         )}
                       </td>
 
-                      {/* Bid Date */}
+                      {/* Bid Date + Time */}
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
                         {formatDate(project.bidDate)}
+                        {project.bidTime ? (
+                          <span className="ml-1 text-gray-500 dark:text-gray-400">
+                            {formatTime(project.bidTime)}
+                          </span>
+                        ) : null}
                       </td>
 
                       {/* Status dropdown */}

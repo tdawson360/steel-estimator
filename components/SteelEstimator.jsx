@@ -1603,6 +1603,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [estimateDate, setEstimateDate] = useState(new Date().toISOString().split('T')[0]);
+  const [bidTime, setBidTime] = useState('');
   const [estimatedBy, setEstimatedBy] = useState('');
   const [drawingDate, setDrawingDate] = useState('');
   const [drawingRevision, setDrawingRevision] = useState('');
@@ -2079,7 +2080,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       setCustomerContact(data.customerContact || '');
       setCustomerPhone(data.customerPhone || '');
       setCustomerEmail(data.customerEmail || '');
-      setEstimateDate(data.estimateDate || '');
+      setEstimateDate(data.bidDate ? new Date(data.bidDate).toISOString().split('T')[0] : (data.estimateDate || ''));
+      setBidTime(data.bidTime || '');
       setEstimatedBy(data.estimatedBy || '');
       setDrawingDate(data.drawingDate || '');
       setDrawingRevision(data.drawingRevision || '');
@@ -2247,6 +2249,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         customerPhone,
         customerEmail,
         estimateDate,
+        bidDate: estimateDate ? new Date(estimateDate).toISOString() : null,
+        bidTime: bidTime || '',
         estimatedBy,
         drawingDate,
         drawingRevision,
@@ -2292,7 +2296,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
+  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
 
   const handleStatusChange = useCallback(async (newStatus) => {
     if (!currentProjectId) return;
@@ -3891,9 +3895,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Estimate Date</label>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Bid Date</label>
                     <input type="date" value={estimateDate} onChange={e => setEstimateDate(e.target.value)}
                       className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Time Due</label>
+                    <select value={bidTime} onChange={e => setBidTime(e.target.value)}
+                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
+                      <option value="">— No Time —</option>
+                      {['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'].map(t => {
+                        const [h] = t.split(':').map(Number);
+                        const label = h === 12 ? '12:00 PM' : h > 12 ? `${h-12}:00 PM` : `${h}:00 AM`;
+                        return <option key={t} value={t}>{label}</option>;
+                      })}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Estimated By</label>

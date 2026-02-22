@@ -95,6 +95,7 @@ model Project {
   description      String?   // Free-text project description
   notes            String?   // Internal notes
   bidDate          DateTime? // When the bid is due
+  bidTime          String    @default("") // Time the bid is due (HH:MM, 24-hr)
   startDate        DateTime? // Projected or actual start date
   bidAmount        Float?    // Dollar amount of the bid (nullable; may be calculated)
   isArchived       Boolean   @default(false)

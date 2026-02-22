@@ -116,6 +116,8 @@ export async function PUT(request, { params }) {
           customerPhone: data.customerPhone ?? '',
           customerEmail: data.customerEmail ?? '',
           estimateDate: data.estimateDate ?? '',
+          bidDate: data.bidDate ? new Date(data.bidDate) : null,
+          bidTime: data.bidTime ?? '',
           estimatedBy: data.estimatedBy ?? '',
           drawingDate: data.drawingDate ?? '',
           drawingRevision: data.drawingRevision ?? '',
