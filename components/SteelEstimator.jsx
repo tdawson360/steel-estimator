@@ -1790,6 +1790,63 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     
     return text;
   };
+  // Click-outside handler for export dropdown
+  useEffect(() => {
+    const handler = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target))
+        setShowExportMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // PDF Export handlers
+  const handleExportErectorScope = async () => {
+    setShowExportMenu(false); setPdfExporting(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { ErectorScopePdf } = await import('./pdf/ErectorScopePdf');
+      const blob = await pdf(<ErectorScopePdf logo={COMPANY_LOGO} projectName={projectName}
+        projectAddress={projectAddress} drawingRevision={drawingRevision}
+        drawingDate={drawingDate} estimateDate={estimateDate} estimatedBy={estimatedBy}
+        architect={architect} projectTypes={projectTypes} deliveryOptions={deliveryOptions}
+        selectedExclusions={selectedExclusions} customExclusions={customExclusions}
+        selectedQualifications={selectedQualifications} customQualifications={customQualifications}
+        items={items} />).toBlob();
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `${projectName || 'ErectorScope'}_${new Date().toISOString().slice(0,10)}.pdf`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch(e) { alert('PDF export failed: ' + e.message); }
+    finally { setPdfExporting(false); }
+  };
+
+  const handleExportJobFolder = async () => {
+    setShowExportMenu(false); setPdfExporting(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { JobFolderPdf } = await import('./pdf/JobFolderPdf');
+      const blob = await pdf(<JobFolderPdf logo={COMPANY_LOGO} projectName={projectName}
+        projectAddress={projectAddress} customerName={customerName}
+        billingAddress={billingAddress} customerContact={customerContact}
+        customerPhone={customerPhone} customerEmail={customerEmail}
+        estimateDate={estimateDate} estimatedBy={estimatedBy}
+        drawingDate={drawingDate} drawingRevision={drawingRevision} architect={architect}
+        projectTypes={projectTypes} deliveryOptions={deliveryOptions} taxCategory={taxCategory}
+        items={items} breakoutTotals={breakoutTotals}
+        selectedExclusions={selectedExclusions} customExclusions={customExclusions}
+        selectedQualifications={selectedQualifications} customQualifications={customQualifications}
+        customRecapColumns={customRecapColumns} totals={totals} />).toBlob();
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `${projectName || 'JobFolder'}_${new Date().toISOString().slice(0,10)}.pdf`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch(e) { alert('PDF export failed: ' + e.message); }
+    finally { setPdfExporting(false); }
+  };
+
   
   // Copy RFQ to clipboard
   const copyRfqToClipboard = () => {
@@ -1974,6 +2031,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
   const pricingCacheRef = useRef(new Map()); // sizeKey → getFabPricingForSize result
+
+  // PDF Export State
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef(null);
 
   // Custom fab operations from the admin-defined DB table
   const [customOps, setCustomOps] = useState([]);
@@ -2861,7 +2923,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                  m.description === mat.description
           );
           if (!exists) {
-            updatedMaterials.push(mat);
+            updatedMaterials.push({ ...mat, fabrication: (mat.fabrication || []).map(f => ({ ...f })) });
           }
         }
 
@@ -2869,7 +2931,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         let updatedFab = [...(existingItem.fabrication || [])];
         for (const op of itemFab) {
           const exists = updatedFab.some(f => f.operation === op.operation);
-          if (!exists) updatedFab.push(op);
+          if (!exists) updatedFab.push({ ...op });
         }
 
         updatedItems[existingIndex] = {
@@ -3002,7 +3064,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       if (item.id !== itemId) return item;
       const nextSeq = getNextParentSequence(item.materials);
       const newMaterial = {
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         sequence: nextSeq,
         parentMaterialId: null, // This is a parent material
         description: '',
@@ -3030,7 +3092,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       
       const nextSeq = getNextChildSequence(item.materials, parentMaterialId);
       const newMaterial = {
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         sequence: nextSeq,
         parentMaterialId: parentMaterialId,
         description: '',
@@ -3695,9 +3757,27 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 <Save size={16} /> {saveStatus === 'saving' ? 'Saving...' : 'Save'}
               </button>
             )}
-            <button className="flex items-center gap-1 bg-gray-700 dark:bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-800">
-              <Download size={16} /> Export
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <button onClick={() => setShowExportMenu(p => !p)} disabled={pdfExporting}
+                className="flex items-center gap-1 bg-gray-700 dark:bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50">
+                {pdfExporting
+                  ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> Generating…</>
+                  : <><Download size={16} /> Export <ChevronDown size={14} /></>}
+              </button>
+              {showExportMenu && !pdfExporting && (
+                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg z-50 min-w-48">
+                  <button onClick={handleExportErectorScope}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileText size={14} /> Erector Scope (No Pricing)
+                  </button>
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  <button onClick={handleExportJobFolder}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <Download size={14} /> Job Folder (Full)
+                  </button>
+                </div>
+              )}
+            </div>
             {/* Status transition buttons */}
             {projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
               <button onClick={() => handleStatusChange('IN_REVIEW')} disabled={statusChanging}
