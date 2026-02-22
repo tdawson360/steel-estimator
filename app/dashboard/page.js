@@ -199,6 +199,23 @@ function DashboardContent() {
     }
   };
 
+  const handleStatusChange = async (projectId, newStatus) => {
+    // Optimistic update
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, dashboardStatus: newStatus || null } : p));
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboardStatus: newStatus }),
+      });
+      if (!res.ok) throw new Error('Failed to update status');
+    } catch {
+      // Revert on failure
+      fetchProjects(showArchived);
+      alert('Failed to update status. Please try again.');
+    }
+  };
+
   const handleArchive = async (project) => {
     if (!confirm(`Archive "${project.projectName || 'this project'}"? It will be hidden from the dashboard. You can view it with "Show Archived".`)) return;
     setActionInProgress(project.id);
@@ -366,15 +383,22 @@ function DashboardContent() {
                         {formatDate(project.bidDate)}
                       </td>
 
-                      {/* Status badge */}
-                      <td className="px-4 py-3">
-                        {project.dashboardStatus ? (
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_BADGE[project.dashboardStatus] || 'bg-gray-100 text-gray-600'}`}>
-                            {project.dashboardStatus}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs italic">—</span>
-                        )}
+                      {/* Status dropdown */}
+                      <td className="px-4 py-2">
+                        <select
+                          value={project.dashboardStatus || ''}
+                          onChange={e => handleStatusChange(project.id, e.target.value)}
+                          className={`text-xs font-medium rounded px-2 py-0.5 border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                            project.dashboardStatus
+                              ? STATUS_BADGE[project.dashboardStatus] || 'bg-gray-100 text-gray-600'
+                              : 'bg-transparent text-gray-400'
+                          }`}
+                        >
+                          <option value="">— None —</option>
+                          {DASHBOARD_STATUSES.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
                       </td>
 
                       {/* Bid Amount */}

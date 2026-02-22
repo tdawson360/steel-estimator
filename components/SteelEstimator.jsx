@@ -3923,21 +3923,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dashboard Status</label>
-                    <select
-                      value={dashboardStatus}
-                      onChange={e => setDashboardStatus(e.target.value)}
-                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-                    >
-                      <option value="">— None —</option>
-                      <option value="Bidding">Bidding</option>
-                      <option value="Quoted - Pending Award from GC">Quoted - Pending Award from GC</option>
-                      <option value="Quoted - Budget Only">Quoted - Budget Only</option>
-                      <option value="Awarded to BIW">Awarded to BIW</option>
-                      <option value="Redesign omitted scope">Redesign omitted scope</option>
-                    </select>
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">New / C.O.</label>
                     <select
                       value={newOrCo}

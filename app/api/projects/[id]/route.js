@@ -402,6 +402,30 @@ export async function PUT(request, { params }) {
   }
 }
 
+export async function PATCH(request, { params }) {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const projectId = parseInt(id);
+    const { dashboardStatus } = await request.json();
+
+    const updated = await prisma.project.update({
+      where: { id: projectId },
+      data: { dashboardStatus: dashboardStatus || null },
+      select: { id: true, dashboardStatus: true },
+    });
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error('Error updating project status:', error);
+    return NextResponse.json({ error: 'Failed to update status' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request, { params }) {
   try {
     const user = await getUser();
