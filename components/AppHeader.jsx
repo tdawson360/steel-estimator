@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { Bell, ChevronDown, LogOut, User, Settings, Shield, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import COMPANY_LOGO from '../lib/logo.js';
 
 const ROLE_LABELS = {
   ADMIN: 'Admin',
@@ -115,8 +116,8 @@ export default function AppHeader() {
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between" data-testid="app-header">
       <div className="flex items-center gap-3">
-        <a href="/dashboard" className="text-lg font-bold text-gray-900 dark:text-gray-100 hover:text-blue-600 transition-colors" data-testid="link-dashboard">
-          Berger Iron Works
+        <a href="/dashboard" data-testid="link-dashboard">
+          <img src={COMPANY_LOGO} alt="Berger Iron Works" className="h-8 w-auto" />
         </a>
         <span className="text-xs text-gray-400">Steel Estimator</span>
       </div>
