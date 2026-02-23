@@ -3831,7 +3831,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             </button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Steel Estimator</h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Professional Estimating System</p>
             </div>
             <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`} data-testid="text-project-status">
               {STATUS_LABELS[projectStatus] || projectStatus}
