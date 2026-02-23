@@ -4,10 +4,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../lib/auth';
 
 const VALID_TRANSITIONS = {
-  DRAFT: { IN_REVIEW: ['ADMIN', 'ESTIMATOR'] },
-  IN_REVIEW: { PUBLISHED: ['ADMIN'] },
+  DRAFT:     { IN_REVIEW: ['ADMIN', 'ESTIMATOR'] },
+  IN_REVIEW: { PUBLISHED: ['ADMIN'], DRAFT: ['ADMIN', 'ESTIMATOR'] },
   PUBLISHED: { REOPENED: ['ADMIN'] },
-  REOPENED: { PUBLISHED: ['ADMIN'] },
+  REOPENED:  { PUBLISHED: ['ADMIN'] },
 };
 
 const ADMIN_RESET = ['ADMIN'];

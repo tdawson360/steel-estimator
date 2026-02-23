@@ -2304,7 +2304,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       IN_REVIEW: 'Submit this estimate for review?',
       PUBLISHED: 'Are you sure you want to publish this estimate? It will become visible to Project Managers and Viewers.',
       REOPENED: 'This will hide the estimate from Viewers until it is re-published. Continue?',
-      DRAFT: 'Reset this estimate back to Draft status?',
+      DRAFT: projectStatus === 'IN_REVIEW'
+        ? 'Recall this submission? The estimate will return to Draft status.'
+        : 'Reset this estimate back to Draft status?',
     };
     if (!confirm(messages[newStatus] || `Change status to ${newStatus}?`)) return;
     setStatusChanging(true);
@@ -3795,6 +3797,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 Publish
               </button>
             )}
+            {projectStatus === 'IN_REVIEW' && (userRole === 'ESTIMATOR' || userRole === 'ADMIN') && (
+              <button onClick={() => handleStatusChange('DRAFT')} disabled={statusChanging}
+                className="px-3 py-2 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 disabled:opacity-50" data-testid="button-recall">
+                Recall Submission
+              </button>
+            )}
             {projectStatus === 'PUBLISHED' && userRole === 'ADMIN' && (
               <button onClick={() => handleStatusChange('REOPENED')} disabled={statusChanging}
                 className="px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50" data-testid="button-reopen">
@@ -3807,7 +3815,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 Re-Publish
               </button>
             )}
-            {userRole === 'ADMIN' && projectStatus !== 'DRAFT' && (
+            {userRole === 'ADMIN' && projectStatus !== 'DRAFT' && projectStatus !== 'IN_REVIEW' && (
               <button onClick={() => handleStatusChange('DRAFT')} disabled={statusChanging}
                 className="px-3 py-2 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 disabled:opacity-50" data-testid="button-reset-draft">
                 Reset to Draft

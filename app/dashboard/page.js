@@ -26,6 +26,18 @@ const STATUS_BADGE = {
   'Redesign omitted scope':         'bg-gray-100 text-gray-600',
 };
 
+const ESTIMATE_STATUS_BADGE = {
+  DRAFT:     'bg-gray-100 text-gray-500',
+  IN_REVIEW: 'bg-amber-100 text-amber-700',
+  REOPENED:  'bg-purple-100 text-purple-700',
+};
+
+const ESTIMATE_STATUS_LABEL = {
+  DRAFT:     'Draft',
+  IN_REVIEW: 'In Review',
+  REOPENED:  'Reopened',
+};
+
 const SORT_COLS = ['name', 'estimator', 'bidDate', 'status', 'bidAmount', 'newOrCo'];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -145,9 +157,17 @@ function DashboardContent() {
 
   // ── FILTER + SORT (client-side) ────────────────────────────────────────────
 
+  const WORKFLOW_STATUSES = ['DRAFT', 'IN_REVIEW', 'REOPENED', 'PUBLISHED'];
+
   const displayed = useMemo(() => {
     let r = projects.filter(p => {
-      if (statusFilter    && p.dashboardStatus !== statusFilter)              return false;
+      if (statusFilter) {
+        if (WORKFLOW_STATUSES.includes(statusFilter)) {
+          if (p.status !== statusFilter) return false;
+        } else {
+          if (p.dashboardStatus !== statusFilter) return false;
+        }
+      }
       if (estimatorFilter && String(p.estimator?.id || '') !== estimatorFilter) return false;
       return true;
     });
@@ -164,8 +184,13 @@ function DashboardContent() {
           const db = b.bidDate ? new Date(b.bidDate).getTime() : 0;
           return dir * (da - db);
         }
-        case 'status':
-          return dir * (a.dashboardStatus || '').localeCompare(b.dashboardStatus || '');
+        case 'status': {
+          const workflowOrder = { DRAFT: 0, IN_REVIEW: 1, REOPENED: 2 };
+          const key = p => p.status !== 'PUBLISHED'
+            ? `0_${workflowOrder[p.status] ?? 9}`
+            : `1_${p.dashboardStatus || 'zzz'}`;
+          return dir * key(a).localeCompare(key(b));
+        }
         case 'bidAmount':
           return dir * ((a.bidAmount || 0) - (b.bidAmount || 0));
         case 'newOrCo':
@@ -287,9 +312,17 @@ function DashboardContent() {
               className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="">All Statuses</option>
-              {DASHBOARD_STATUSES.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              <optgroup label="Estimate Workflow">
+                <option value="DRAFT">Draft</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="REOPENED">Reopened</option>
+                <option value="PUBLISHED">Published</option>
+              </optgroup>
+              <optgroup label="Bid Outcome">
+                {DASHBOARD_STATUSES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -400,22 +433,28 @@ function DashboardContent() {
                         ) : null}
                       </td>
 
-                      {/* Status dropdown */}
+                      {/* Unified Status */}
                       <td className="px-4 py-2">
-                        <select
-                          value={project.dashboardStatus || ''}
-                          onChange={e => handleStatusChange(project.id, e.target.value)}
-                          className={`text-xs font-medium rounded px-2 py-0.5 border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                            project.dashboardStatus
-                              ? STATUS_BADGE[project.dashboardStatus] || 'bg-gray-100 text-gray-600'
-                              : 'bg-transparent text-gray-400'
-                          }`}
-                        >
-                          <option value="">— None —</option>
-                          {DASHBOARD_STATUSES.map(s => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
+                        {project.status !== 'PUBLISHED' ? (
+                          <span className={`text-xs font-medium rounded px-2 py-0.5 ${ESTIMATE_STATUS_BADGE[project.status] || 'bg-gray-100 text-gray-500'}`}>
+                            {ESTIMATE_STATUS_LABEL[project.status] || project.status}
+                          </span>
+                        ) : (
+                          <select
+                            value={project.dashboardStatus || ''}
+                            onChange={e => handleStatusChange(project.id, e.target.value)}
+                            className={`text-xs font-medium rounded px-2 py-0.5 border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              project.dashboardStatus
+                                ? STATUS_BADGE[project.dashboardStatus] || 'bg-gray-100 text-gray-600'
+                                : 'bg-transparent text-gray-400'
+                            }`}
+                          >
+                            <option value="">— Set Status —</option>
+                            {DASHBOARD_STATUSES.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
 
                       {/* Bid Amount */}

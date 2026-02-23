@@ -20,6 +20,7 @@ export async function GET(request) {
         projectName: true,
         bidDate: true,
         bidTime: true,
+        status: true,
         dashboardStatus: true,
         bidAmount: true,
         newOrCo: true,
