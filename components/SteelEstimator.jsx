@@ -2579,7 +2579,25 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
   // Get shapes for a category
   const getShapesForCategory = (category) => {
-    return Object.keys(steelDatabase).filter(shape => steelDatabase[shape].category === category);
+    const shapes = Object.keys(steelDatabase).filter(shape => steelDatabase[shape].category === category);
+    if (category === 'Pipe') {
+      // Parse 'PIPE 1-1/2 STD' -> numeric diameter (1.5) for sorting
+      const parseDia = (name) => {
+        const diaStr = name.split(' ')[1] || '0';
+        const dash = diaStr.indexOf('-');
+        if (dash === -1) return parseFloat(diaStr);
+        const whole = parseFloat(diaStr.slice(0, dash));
+        const [num, den] = diaStr.slice(dash + 1).split('/').map(Number);
+        return whole + num / den;
+      };
+      const gradeOrder = { STD: 0, XS: 1, XXS: 2 };
+      return shapes.sort((a, b) => {
+        const dDiff = parseDia(a) - parseDia(b);
+        if (dDiff !== 0) return dDiff;
+        return (gradeOrder[a.split(' ')[2]] ?? 99) - (gradeOrder[b.split(' ')[2]] ?? 99);
+      });
+    }
+    return shapes;
   };
 
   // Calculate material values
