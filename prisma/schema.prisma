@@ -39,6 +39,7 @@ model User {
   projects            Project[] @relation("CreatedBy")
   publishedProjects   Project[] @relation("PublishedBy")
   estimatedProjects   Project[] @relation("EstimatorProjects")
+  notifications       Notification[] @relation("UserNotifications")
 }
 
 // =============================================================================
@@ -132,6 +133,7 @@ model Project {
   exclusions         Exclusion[]
   qualifications     Qualification[]
   customRecapColumns CustomRecapColumn[]
+  notifications      Notification[]
 }
 
 // =============================================================================
@@ -528,4 +530,21 @@ model BeamConnectionData {
   updatedAt                DateTime           @updatedAt
 
   @@index([shapeType])
+}
+
+// =============================================================================
+// NOTIFICATION
+// =============================================================================
+// In-app notifications for status-change events (submit, recall, publish, reopen).
+// Delivered to the right users based on their role and project assignment.
+
+model Notification {
+  id          Int      @id @default(autoincrement())
+  recipientId Int
+  recipient   User     @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  projectId   Int?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  message     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
 }

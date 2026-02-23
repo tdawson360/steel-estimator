@@ -26,7 +26,7 @@ export async function PATCH(request, { params }) {
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, status: true }
+      select: { id: true, status: true, projectName: true, estimatorId: true }
     });
 
     if (!project) {
@@ -71,6 +71,42 @@ export async function PATCH(request, { params }) {
         publishedById: true,
       }
     });
+
+    // ── Notifications ──────────────────────────────────────────────────────
+    const projName = project.projectName || 'Untitled Project';
+    const actorId = parseInt(session.user.id);
+
+    async function notifyAdmins(message) {
+      const admins = await prisma.user.findMany({
+        where: { role: 'ADMIN', active: true, NOT: { id: actorId } },
+        select: { id: true }
+      });
+      if (admins.length > 0) {
+        await prisma.notification.createMany({
+          data: admins.map(a => ({ recipientId: a.id, projectId, message }))
+        });
+      }
+    }
+
+    async function notifyEstimator(message) {
+      if (!project.estimatorId || project.estimatorId === actorId) return;
+      await prisma.notification.create({
+        data: { recipientId: project.estimatorId, projectId, message }
+      });
+    }
+
+    if (newStatus === 'IN_REVIEW') {
+      await notifyAdmins(`"${projName}" has been submitted for review`);
+    } else if (newStatus === 'DRAFT' && currentStatus === 'IN_REVIEW') {
+      await notifyAdmins(`"${projName}" review submission was recalled`);
+    } else if (newStatus === 'PUBLISHED' && currentStatus === 'IN_REVIEW') {
+      await notifyEstimator(`Your estimate "${projName}" has been published`);
+    } else if (newStatus === 'PUBLISHED' && currentStatus === 'REOPENED') {
+      await notifyEstimator(`Your estimate "${projName}" has been re-published`);
+    } else if (newStatus === 'REOPENED') {
+      await notifyEstimator(`Your estimate "${projName}" has been reopened for editing`);
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     return NextResponse.json(updated);
 
