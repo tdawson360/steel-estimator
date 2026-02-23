@@ -455,7 +455,6 @@ const GLOBAL_OP_FIELD = {
   'Drill Holes':           'drillHolesRate',
   "Drill & C'sink Holes":  'drillCSinkRate',
   'Drill & Tap Holes':     'drillTapRate',
-  'Drill Thru Holes':      'drillThruRate',
   'Ease':                  'easeRate',
   'Splice':                'spliceRate',
   "90's":                  'ninetyRate',
