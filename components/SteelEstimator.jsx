@@ -597,6 +597,26 @@ const steelDatabase = {
   'PIPE 1-1/2 XS': { weight: 3.63, category: 'Pipe' },
   'PIPE 1-1/4 XS': { weight: 3.00, category: 'Pipe' },
   'PIPE 1 XS': { weight: 2.17, category: 'Pipe' },
+  // Round Bar (weight = 2.6729 × d²  lbs/ft)
+  'RD 1/4': { weight: 0.17, category: 'Round Bar' },
+  'RD 3/8': { weight: 0.38, category: 'Round Bar' },
+  'RD 1/2': { weight: 0.67, category: 'Round Bar' },
+  'RD 5/8': { weight: 1.04, category: 'Round Bar' },
+  'RD 3/4': { weight: 1.50, category: 'Round Bar' },
+  'RD 7/8': { weight: 2.04, category: 'Round Bar' },
+  'RD 1': { weight: 2.67, category: 'Round Bar' },
+  'RD 1-1/8': { weight: 3.38, category: 'Round Bar' },
+  'RD 1-1/4': { weight: 4.17, category: 'Round Bar' },
+  'RD 1-3/8': { weight: 5.05, category: 'Round Bar' },
+  'RD 1-1/2': { weight: 6.01, category: 'Round Bar' },
+  'RD 1-3/4': { weight: 8.18, category: 'Round Bar' },
+  'RD 2': { weight: 10.68, category: 'Round Bar' },
+  'RD 2-1/4': { weight: 13.52, category: 'Round Bar' },
+  'RD 2-1/2': { weight: 16.69, category: 'Round Bar' },
+  'RD 2-3/4': { weight: 20.22, category: 'Round Bar' },
+  'RD 3': { weight: 24.03, category: 'Round Bar' },
+  'RD 3-1/2': { weight: 32.71, category: 'Round Bar' },
+  'RD 4': { weight: 42.69, category: 'Round Bar' },
   // WT Shapes
   'WT18x150': { weight: 150, category: 'WT Shape' },
   'WT18x130': { weight: 130, category: 'WT Shape' },
@@ -1122,6 +1142,7 @@ const standardQualifications = [
 const standardStockLengths = [20, 25, 30, 35, 40, 45, 50, 55, 60];
 const pipeStockLengths = [21, 42];
 const plateStockLengths = [4, 8, 10, 12, 20]; // Plate lengths in feet (from 48", 96", 120", 144" sheets; 20' for bar stock)
+const roundBarStockLengths = [12, 20]; // Round bar standard mill lengths
 
 // Plate thickness options with decimal equivalents
 const plateThicknesses = [
@@ -1165,6 +1186,9 @@ const getStockLengthsForCategory = (category) => {
   }
   if (category === 'Plate') {
     return plateStockLengths;
+  }
+  if (category === 'Round Bar') {
+    return roundBarStockLengths;
   }
   return standardStockLengths;
 };
@@ -2580,6 +2604,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Get shapes for a category
   const getShapesForCategory = (category) => {
     const shapes = Object.keys(steelDatabase).filter(shape => steelDatabase[shape].category === category);
+    if (category === 'Round Bar') {
+      const parseDia = (name) => {
+        const diaStr = name.split(' ')[1] || '0';
+        const dash = diaStr.indexOf('-');
+        if (dash === -1) {
+          const slash = diaStr.indexOf('/');
+          if (slash === -1) return parseFloat(diaStr);
+          return parseFloat(diaStr.slice(0, slash)) / parseFloat(diaStr.slice(slash + 1));
+        }
+        const whole = parseFloat(diaStr.slice(0, dash));
+        const [num, den] = diaStr.slice(dash + 1).split('/').map(Number);
+        return whole + num / den;
+      };
+      return shapes.sort((a, b) => parseDia(a) - parseDia(b));
+    }
     if (category === 'Pipe') {
       // Parse 'PIPE 1-1/2 STD' -> numeric diameter (1.5) for sorting
       const parseDia = (name) => {
