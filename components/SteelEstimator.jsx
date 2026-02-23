@@ -6154,11 +6154,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <span className="font-semibold">{deliveryText}</span>
                           <span>.............. </span>
                           <span className="inline-block text-right" style={{ minWidth: '0' }}>
-                            <span className="text-xl font-bold block" style={{ borderBottom: '2px solid #111827', paddingBottom: '1px', letterSpacing: '0.025em' }}>{fmtQuotePrice(breakouts.baseBid)}</span>
-                            {taxCategory && taxCategory !== 'resale' && taxCategory !== 'noTax' && totals.totalTax > 0 && (
-                              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mt-1 tracking-wide text-center">TAX INCLUDED</span>
-                            )}
+                            <span className="text-xl font-bold" style={{ borderBottom: '2px solid #111827', paddingBottom: '1px', letterSpacing: '0.025em' }}>{fmtQuotePrice(breakouts.baseBid)}</span>
                           </span>
+                          {taxCategory && taxCategory !== 'resale' && taxCategory !== 'noTax' && totals.totalTax > 0 && (
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 ml-2 tracking-wide">TAX INCLUDED</span>
+                          )}
                         </p>
                       </div>
                       
