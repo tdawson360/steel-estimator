@@ -2064,9 +2064,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [takeoffError, setTakeoffError] = useState(null);
   const [takeoffImporting, setTakeoffImporting] = useState(false);
   const takeoffFileInputRef = useRef(null);
+  const isLoadedRef = useRef(false);      // blocks dirty tracking during initial load
+  const autoSaveTimerRef = useRef(null);  // debounce timer handle
+  const saveRef = useRef(null);           // always points to latest handleSave
+  const [isDirty, setIsDirty] = useState(false);
 
   // ── LOAD PROJECT FROM DATABASE ──────────────────────────────────────────────
   const handleLoad = useCallback(async (id) => {
+    isLoadedRef.current = false;
     try {
       const res = await fetch(`/api/projects/${id}`);
       if (!res.ok) throw new Error('Failed to load project');
@@ -2229,6 +2234,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       }
 
       setCurrentProjectId(data.id);
+      setTimeout(() => { isLoadedRef.current = true; }, 50);
     } catch (err) {
       console.error('Load error:', err);
       alert('Failed to load project. ' + err.message);
@@ -2289,6 +2295,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       }
 
       setSaveStatus('saved');
+      setIsDirty(false);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
       console.error('Save error:', err);
@@ -2297,6 +2304,30 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       setTimeout(() => setSaveStatus(null), 3000);
     }
   }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
+
+  // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
+  useEffect(() => { saveRef.current = handleSave; });
+
+  // Dirty-tracking autosave: fires 3 s after any data change; skips during load hydration
+  useEffect(() => {
+    if (!isLoadedRef.current) return;
+    setIsDirty(true);
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      saveRef.current?.();
+    }, 3000);
+    return () => clearTimeout(autoSaveTimerRef.current);
+  }, [
+    projectName, projectAddress, customerName, billingAddress,
+    customerContact, customerPhone, customerEmail, estimateDate,
+    bidTime, estimatedBy, drawingDate, drawingRevision, architect,
+    estimatorId, dashboardStatus, newOrCo, notes,
+    projectTypes, deliveryOptions, taxCategory,
+    breakoutGroups, items, adjustments,
+    selectedExclusions, customExclusions,
+    selectedQualifications, customQualifications,
+    customRecapColumns,
+  ]);
 
   const handleStatusChange = useCallback(async (newStatus) => {
     if (!currentProjectId) return;
@@ -2309,6 +2340,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         : 'Reset this estimate back to Draft status?',
     };
     if (!confirm(messages[newStatus] || `Change status to ${newStatus}?`)) return;
+    await saveRef.current?.();   // save any pending edits before changing status
     setStatusChanging(true);
     try {
       const res = await fetch(`/api/projects/${currentProjectId}/status`, {
@@ -3738,9 +3770,17 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-300 dark:border-gray-600">
           <div className="flex items-center gap-3">
-            <a href="/projects" className="text-gray-500 dark:text-gray-400 hover:text-gray-800" title="Back to Projects" data-testid="button-back">
+            <button
+              onClick={async () => {
+                if (isDirty) await saveRef.current?.();
+                window.location.href = '/dashboard';
+              }}
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-800"
+              title="Back to Projects"
+              data-testid="button-back"
+            >
               <ArrowLeft size={20} />
-            </a>
+            </button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Steel Estimator</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">Professional Estimating System</p>
@@ -3751,6 +3791,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
+            {isDirty && saveStatus !== 'saving' && saveStatus !== 'saved' && (
+              <span className="text-amber-500 text-sm flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                Unsaved
+              </span>
+            )}
             {saveStatus === 'saved' && <span className="text-green-600 text-sm flex items-center gap-1"><Check size={14} /> Saved</span>}
             {saveStatus === 'error' && <span className="text-red-600 text-sm">Save failed</span>}
             {canEdit && (
