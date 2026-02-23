@@ -4087,22 +4087,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       className="w-4 h-4 rounded" />
                     <span className="text-sm font-medium">Ornamental</span>
                   </label>
+                  {customProjectTypes.map(t => (
+                    <label key={t} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked
+                        onChange={() => removeCustomProjectType(t)}
+                        className="w-4 h-4 rounded" />
+                      <span className="text-sm font-medium">{t}</span>
+                    </label>
+                  ))}
                 </div>
                 <div className="border-t pt-3 mt-3">
                   <p className="text-sm font-medium mb-2">Custom Types:</p>
-                  <div className="flex gap-2 mb-2">
+                  <div className="flex gap-2">
                     <input type="text" value={newCustomProjectType} onChange={e => setNewCustomProjectType(e.target.value)}
                       placeholder="Add custom type" className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                       onKeyDown={e => e.key === 'Enter' && addCustomProjectType()} />
                     <button onClick={addCustomProjectType} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Add</button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {customProjectTypes.map(t => (
-                      <span key={t} className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm flex items-center gap-1">
-                        {t}
-                        <button onClick={() => removeCustomProjectType(t)} className="text-blue-600 dark:text-blue-300 hover:text-blue-800"><X size={14} /></button>
-                      </span>
-                    ))}
                   </div>
                 </div>
               </div>
