@@ -16,6 +16,8 @@ const ErectorSummaryPage = ({
   architect,
   projectTypes,
   deliveryOptions,
+  customProjectTypes = [],
+  selectedCustomDelivery = null,
   items,
   selectedExclusions,
   customExclusions,
@@ -30,6 +32,7 @@ const ErectorSummaryPage = ({
     projectTypes?.structural && 'structural',
     projectTypes?.miscellaneous && 'miscellaneous',
     projectTypes?.ornamental && 'ornamental',
+    ...(customProjectTypes || []).map(t => t.toLowerCase()),
   ]
     .filter(Boolean)
     .join(', ')
@@ -39,6 +42,7 @@ const ErectorSummaryPage = ({
     deliveryOptions?.installed && 'INSTALLED',
     deliveryOptions?.fobJobsite && 'F.O.B. Jobsite',
     deliveryOptions?.willCall && 'Will Call',
+    selectedCustomDelivery || null,
   ]
     .filter(Boolean)
     .join(', ') || null;
@@ -308,6 +312,8 @@ export const ErectorScopePdf = ({
   architect,
   projectTypes,
   deliveryOptions,
+  customProjectTypes = [],
+  selectedCustomDelivery = null,
   selectedExclusions,
   customExclusions,
   selectedQualifications,
@@ -333,6 +339,8 @@ export const ErectorScopePdf = ({
         architect={architect}
         projectTypes={projectTypes}
         deliveryOptions={deliveryOptions}
+        customProjectTypes={customProjectTypes}
+        selectedCustomDelivery={selectedCustomDelivery}
         items={items}
         selectedExclusions={selectedExclusions}
         customExclusions={customExclusions}

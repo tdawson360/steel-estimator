@@ -1635,7 +1635,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   });
   
   const toggleDeliveryOption = (option) => {
-    setDeliveryOptions(prev => ({ ...prev, [option]: !prev[option] }));
+    setDeliveryOptions({ installed: false, fobJobsite: false, willCall: false, [option]: true });
+    setSelectedCustomDelivery(null);
   };
   
   // Tax Category
@@ -1811,6 +1812,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         projectAddress={projectAddress} drawingRevision={drawingRevision}
         drawingDate={drawingDate} estimateDate={estimateDate} estimatedBy={estimatedBy}
         architect={architect} projectTypes={projectTypes} deliveryOptions={deliveryOptions}
+        customProjectTypes={customProjectTypes} selectedCustomDelivery={selectedCustomDelivery}
         selectedExclusions={selectedExclusions} customExclusions={customExclusions}
         selectedQualifications={selectedQualifications} customQualifications={customQualifications}
         items={items} />).toBlob();
@@ -1835,6 +1837,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         estimateDate={estimateDate} estimatedBy={estimatedBy}
         drawingDate={drawingDate} drawingRevision={drawingRevision} architect={architect}
         projectTypes={projectTypes} deliveryOptions={deliveryOptions} taxCategory={taxCategory}
+        customProjectTypes={customProjectTypes} selectedCustomDelivery={selectedCustomDelivery}
         items={items} breakoutTotals={breakoutTotals}
         selectedExclusions={selectedExclusions} customExclusions={customExclusions}
         selectedQualifications={selectedQualifications} customQualifications={customQualifications}
@@ -1991,7 +1994,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   ]);
   const [customQualifications, setCustomQualifications] = useState([]);
   const [newCustomQualification, setNewCustomQualification] = useState('');
-  
+
+  const [customProjectTypes, setCustomProjectTypes] = useState([]);
+  const [newCustomProjectType, setNewCustomProjectType] = useState('');
+  const [customDeliveryOptions, setCustomDeliveryOptions] = useState([]);
+  const [selectedCustomDelivery, setSelectedCustomDelivery] = useState(null);
+  const [newCustomDeliveryOption, setNewCustomDeliveryOption] = useState('');
+
   // Breakout Groups
   const [breakoutGroups, setBreakoutGroups] = useState([]);
   
@@ -2119,6 +2128,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       const custQual = (data.qualifications || []).filter(q => q.isCustom).map(q => q.text);
       setSelectedQualifications(stdQual);
       setCustomQualifications(custQual);
+
+      setCustomProjectTypes((data.customProjectTypes || []).map(t => t.text));
+
+      const custDeliv = data.customDeliveryOptions || [];
+      setCustomDeliveryOptions(custDeliv.map(o => o.text));
+      setSelectedCustomDelivery(custDeliv.find(o => o.isSelected)?.text || null);
 
       setBreakoutGroups((data.breakoutGroups || []).map(g => ({ id: g.id, name: g.name, type: g.type })));
       setAdjustments((data.adjustments || []).map(a => ({ id: a.id, description: a.description, amount: a.amount })));
@@ -2281,6 +2296,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         selectedQualifications,
         customQualifications,
         customRecapColumns,
+        customProjectTypes,
+        customDeliveryOptions: customDeliveryOptions.map(opt => ({
+          text: opt,
+          isSelected: selectedCustomDelivery === opt,
+        })),
       };
 
       const res = await fetch(`/api/projects/${currentProjectId}`, {
@@ -2303,7 +2323,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns]);
+  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
 
   // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
   useEffect(() => { saveRef.current = handleSave; });
@@ -2327,6 +2347,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     selectedExclusions, customExclusions,
     selectedQualifications, customQualifications,
     customRecapColumns,
+    customProjectTypes, customDeliveryOptions, selectedCustomDelivery,
   ]);
 
   const handleStatusChange = useCallback(async (newStatus) => {
@@ -2417,6 +2438,33 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Remove custom qualification
   const removeCustomQualification = (qual) => {
     setCustomQualifications(customQualifications.filter(q => q !== qual));
+  };
+
+  // Custom project types
+  const addCustomProjectType = () => {
+    const v = newCustomProjectType.trim();
+    if (v && !customProjectTypes.includes(v)) {
+      setCustomProjectTypes([...customProjectTypes, v]);
+      setNewCustomProjectType('');
+    }
+  };
+  const removeCustomProjectType = (t) => setCustomProjectTypes(customProjectTypes.filter(x => x !== t));
+
+  // Custom delivery options
+  const addCustomDeliveryOption = () => {
+    const v = newCustomDeliveryOption.trim();
+    if (v && !customDeliveryOptions.includes(v)) {
+      setCustomDeliveryOptions([...customDeliveryOptions, v]);
+      setNewCustomDeliveryOption('');
+    }
+  };
+  const removeCustomDeliveryOption = (opt) => {
+    setCustomDeliveryOptions(customDeliveryOptions.filter(x => x !== opt));
+    if (selectedCustomDelivery === opt) setSelectedCustomDelivery(null);
+  };
+  const selectCustomDelivery = (opt) => {
+    setDeliveryOptions({ installed: false, fobJobsite: false, willCall: false });
+    setSelectedCustomDelivery(opt);
   };
 
   // Breakout Group functions
@@ -4020,7 +4068,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               {/* Project Type */}
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Project Type</h2>
-                <div className="flex gap-6">
+                <div className="flex flex-wrap gap-6 mb-1">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={projectTypes.structural}
                       onChange={() => toggleProjectType('structural')}
@@ -4040,33 +4088,73 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <span className="text-sm font-medium">Ornamental</span>
                   </label>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
+                <div className="border-t pt-3 mt-3">
+                  <p className="text-sm font-medium mb-2">Custom Types:</p>
+                  <div className="flex gap-2 mb-2">
+                    <input type="text" value={newCustomProjectType} onChange={e => setNewCustomProjectType(e.target.value)}
+                      placeholder="Add custom type" className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                      onKeyDown={e => e.key === 'Enter' && addCustomProjectType()} />
+                    <button onClick={addCustomProjectType} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Add</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {customProjectTypes.map(t => (
+                      <span key={t} className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-sm flex items-center gap-1">
+                        {t}
+                        <button onClick={() => removeCustomProjectType(t)} className="text-blue-600 dark:text-blue-300 hover:text-blue-800"><X size={14} /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Delivery Options */}
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Delivery Options</h2>
-                <div className="flex gap-6">
+                <div className="flex flex-wrap gap-6 mb-1">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={deliveryOptions.installed}
+                    <input type="radio" name="deliveryOption" checked={deliveryOptions.installed}
                       onChange={() => toggleDeliveryOption('installed')}
-                      className="w-4 h-4 rounded" />
+                      className="w-4 h-4" />
                     <span className="text-sm font-medium">Installed</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={deliveryOptions.fobJobsite}
+                    <input type="radio" name="deliveryOption" checked={deliveryOptions.fobJobsite}
                       onChange={() => toggleDeliveryOption('fobJobsite')}
-                      className="w-4 h-4 rounded" />
+                      className="w-4 h-4" />
                     <span className="text-sm font-medium">F.O.B. Jobsite</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={deliveryOptions.willCall}
+                    <input type="radio" name="deliveryOption" checked={deliveryOptions.willCall}
                       onChange={() => toggleDeliveryOption('willCall')}
-                      className="w-4 h-4 rounded" />
+                      className="w-4 h-4" />
                     <span className="text-sm font-medium">Will Call</span>
                   </label>
+                  {customDeliveryOptions.map(opt => (
+                    <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="deliveryOption" checked={selectedCustomDelivery === opt}
+                        onChange={() => selectCustomDelivery(opt)}
+                        className="w-4 h-4" />
+                      <span className="text-sm font-medium">{opt}</span>
+                    </label>
+                  ))}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Select all that apply. This helps pre-fill estimate options.</p>
+                <div className="border-t pt-3 mt-3">
+                  <p className="text-sm font-medium mb-2">Custom Options:</p>
+                  <div className="flex gap-2 mb-2">
+                    <input type="text" value={newCustomDeliveryOption} onChange={e => setNewCustomDeliveryOption(e.target.value)}
+                      placeholder="Add custom option" className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                      onKeyDown={e => e.key === 'Enter' && addCustomDeliveryOption()} />
+                    <button onClick={addCustomDeliveryOption} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">Add</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {customDeliveryOptions.map(opt => (
+                      <span key={opt} className="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded text-sm flex items-center gap-1">
+                        {opt}
+                        <button onClick={() => removeCustomDeliveryOption(opt)} className="text-purple-600 dark:text-purple-300 hover:text-purple-800"><X size={14} /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Tax Category */}
@@ -5812,7 +5900,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   {[
                     projectTypes.structural && 'Structural',
                     projectTypes.miscellaneous && 'Miscellaneous',
-                    projectTypes.ornamental && 'Ornamental'
+                    projectTypes.ornamental && 'Ornamental',
+                    ...customProjectTypes,
                   ].filter(Boolean).join(', ') || '-'}
                 </div>
                 <div className="mt-1 text-sm">
@@ -5820,7 +5909,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   {[
                     deliveryOptions.installed && 'Installed',
                     deliveryOptions.fobJobsite && 'F.O.B. Jobsite',
-                    deliveryOptions.willCall && 'Will Call'
+                    deliveryOptions.willCall && 'Will Call',
+                    selectedCustomDelivery,
                   ].filter(Boolean).join(', ') || '-'}
                 </div>
                 <div className="mt-1 text-sm">
@@ -6122,7 +6212,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <p className="mt-2">We are pleased to quote you on the following {[
                     projectTypes.structural && 'structural',
                     projectTypes.miscellaneous && 'miscellaneous',
-                    projectTypes.ornamental && 'ornamental'
+                    projectTypes.ornamental && 'ornamental',
+                    ...customProjectTypes.map(t => t.toLowerCase()),
                   ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1') || '_______________'} metal items in accordance with the drawings dated {drawingDate ? new Date(drawingDate).toLocaleDateString() : '_______________'}:</p>
                 </div>
 
@@ -6188,7 +6279,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   const deliveryText = [
                     deliveryOptions.installed && 'INSTALLED',
                     deliveryOptions.fobJobsite && 'F.O.B. JOBSITE',
-                    deliveryOptions.willCall && 'WILL CALL'
+                    deliveryOptions.willCall && 'WILL CALL',
+                    selectedCustomDelivery && selectedCustomDelivery.toUpperCase(),
                   ].filter(Boolean).join(', ') || '_______________';
                   
                   return (

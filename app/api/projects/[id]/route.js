@@ -33,7 +33,9 @@ const FULL_PROJECT_INCLUDE = {
   adjustments: true,
   exclusions: true,
   qualifications: true,
-  customRecapColumns: true
+  customRecapColumns: true,
+  customProjectTypes: true,
+  customDeliveryOptions: true,
 };
 
 function canViewProject(user, project) {
@@ -150,6 +152,8 @@ export async function PUT(request, { params }) {
       await tx.exclusion.deleteMany({ where: { projectId } });
       await tx.qualification.deleteMany({ where: { projectId } });
       await tx.customRecapColumn.deleteMany({ where: { projectId } });
+      await tx.customProjectType.deleteMany({ where: { projectId } });
+      await tx.customDeliveryOption.deleteMany({ where: { projectId } });
 
       const breakoutGroupMap = {};
 
@@ -378,6 +382,22 @@ export async function PUT(request, { params }) {
         }
       }
 
+      if (data.customProjectTypes && data.customProjectTypes.length > 0) {
+        for (const t of data.customProjectTypes) {
+          await tx.customProjectType.create({
+            data: { projectId, text: t }
+          });
+        }
+      }
+
+      if (data.customDeliveryOptions && data.customDeliveryOptions.length > 0) {
+        for (const opt of data.customDeliveryOptions) {
+          await tx.customDeliveryOption.create({
+            data: { projectId, text: opt.text, isSelected: opt.isSelected || false }
+          });
+        }
+      }
+
       if (data.customRecapColumns && data.customRecapColumns.length > 0) {
         for (const col of data.customRecapColumns) {
           await tx.customRecapColumn.create({
@@ -465,6 +485,8 @@ export async function DELETE(request, { params }) {
       await tx.exclusion.deleteMany({ where: { projectId } });
       await tx.qualification.deleteMany({ where: { projectId } });
       await tx.customRecapColumn.deleteMany({ where: { projectId } });
+      await tx.customProjectType.deleteMany({ where: { projectId } });
+      await tx.customDeliveryOption.deleteMany({ where: { projectId } });
       await tx.project.delete({ where: { id: projectId } });
     });
 

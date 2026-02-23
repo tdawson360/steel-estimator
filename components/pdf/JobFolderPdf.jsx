@@ -64,6 +64,8 @@ const QuotePage = ({
   projectTypes,
   deliveryOptions,
   taxCategory,
+  customProjectTypes = [],
+  selectedCustomDelivery = null,
   items,
   breakoutTotals,
   selectedExclusions,
@@ -80,6 +82,7 @@ const QuotePage = ({
     projectTypes?.structural && 'structural',
     projectTypes?.miscellaneous && 'miscellaneous',
     projectTypes?.ornamental && 'ornamental',
+    ...(customProjectTypes || []).map(t => t.toLowerCase()),
   ]
     .filter(Boolean)
     .join(', ')
@@ -89,6 +92,7 @@ const QuotePage = ({
     deliveryOptions?.installed && 'INSTALLED',
     deliveryOptions?.fobJobsite && 'F.O.B. JOBSITE',
     deliveryOptions?.willCall && 'WILL CALL',
+    selectedCustomDelivery ? selectedCustomDelivery.toUpperCase() : null,
   ]
     .filter(Boolean)
     .join(', ') || '_______________';
@@ -555,6 +559,8 @@ export const JobFolderPdf = ({
   projectTypes,
   deliveryOptions,
   taxCategory,
+  customProjectTypes = [],
+  selectedCustomDelivery = null,
   items,
   breakoutTotals,
   selectedExclusions,
@@ -584,6 +590,8 @@ export const JobFolderPdf = ({
         projectTypes={projectTypes}
         deliveryOptions={deliveryOptions}
         taxCategory={taxCategory}
+        customProjectTypes={customProjectTypes}
+        selectedCustomDelivery={selectedCustomDelivery}
         items={items}
         breakoutTotals={breakoutTotals}
         selectedExclusions={selectedExclusions}
