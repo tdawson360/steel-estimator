@@ -1121,7 +1121,7 @@ const standardQualifications = [
 // Stock lengths - Pipe only uses 21' and 42', all others use standard lengths
 const standardStockLengths = [20, 25, 30, 35, 40, 45, 50, 55, 60];
 const pipeStockLengths = [21, 42];
-const plateStockLengths = [4, 8, 10, 12]; // Plate lengths in feet (from 48", 96", 120", 144" sheets)
+const plateStockLengths = [4, 8, 10, 12, 20]; // Plate lengths in feet (from 48", 96", 120", 144" sheets; 20' for bar stock)
 
 // Plate thickness options with decimal equivalents
 const plateThicknesses = [
