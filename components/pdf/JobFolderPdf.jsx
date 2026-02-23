@@ -327,7 +327,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
       <View key={f.id} style={{ flexDirection: 'row', backgroundColor: COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: indent, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
         <Text style={{ flex: 1, fontSize: 7, color: COLORS.green }}>{opName}</Text>
         <Text style={{ width: COL.len, fontSize: 7 }} />
-        <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.qty || ''}</Text>
+        <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
         <Text style={{ width: COL.wt, fontSize: 7 }} />
         <Text style={{ width: COL.fabWt, fontSize: 7 }} />
         <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.rate ? fmtPrice(f.rate) : ''}</Text>

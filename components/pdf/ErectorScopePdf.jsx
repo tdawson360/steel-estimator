@@ -177,7 +177,7 @@ const MaterialsTable = ({ materials }) => {
                 <Text style={[styles.bold, { flex: 2, fontSize: 7, color: COLORS.green, marginLeft: 8 }]}>
                   {f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '')}
                 </Text>
-                <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.qty || ''}</Text>
+                <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
                 <Text style={{ width: UNIT, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.unit || ''}</Text>
               </View>
             ))}
@@ -207,7 +207,7 @@ const MaterialsTable = ({ materials }) => {
                       <Text style={[styles.bold, { flex: 2, fontSize: 7, color: COLORS.green, marginLeft: 8 }]}>
                         {f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '')}
                       </Text>
-                      <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.qty || ''}</Text>
+                      <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
                       <Text style={{ width: UNIT, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.unit || ''}</Text>
                     </View>
                   ))}
@@ -238,7 +238,7 @@ const ItemFabOpsTable = ({ fabrication }) => {
           <Text style={{ flex: 3, fontSize: 8 }}>
             {f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '')}
           </Text>
-          <Text style={{ width: 48, fontSize: 8, textAlign: 'right' }}>{f.qty || ''}</Text>
+          <Text style={{ width: 48, fontSize: 8, textAlign: 'right' }}>{f.quantity || ''}</Text>
           <Text style={{ width: 60, fontSize: 8, textAlign: 'right' }}>{f.unit || ''}</Text>
         </View>
       ))}
