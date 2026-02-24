@@ -9,6 +9,12 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Only admins and estimators can duplicate projects
+  const user = await prisma.user.findUnique({ where: { id: parseInt(session.user.id) } });
+  if (!user || (user.role !== 'ADMIN' && user.role !== 'ESTIMATOR')) {
+    return NextResponse.json({ error: 'You do not have permission to duplicate projects' }, { status: 403 });
+  }
+
   const id = parseInt(params.id);
   if (!id) return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
 

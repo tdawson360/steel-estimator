@@ -2,9 +2,10 @@
 
 import { Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown,
-  Pencil, Copy, Archive, Loader2, Plus,
+  Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus,
 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 
@@ -106,6 +107,8 @@ function SortHeader({ col, label, sortCol, sortDir, onSort, className = '' }) {
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const userRole = session?.user?.role;
 
   // Read filter/sort state from URL
   const statusFilter    = searchParams.get('status') || '';
@@ -259,7 +262,6 @@ function DashboardContent() {
     try {
       const res = await fetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
       if (!res.ok) throw new Error('Archive failed');
-      // Remove from list (or re-fetch if showing archived)
       if (!showArchived) {
         setProjects(prev => prev.filter(p => p.id !== project.id));
       } else {
@@ -267,6 +269,20 @@ function DashboardContent() {
       }
     } catch {
       alert('Failed to archive project. Please try again.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleUnarchive = async (project) => {
+    if (!confirm(`Restore "${project.projectName || 'this project'}" to the active bid board?`)) return;
+    setActionInProgress(project.id);
+    try {
+      const res = await fetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
+      if (!res.ok) throw new Error('Unarchive failed');
+      setProjects(prev => prev.map(p => p.id === project.id ? { ...p, isArchived: false } : p));
+    } catch {
+      alert('Failed to restore project. Please try again.');
     } finally {
       setActionInProgress(null);
     }
@@ -290,14 +306,16 @@ function DashboardContent() {
               {loading ? 'Loading...' : `${displayed.length} project${displayed.length !== 1 ? 's' : ''}`}
             </p>
           </div>
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-            {creating ? 'Creating...' : 'New Project'}
-          </button>
+          {(userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+              {creating ? 'Creating...' : 'New Project'}
+            </button>
+          )}
         </div>
 
         {/* Filter bar */}
@@ -483,20 +501,31 @@ function DashboardContent() {
                               >
                                 <Pencil size={15} />
                               </button>
-                              <button
-                                onClick={() => handleDuplicate(project)}
-                                title="Duplicate (deep copy)"
-                                className="p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                              >
-                                <Copy size={15} />
-                              </button>
-                              {!project.isArchived && (
+                              {(userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
+                                <button
+                                  onClick={() => handleDuplicate(project)}
+                                  title="Duplicate (deep copy)"
+                                  className="p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                >
+                                  <Copy size={15} />
+                                </button>
+                              )}
+                              {userRole === 'ADMIN' && !project.isArchived && (
                                 <button
                                   onClick={() => handleArchive(project)}
                                   title="Archive"
                                   className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 rounded transition-colors"
                                 >
                                   <Archive size={15} />
+                                </button>
+                              )}
+                              {userRole === 'ADMIN' && project.isArchived && (
+                                <button
+                                  onClick={() => handleUnarchive(project)}
+                                  title="Restore from Archive"
+                                  className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-950 rounded transition-colors"
+                                >
+                                  <ArchiveRestore size={15} />
                                 </button>
                               )}
                             </>
