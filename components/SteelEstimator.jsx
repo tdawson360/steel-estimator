@@ -2194,6 +2194,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               id: mat.id,
               category: mat.category || '',
               shape: mat.shape || '',
+              description: mat.description || '',
               length: mat.length || 0,
               pieces: mat.pieces || 0,
               stockLength: mat.stockLength || 0,
@@ -2209,20 +2210,25 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               galvRate: mat.galvRate || 0,
               width: mat.width || null,
               thickness: mat.thickness || null,
-              fabrication: (mat.fabrication || []).map(f => ({
-                id: f.id,
-                operation: f.operation || '',
-                quantity: f.quantity || 0,
-                unit: f.unit || 'ea',
-                rate: f.rate || 0,
-                totalCost: f.totalCost || 0,
-                connWeight: f.connWeight || 0,
-                isGalvLine: f.isGalvLine || false,
-              })),
+              fabrication: (mat.fabrication || []).map(f => {
+                const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
+                return {
+                  id: f.id,
+                  operation: f.operation || '',
+                  quantity: f.quantity || 0,
+                  unit: f.unit || 'ea',
+                  rate: derivedRate,
+                  unitPrice: derivedRate,
+                  totalCost: f.totalCost || 0,
+                  connWeight: f.connWeight || 0,
+                  isGalvLine: f.isGalvLine || false,
+                };
+              }),
               children: (mat.children || []).map(child => ({
                 id: child.id,
                 category: child.category || '',
                 shape: child.shape || '',
+                description: child.description || '',
                 length: child.length || 0,
                 pieces: child.pieces || 0,
                 stockLength: child.stockLength || 0,
@@ -2238,26 +2244,34 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 galvRate: child.galvRate || 0,
                 width: child.width || null,
                 thickness: child.thickness || null,
-                fabrication: (child.fabrication || []).map(f => ({
-                  id: f.id,
-                  operation: f.operation || '',
-                  quantity: f.quantity || 0,
-                  unit: f.unit || 'ea',
-                  rate: f.rate || 0,
-                  totalCost: f.totalCost || 0,
-                  connWeight: f.connWeight || 0,
-                  isGalvLine: f.isGalvLine || false,
-                })),
+                fabrication: (child.fabrication || []).map(f => {
+                  const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
+                  return {
+                    id: f.id,
+                    operation: f.operation || '',
+                    quantity: f.quantity || 0,
+                    unit: f.unit || 'ea',
+                    rate: derivedRate,
+                    unitPrice: derivedRate,
+                    totalCost: f.totalCost || 0,
+                    connWeight: f.connWeight || 0,
+                    isGalvLine: f.isGalvLine || false,
+                  };
+                }),
               })),
             })),
-            fabrication: (item.fabrication || []).map(f => ({
-              id: f.id,
-              operation: f.operation || '',
-              quantity: f.quantity || 0,
-              unit: f.unit || 'ea',
-              rate: f.rate || 0,
-              totalCost: f.totalCost || 0,
-            })),
+            fabrication: (item.fabrication || []).map(f => {
+              const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
+              return {
+                id: f.id,
+                operation: f.operation || '',
+                quantity: f.quantity || 0,
+                unit: f.unit || 'ea',
+                rate: derivedRate,
+                unitPrice: derivedRate,
+                totalCost: f.totalCost || 0,
+              };
+            }),
             snapshots: (item.snapshots || []).map(s => ({
               id: s.id,
               imageData: s.imageData || '',

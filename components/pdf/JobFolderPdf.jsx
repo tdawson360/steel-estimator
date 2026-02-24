@@ -323,14 +323,16 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
   const renderFabRow = (f, indent) => {
     if (f.isAutoGalv || f.isConnGalv) return null;
     const opName = f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '');
+    const unitRate = f.unitPrice || f.rate || (f.quantity > 0 ? f.totalCost / f.quantity : 0);
     return (
       <View key={f.id} style={{ flexDirection: 'row', backgroundColor: COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: indent, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
         <Text style={{ flex: 1, fontSize: 7, color: COLORS.green }}>{opName}</Text>
+        <Text style={{ flex: 1, fontSize: 7 }} />
         <Text style={{ width: COL.len, fontSize: 7 }} />
         <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
         <Text style={{ width: COL.wt, fontSize: 7 }} />
         <Text style={{ width: COL.fabWt, fontSize: 7 }} />
-        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.rate ? fmtPrice(f.rate) : ''}</Text>
+        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{unitRate ? fmtPrice(unitRate) : ''}</Text>
         <Text style={{ width: COL.total, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.totalCost ? fmtPrice(f.totalCost) : ''}</Text>
       </View>
     );
@@ -344,6 +346,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
       {/* Materials header — size column is flex:1, right-side columns fixed */}
       <View style={[styles.tableHeader, { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 4, marginBottom: 0 }]}>
         <Text style={{ flex: 1, fontSize: 8 }}>Shape / Size</Text>
+        <Text style={{ flex: 1, fontSize: 8 }}>Description</Text>
         <Text style={{ width: COL.len, fontSize: 8, textAlign: 'right' }}>Len (ft)</Text>
         <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right' }}>Qty</Text>
         <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right' }}>Wt/ft</Text>
@@ -360,6 +363,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
             {/* Parent row */}
             <View style={{ flexDirection: 'row', backgroundColor: COLORS.lightBlue, paddingVertical: 3, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
               <Text style={[styles.bold, { flex: 1, fontSize: 8 }]}>{mat.size || '-'}</Text>
+              <Text style={{ flex: 1, fontSize: 8 }}>{mat.description || ''}</Text>
               <Text style={{ width: COL.len, fontSize: 8, textAlign: 'right' }}>{mat.length ? mat.length.toFixed(2) : '-'}</Text>
               <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right' }}>{mat.pieces || mat.quantity || '-'}</Text>
               <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right' }}>{mat.weightPerFoot ? mat.weightPerFoot.toFixed(1) : ''}</Text>
@@ -375,6 +379,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
                 <View key={child.id}>
                   <View style={{ flexDirection: 'row', backgroundColor: '#F9FAFB', paddingVertical: 3, paddingHorizontal: 4, paddingLeft: 16, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
                     <Text style={{ flex: 1, fontSize: 8, color: COLORS.gray }}>  {child.size || '-'}</Text>
+                    <Text style={{ flex: 1, fontSize: 8, color: COLORS.gray }}>{child.description || ''}</Text>
                     <Text style={{ width: COL.len, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.length ? child.length.toFixed(2) : '-'}</Text>
                     <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.pieces || child.quantity || '-'}</Text>
                     <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.weightPerFoot ? child.weightPerFoot.toFixed(1) : ''}</Text>

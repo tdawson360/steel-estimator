@@ -196,7 +196,8 @@ model Material {
   // What shape and size
   category       String  @default("")     // "W Shapes", "HSS Rect", "Plate", etc.
   shape          String  @default("")     // "W12x26", "HSS6x4x1/4", etc.
-  
+  description    String  @default("")     // User-entered label (especially for custom/misc categories)
+
   // Dimensions and quantity
   length         Float   @default(0)      // Piece length in feet
   pieces         Int     @default(0)      // How many pieces
@@ -270,9 +271,10 @@ model MaterialFabrication {
 model ChildMaterial {
   id             Int     @id @default(autoincrement())
   sortOrder      Int     @default(0)
-  
+
   category       String  @default("")
   shape          String  @default("")
+  description    String  @default("")
   length         Float   @default(0)
   pieces         Int     @default(0)
   stockLength    Float   @default(0)
