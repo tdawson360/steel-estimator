@@ -136,6 +136,9 @@ model Project {
   notifications        Notification[]
   customProjectTypes   CustomProjectType[]
   customDeliveryOptions CustomDeliveryOption[]
+
+  @@index([createdById])
+  @@index([estimatorId])
 }
 
 // =============================================================================
@@ -181,6 +184,8 @@ model Item {
   fabrication     ItemFabrication[]
   recapCosts      RecapCost[]
   snapshots       ItemSnapshot[]
+
+  @@index([projectId, sortOrder])
 }
 
 // =============================================================================
@@ -231,9 +236,11 @@ model Material {
   
   // Fab operations on this material (welding, connections, coatings, etc.)
   fabrication    MaterialFabrication[]
-  
+
   // Sub-materials (embedded items like clips, stiffeners within this material)
   children       ChildMaterial[]
+
+  @@index([itemId, sortOrder])
 }
 
 // =============================================================================
@@ -260,6 +267,8 @@ model MaterialFabrication {
   
   materialId   Int
   material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([materialId, sortOrder])
 }
 
 // =============================================================================
@@ -294,9 +303,11 @@ model ChildMaterial {
   // Parent material this belongs to
   parentId       Int
   parent         Material @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  
+
   // Fab operations on this child material
   fabrication    ChildMaterialFabrication[]
+
+  @@index([parentId, sortOrder])
 }
 
 // =============================================================================
@@ -318,6 +329,8 @@ model ChildMaterialFabrication {
   
   childMaterialId Int
   childMaterial   ChildMaterial @relation(fields: [childMaterialId], references: [id], onDelete: Cascade)
+
+  @@index([childMaterialId, sortOrder])
 }
 
 // =============================================================================
@@ -338,6 +351,8 @@ model ItemFabrication {
   
   itemId       Int
   item         Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
 }
 
 // =============================================================================
@@ -466,6 +481,8 @@ model ItemSnapshot {
 
   itemId    Int
   item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
 }
 
 // =============================================================================
@@ -579,4 +596,7 @@ model Notification {
   message     String
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
+
+  @@index([recipientId, isRead])
+  @@index([recipientId, createdAt])
 }

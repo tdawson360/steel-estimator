@@ -28,10 +28,13 @@ export async function POST(request, { params }) {
         exclusions: true,
         qualifications: true,
         customRecapColumns: true,
+        customProjectTypes: true,
+        customDeliveryOptions: true,
         items: {
           include: {
             recapCosts: true,
             fabrication: true,
+            snapshots: true,
             materials: {
               include: {
                 fabrication: true,
@@ -52,6 +55,8 @@ export async function POST(request, { params }) {
     }
 
     // ── 2. DEEP COPY IN A SINGLE TRANSACTION ────────────────────────────────
+    // Uses createMany for flat relation sets and Promise.all to parallelize
+    // independent creates within the same parent entity.
     const newProject = await prisma.$transaction(async (tx) => {
 
       // Create the new project record
@@ -79,6 +84,7 @@ export async function POST(request, { params }) {
           description:      original.description,
           notes:            original.notes,
           bidDate:          original.bidDate,
+          bidTime:          original.bidTime,
           startDate:        original.startDate,
           bidAmount:        original.bidAmount,
           newOrCo:          original.newOrCo,
@@ -95,6 +101,7 @@ export async function POST(request, { params }) {
       });
 
       // Copy breakout groups — build old→new ID map for item remapping
+      // (must be sequential since we need the returned IDs for the map)
       const bgIdMap = new Map();
       for (const bg of original.breakoutGroups) {
         const newBg = await tx.breakoutGroup.create({
@@ -103,7 +110,55 @@ export async function POST(request, { params }) {
         bgIdMap.set(bg.id, newBg.id);
       }
 
-      // Copy items
+      // Batch-create flat project-level collections in parallel
+      // (these don't need returned IDs and are independent of each other)
+      await Promise.all([
+        original.adjustments.length > 0
+          ? tx.adjustment.createMany({
+              data: original.adjustments.map(a => ({
+                description: a.description, amount: a.amount, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+        original.exclusions.length > 0
+          ? tx.exclusion.createMany({
+              data: original.exclusions.map(e => ({
+                text: e.text, isCustom: e.isCustom, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+        original.qualifications.length > 0
+          ? tx.qualification.createMany({
+              data: original.qualifications.map(q => ({
+                text: q.text, isCustom: q.isCustom, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+        original.customRecapColumns.length > 0
+          ? tx.customRecapColumn.createMany({
+              data: original.customRecapColumns.map(c => ({
+                key: c.key, name: c.name, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+        (original.customProjectTypes || []).length > 0
+          ? tx.customProjectType.createMany({
+              data: original.customProjectTypes.map(t => ({
+                text: t.text, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+        (original.customDeliveryOptions || []).length > 0
+          ? tx.customDeliveryOption.createMany({
+              data: original.customDeliveryOptions.map(o => ({
+                text: o.text, isSelected: o.isSelected, projectId: proj.id,
+              })),
+            })
+          : Promise.resolve(),
+      ]);
+
+      // Copy items (must be sequential — each item needs its returned ID
+      // for nested material/fab creates)
       for (const item of original.items) {
         const newItem = await tx.item.create({
           data: {
@@ -120,151 +175,102 @@ export async function POST(request, { params }) {
           },
         });
 
-        // Recap costs
-        for (const rc of item.recapCosts) {
-          await tx.recapCost.create({
-            data: {
-              costType: rc.costType,
-              cost:     rc.cost,
-              markup:   rc.markup,
-              total:    rc.total,
-              hours:    rc.hours,
-              rate:     rc.rate,
-              itemId:   newItem.id,
-            },
-          });
-        }
+        // Batch-create recap costs and item-level fab in parallel
+        // (both are flat sets that only need newItem.id, not returned IDs)
+        await Promise.all([
+          item.recapCosts.length > 0
+            ? tx.recapCost.createMany({
+                data: item.recapCosts.map(rc => ({
+                  costType: rc.costType, cost: rc.cost, markup: rc.markup,
+                  total: rc.total, hours: rc.hours, rate: rc.rate,
+                  itemId: newItem.id,
+                })),
+              })
+            : Promise.resolve(),
+          item.fabrication.length > 0
+            ? tx.itemFabrication.createMany({
+                data: item.fabrication.map(fab => ({
+                  sortOrder: fab.sortOrder, operation: fab.operation,
+                  quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
+                  totalCost: fab.totalCost, itemId: newItem.id,
+                })),
+              })
+            : Promise.resolve(),
+          (item.snapshots || []).length > 0
+            ? tx.itemSnapshot.createMany({
+                data: item.snapshots.map(snap => ({
+                  sortOrder: snap.sortOrder, imageData: snap.imageData,
+                  caption: snap.caption, itemId: newItem.id,
+                })),
+              })
+            : Promise.resolve(),
+        ]);
 
-        // Item-level fabrication
-        for (const fab of item.fabrication) {
-          await tx.itemFabrication.create({
-            data: {
-              sortOrder: fab.sortOrder,
-              operation: fab.operation,
-              quantity:  fab.quantity,
-              unit:      fab.unit,
-              rate:      fab.rate,
-              totalCost: fab.totalCost,
-              itemId:    newItem.id,
-            },
-          });
-        }
-
-        // Materials
+        // Materials (must be sequential — each material needs its returned ID
+        // for children and material-level fabrication)
         for (const mat of item.materials) {
           const newMat = await tx.material.create({
             data: {
-              sortOrder:      mat.sortOrder,
-              category:       mat.category,
-              shape:          mat.shape,
-              length:         mat.length,
-              pieces:         mat.pieces,
-              stockLength:    mat.stockLength,
-              stocksRequired: mat.stocksRequired,
-              waste:          mat.waste,
-              weightPerFt:    mat.weightPerFt,
-              fabWeight:      mat.fabWeight,
-              stockWeight:    mat.stockWeight,
-              pricePerFt:     mat.pricePerFt,
-              pricePerLb:     mat.pricePerLb,
-              totalCost:      mat.totalCost,
-              galvanized:     mat.galvanized,
-              galvRate:       mat.galvRate,
-              width:          mat.width,
-              thickness:      mat.thickness,
-              itemId:         newItem.id,
+              sortOrder: mat.sortOrder, category: mat.category, shape: mat.shape,
+              description: mat.description, length: mat.length, pieces: mat.pieces,
+              stockLength: mat.stockLength, stocksRequired: mat.stocksRequired,
+              waste: mat.waste, weightPerFt: mat.weightPerFt,
+              fabWeight: mat.fabWeight, stockWeight: mat.stockWeight,
+              pricePerFt: mat.pricePerFt, pricePerLb: mat.pricePerLb,
+              totalCost: mat.totalCost, galvanized: mat.galvanized,
+              galvRate: mat.galvRate, width: mat.width, thickness: mat.thickness,
+              itemId: newItem.id,
             },
           });
 
-          // Material fabrication
-          for (const fab of mat.fabrication) {
-            await tx.materialFabrication.create({
-              data: {
-                sortOrder:  fab.sortOrder,
-                operation:  fab.operation,
-                quantity:   fab.quantity,
-                unit:       fab.unit,
-                rate:       fab.rate,
-                totalCost:  fab.totalCost,
-                connWeight: fab.connWeight,
-                isGalvLine: fab.isGalvLine,
-                materialId: newMat.id,
-              },
-            });
-          }
+          // Batch-create material fab ops (flat, no returned IDs needed)
+          const matFabPromise = mat.fabrication.length > 0
+            ? tx.materialFabrication.createMany({
+                data: mat.fabrication.map(fab => ({
+                  sortOrder: fab.sortOrder, operation: fab.operation,
+                  quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
+                  totalCost: fab.totalCost, connWeight: fab.connWeight,
+                  isGalvLine: fab.isGalvLine, materialId: newMat.id,
+                })),
+              })
+            : Promise.resolve();
 
-          // Child materials
-          for (const child of mat.children) {
-            const newChild = await tx.childMaterial.create({
-              data: {
-                sortOrder:      child.sortOrder,
-                category:       child.category,
-                shape:          child.shape,
-                length:         child.length,
-                pieces:         child.pieces,
-                stockLength:    child.stockLength,
-                stocksRequired: child.stocksRequired,
-                waste:          child.waste,
-                weightPerFt:    child.weightPerFt,
-                fabWeight:      child.fabWeight,
-                stockWeight:    child.stockWeight,
-                pricePerFt:     child.pricePerFt,
-                pricePerLb:     child.pricePerLb,
-                totalCost:      child.totalCost,
-                galvanized:     child.galvanized,
-                galvRate:       child.galvRate,
-                width:          child.width,
-                thickness:      child.thickness,
-                parentId:       newMat.id,
-              },
-            });
-
-            // Child material fabrication
-            for (const fab of child.fabrication) {
-              await tx.childMaterialFabrication.create({
+          // Child materials (must be sequential — each child needs its ID
+          // for child fabrication, but children are independent of mat fab)
+          const childrenPromise = (async () => {
+            for (const child of mat.children) {
+              const newChild = await tx.childMaterial.create({
                 data: {
-                  sortOrder:      fab.sortOrder,
-                  operation:      fab.operation,
-                  quantity:       fab.quantity,
-                  unit:           fab.unit,
-                  rate:           fab.rate,
-                  totalCost:      fab.totalCost,
-                  connWeight:     fab.connWeight,
-                  isGalvLine:     fab.isGalvLine,
-                  childMaterialId: newChild.id,
+                  sortOrder: child.sortOrder, category: child.category,
+                  shape: child.shape, description: child.description,
+                  length: child.length, pieces: child.pieces,
+                  stockLength: child.stockLength, stocksRequired: child.stocksRequired,
+                  waste: child.waste, weightPerFt: child.weightPerFt,
+                  fabWeight: child.fabWeight, stockWeight: child.stockWeight,
+                  pricePerFt: child.pricePerFt, pricePerLb: child.pricePerLb,
+                  totalCost: child.totalCost, galvanized: child.galvanized,
+                  galvRate: child.galvRate, width: child.width,
+                  thickness: child.thickness, parentId: newMat.id,
                 },
               });
+
+              // Batch-create child fab ops
+              if (child.fabrication.length > 0) {
+                await tx.childMaterialFabrication.createMany({
+                  data: child.fabrication.map(fab => ({
+                    sortOrder: fab.sortOrder, operation: fab.operation,
+                    quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
+                    totalCost: fab.totalCost, connWeight: fab.connWeight,
+                    isGalvLine: fab.isGalvLine, childMaterialId: newChild.id,
+                  })),
+                });
+              }
             }
-          }
+          })();
+
+          // Material fab and child material creation run in parallel
+          await Promise.all([matFabPromise, childrenPromise]);
         }
-      }
-
-      // Adjustments
-      for (const adj of original.adjustments) {
-        await tx.adjustment.create({
-          data: { description: adj.description, amount: adj.amount, projectId: proj.id },
-        });
-      }
-
-      // Exclusions
-      for (const exc of original.exclusions) {
-        await tx.exclusion.create({
-          data: { text: exc.text, isCustom: exc.isCustom, projectId: proj.id },
-        });
-      }
-
-      // Qualifications
-      for (const qual of original.qualifications) {
-        await tx.qualification.create({
-          data: { text: qual.text, isCustom: qual.isCustom, projectId: proj.id },
-        });
-      }
-
-      // Custom recap columns
-      for (const col of original.customRecapColumns) {
-        await tx.customRecapColumn.create({
-          data: { key: col.key, name: col.name, projectId: proj.id },
-        });
       }
 
       return proj;

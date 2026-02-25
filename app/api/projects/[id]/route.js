@@ -26,7 +26,10 @@ const FULL_PROJECT_INCLUDE = {
       },
       fabrication: { orderBy: { sortOrder: 'asc' } },
       recapCosts: true,
-      snapshots: { orderBy: { sortOrder: 'asc' } }
+      snapshots: {
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, sortOrder: true, caption: true, itemId: true }
+      }
     }
   },
   breakoutGroups: true,
@@ -81,6 +84,49 @@ export async function GET(request, { params }) {
   }
 }
 
+// =============================================================================
+// DIFFERENTIAL UPDATE HELPERS
+// =============================================================================
+// Instead of deleting everything and recreating on every save, we compare the
+// incoming payload against the current DB state and only INSERT / UPDATE / DELETE
+// rows that actually changed. This preserves stable IDs and reduces write volume.
+//
+// "isExistingId" distinguishes DB-assigned autoincrement IDs (small integers)
+// from client-generated temporary IDs (Date.now() + Math.random()).
+// =============================================================================
+
+function isExistingId(id, existingIds) {
+  return existingIds.has(Number(id));
+}
+
+// Diff a flat list: returns { toCreate, toUpdate, toDelete }
+// - incoming items with IDs in existingIds → update
+// - incoming items without IDs in existingIds → create
+// - existingIds not in incoming → delete
+function diffList(incoming, existingIds) {
+  const incomingById = new Map();
+  const toCreate = [];
+  const toUpdate = [];
+
+  for (const item of incoming) {
+    if (item.id != null && isExistingId(item.id, existingIds)) {
+      toUpdate.push(item);
+      incomingById.set(Number(item.id), item);
+    } else {
+      toCreate.push(item);
+    }
+  }
+
+  const toDelete = [];
+  for (const id of existingIds) {
+    if (!incomingById.has(id)) {
+      toDelete.push(id);
+    }
+  }
+
+  return { toCreate, toUpdate, toDelete };
+}
+
 export async function PUT(request, { params }) {
   try {
     const user = await getUser();
@@ -105,8 +151,37 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'You do not have permission to edit this estimate' }, { status: 403 });
     }
 
+    // ── Fetch current state for diffing ──────────────────────────────────────
+    // One query to load the full project tree so we know what exists in the DB.
+    const current = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        items: {
+          include: {
+            materials: {
+              include: {
+                fabrication: true,
+                children: { include: { fabrication: true } }
+              }
+            },
+            fabrication: true,
+            recapCosts: true,
+            snapshots: { select: { id: true } },
+          }
+        },
+        breakoutGroups: true,
+        adjustments: true,
+        exclusions: true,
+        qualifications: true,
+        customRecapColumns: true,
+        customProjectTypes: true,
+        customDeliveryOptions: true,
+      }
+    });
+
     const updatedProject = await prisma.$transaction(async (tx) => {
 
+      // ── 1. Update project-level fields ───────────────────────────────────
       await tx.project.update({
         where: { id: projectId },
         data: {
@@ -139,279 +214,446 @@ export async function PUT(request, { params }) {
         }
       });
 
-      await tx.recapCost.deleteMany({ where: { item: { projectId } } });
-      await tx.itemSnapshot.deleteMany({ where: { item: { projectId } } });
-      await tx.childMaterialFabrication.deleteMany({ where: { childMaterial: { parent: { item: { projectId } } } } });
-      await tx.childMaterial.deleteMany({ where: { parent: { item: { projectId } } } });
-      await tx.materialFabrication.deleteMany({ where: { material: { item: { projectId } } } });
-      await tx.material.deleteMany({ where: { item: { projectId } } });
-      await tx.itemFabrication.deleteMany({ where: { item: { projectId } } });
-      await tx.item.deleteMany({ where: { projectId } });
-      await tx.breakoutGroup.deleteMany({ where: { projectId } });
-      await tx.adjustment.deleteMany({ where: { projectId } });
-      await tx.exclusion.deleteMany({ where: { projectId } });
-      await tx.qualification.deleteMany({ where: { projectId } });
-      await tx.customRecapColumn.deleteMany({ where: { projectId } });
-      await tx.customProjectType.deleteMany({ where: { projectId } });
-      await tx.customDeliveryOption.deleteMany({ where: { projectId } });
-
+      // ── 2. Diff breakout groups ──────────────────────────────────────────
+      // Breakout groups have IDs and are referenced by items via breakoutGroupId.
+      // We build an old→new ID map so new breakout groups get proper references.
+      const existingBgIds = new Set(current.breakoutGroups.map(g => g.id));
+      const incomingBgs = data.breakoutGroups || [];
+      const bgDiff = diffList(incomingBgs, existingBgIds);
       const breakoutGroupMap = {};
 
-      if (data.breakoutGroups && data.breakoutGroups.length > 0) {
-        for (const group of data.breakoutGroups) {
-          const created = await tx.breakoutGroup.create({
-            data: {
-              projectId,
-              name: group.name || '',
-              type: group.type || 'base',
-            }
-          });
-          breakoutGroupMap[group.id] = created.id;
-        }
+      for (const id of bgDiff.toDelete) {
+        await tx.breakoutGroup.delete({ where: { id } });
+      }
+      for (const group of bgDiff.toUpdate) {
+        await tx.breakoutGroup.update({
+          where: { id: Number(group.id) },
+          data: { name: group.name || '', type: group.type || 'base' },
+        });
+        breakoutGroupMap[group.id] = Number(group.id);
+      }
+      for (const group of bgDiff.toCreate) {
+        const created = await tx.breakoutGroup.create({
+          data: { projectId, name: group.name || '', type: group.type || 'base' },
+        });
+        breakoutGroupMap[group.id] = created.id;
       }
 
-      if (data.items && data.items.length > 0) {
-        for (let i = 0; i < data.items.length; i++) {
-          const item = data.items[i];
+      // ── 3. Diff items and all nested entities ────────────────────────────
+      const existingItemIds = new Set(current.items.map(it => it.id));
+      const incomingItems = data.items || [];
+      const itemDiff = diffList(incomingItems, existingItemIds);
 
+      // Build lookup of current items by ID for nested diffing
+      const currentItemMap = new Map(current.items.map(it => [it.id, it]));
+
+      // Delete removed items (cascade handles nested rows via FK indexes)
+      for (const itemId of itemDiff.toDelete) {
+        // Must delete children in dependency order since SQLite onDelete:Cascade
+        // is enforced by Prisma, not the DB engine.
+        const curItem = currentItemMap.get(itemId);
+        if (curItem) {
+          for (const mat of curItem.materials) {
+            for (const child of mat.children) {
+              await tx.childMaterialFabrication.deleteMany({ where: { childMaterialId: child.id } });
+            }
+            await tx.childMaterial.deleteMany({ where: { parentId: mat.id } });
+            await tx.materialFabrication.deleteMany({ where: { materialId: mat.id } });
+          }
+          await tx.material.deleteMany({ where: { itemId } });
+          await tx.itemFabrication.deleteMany({ where: { itemId } });
+          await tx.recapCost.deleteMany({ where: { itemId } });
+          await tx.itemSnapshot.deleteMany({ where: { itemId } });
+        }
+        await tx.item.delete({ where: { id: itemId } });
+      }
+
+      // Process all incoming items in payload order to maintain sortOrder
+      for (let i = 0; i < incomingItems.length; i++) {
+        const item = incomingItems[i];
+        const isNew = !isExistingId(item.id, existingItemIds);
+        const resolvedBgId = item.breakoutGroupId
+          ? (breakoutGroupMap[item.breakoutGroupId] || null)
+          : null;
+
+        const itemData = {
+          itemNumber: item.itemNumber || '001',
+          itemName: item.itemName || 'New Item',
+          drawingRef: item.drawingRef || '',
+          sortOrder: i,
+          materialMarkup: item.materialMarkup || 0,
+          fabMarkup: item.fabMarkup || 0,
+          breakoutGroupId: resolvedBgId,
+        };
+
+        let activeItemId;
+
+        if (isNew) {
           const createdItem = await tx.item.create({
-            data: {
-              projectId,
-              itemNumber: item.itemNumber || '001',
-              itemName: item.itemName || 'New Item',
-              drawingRef: item.drawingRef || '',
-              sortOrder: i,
-              materialMarkup: item.materialMarkup || 0,
-              fabMarkup: item.fabMarkup || 0,
-              breakoutGroupId: item.breakoutGroupId
-                ? (breakoutGroupMap[item.breakoutGroupId] || null)
-                : null,
-            }
+            data: { ...itemData, projectId },
           });
+          activeItemId = createdItem.id;
+        } else {
+          activeItemId = Number(item.id);
+          await tx.item.update({ where: { id: activeItemId }, data: itemData });
+        }
 
-          if (item.materials && item.materials.length > 0) {
-            for (let mi = 0; mi < item.materials.length; mi++) {
-              const mat = item.materials[mi];
+        // ── 3a. Diff materials within this item ────────────────────────────
+        const curItem = currentItemMap.get(activeItemId);
+        const existingMatIds = new Set((curItem?.materials || []).map(m => m.id));
+        const curMatMap = new Map((curItem?.materials || []).map(m => [m.id, m]));
+        const incomingMats = item.materials || [];
+        const matDiff = diffList(incomingMats, existingMatIds);
 
-              const createdMat = await tx.material.create({
-                data: {
-                  itemId: createdItem.id,
-                  sortOrder: mi,
-                  category: mat.category || '',
-                  shape: mat.shape || '',
-                  description: mat.description || '',
-                  length: mat.length || 0,
-                  pieces: mat.pieces || 0,
-                  stockLength: mat.stockLength || 0,
-                  stocksRequired: mat.stocksRequired || 0,
-                  waste: mat.waste || 0,
-                  weightPerFt: mat.weightPerFt || 0,
-                  fabWeight: mat.fabWeight || 0,
-                  stockWeight: mat.stockWeight || 0,
-                  pricePerFt: mat.pricePerFt || 0,
-                  pricePerLb: mat.pricePerLb || 0,
-                  totalCost: mat.totalCost || 0,
-                  galvanized: mat.galvanized || false,
-                  galvRate: mat.galvRate || 0,
-                  width: mat.width || null,
-                  thickness: mat.thickness || null,
-                }
+        // Delete removed materials (and their nested children/fab)
+        for (const matId of matDiff.toDelete) {
+          const curMat = curMatMap.get(matId);
+          if (curMat) {
+            for (const child of curMat.children) {
+              await tx.childMaterialFabrication.deleteMany({ where: { childMaterialId: child.id } });
+            }
+            await tx.childMaterial.deleteMany({ where: { parentId: matId } });
+            await tx.materialFabrication.deleteMany({ where: { materialId: matId } });
+          }
+          await tx.material.delete({ where: { id: matId } });
+        }
+
+        for (let mi = 0; mi < incomingMats.length; mi++) {
+          const mat = incomingMats[mi];
+          const matIsNew = !isExistingId(mat.id, existingMatIds);
+
+          const matData = {
+            sortOrder: mi,
+            category: mat.category || '',
+            shape: mat.shape || '',
+            description: mat.description || '',
+            length: mat.length || 0,
+            pieces: mat.pieces || 0,
+            stockLength: mat.stockLength || 0,
+            stocksRequired: mat.stocksRequired || 0,
+            waste: mat.waste || 0,
+            weightPerFt: mat.weightPerFt || 0,
+            fabWeight: mat.fabWeight || 0,
+            stockWeight: mat.stockWeight || 0,
+            pricePerFt: mat.pricePerFt || 0,
+            pricePerLb: mat.pricePerLb || 0,
+            totalCost: mat.totalCost || 0,
+            galvanized: mat.galvanized || false,
+            galvRate: mat.galvRate || 0,
+            width: mat.width || null,
+            thickness: mat.thickness || null,
+          };
+
+          let activeMatId;
+
+          if (matIsNew) {
+            const createdMat = await tx.material.create({
+              data: { ...matData, itemId: activeItemId },
+            });
+            activeMatId = createdMat.id;
+          } else {
+            activeMatId = Number(mat.id);
+            await tx.material.update({ where: { id: activeMatId }, data: matData });
+          }
+
+          // ── 3b. Diff material fabrication ──────────────────────────────
+          const curMat = curMatMap.get(activeMatId);
+          const existingMatFabIds = new Set((curMat?.fabrication || []).map(f => f.id));
+          const incomingMatFabs = mat.fabrication || [];
+          const matFabDiff = diffList(incomingMatFabs, existingMatFabIds);
+
+          if (matFabDiff.toDelete.length > 0) {
+            await tx.materialFabrication.deleteMany({
+              where: { id: { in: matFabDiff.toDelete } },
+            });
+          }
+          for (let fi = 0; fi < incomingMatFabs.length; fi++) {
+            const fab = incomingMatFabs[fi];
+            const fabIsNew = !isExistingId(fab.id, existingMatFabIds);
+            const fabData = {
+              sortOrder: fi,
+              operation: fab.operation || '',
+              quantity: fab.quantity || 0,
+              unit: fab.unit || 'ea',
+              rate: fab.unitPrice || fab.rate || 0,
+              totalCost: fab.totalCost || 0,
+              connWeight: fab.connWeight || 0,
+              isGalvLine: fab.isGalvLine || false,
+            };
+            if (fabIsNew) {
+              await tx.materialFabrication.create({
+                data: { ...fabData, materialId: activeMatId },
               });
+            } else {
+              await tx.materialFabrication.update({
+                where: { id: Number(fab.id) }, data: fabData,
+              });
+            }
+          }
 
-              if (mat.fabrication && mat.fabrication.length > 0) {
-                for (let fi = 0; fi < mat.fabrication.length; fi++) {
-                  const fab = mat.fabrication[fi];
-                  await tx.materialFabrication.create({
-                    data: {
-                      materialId: createdMat.id,
-                      sortOrder: fi,
-                      operation: fab.operation || '',
-                      quantity: fab.quantity || 0,
-                      unit: fab.unit || 'ea',
-                      rate: fab.unitPrice || fab.rate || 0,
-                      totalCost: fab.totalCost || 0,
-                      connWeight: fab.connWeight || 0,
-                      isGalvLine: fab.isGalvLine || false,
-                    }
-                  });
-                }
+          // ── 3c. Diff child materials ───────────────────────────────────
+          const existingChildIds = new Set((curMat?.children || []).map(c => c.id));
+          const curChildMap = new Map((curMat?.children || []).map(c => [c.id, c]));
+          const incomingChildren = mat.children || [];
+          const childDiff = diffList(incomingChildren, existingChildIds);
+
+          // Delete removed children (and their fab ops)
+          for (const childId of childDiff.toDelete) {
+            await tx.childMaterialFabrication.deleteMany({ where: { childMaterialId: childId } });
+            await tx.childMaterial.delete({ where: { id: childId } });
+          }
+
+          for (let ci = 0; ci < incomingChildren.length; ci++) {
+            const child = incomingChildren[ci];
+            const childIsNew = !isExistingId(child.id, existingChildIds);
+
+            const childData = {
+              sortOrder: ci,
+              category: child.category || '',
+              shape: child.shape || '',
+              description: child.description || '',
+              length: child.length || 0,
+              pieces: child.pieces || 0,
+              stockLength: child.stockLength || 0,
+              stocksRequired: child.stocksRequired || 0,
+              waste: child.waste || 0,
+              weightPerFt: child.weightPerFt || 0,
+              fabWeight: child.fabWeight || 0,
+              stockWeight: child.stockWeight || 0,
+              pricePerFt: child.pricePerFt || 0,
+              pricePerLb: child.pricePerLb || 0,
+              totalCost: child.totalCost || 0,
+              galvanized: child.galvanized || false,
+              galvRate: child.galvRate || 0,
+              width: child.width || null,
+              thickness: child.thickness || null,
+            };
+
+            let activeChildId;
+
+            if (childIsNew) {
+              const createdChild = await tx.childMaterial.create({
+                data: { ...childData, parentId: activeMatId },
+              });
+              activeChildId = createdChild.id;
+            } else {
+              activeChildId = Number(child.id);
+              await tx.childMaterial.update({ where: { id: activeChildId }, data: childData });
+            }
+
+            // ── 3d. Diff child material fabrication ──────────────────────
+            const curChild = curChildMap.get(activeChildId);
+            const existingChildFabIds = new Set((curChild?.fabrication || []).map(f => f.id));
+            const incomingChildFabs = child.fabrication || [];
+            const childFabDiff = diffList(incomingChildFabs, existingChildFabIds);
+
+            if (childFabDiff.toDelete.length > 0) {
+              await tx.childMaterialFabrication.deleteMany({
+                where: { id: { in: childFabDiff.toDelete } },
+              });
+            }
+            for (let cfi = 0; cfi < incomingChildFabs.length; cfi++) {
+              const cfab = incomingChildFabs[cfi];
+              const cfabIsNew = !isExistingId(cfab.id, existingChildFabIds);
+              const cfabData = {
+                sortOrder: cfi,
+                operation: cfab.operation || '',
+                quantity: cfab.quantity || 0,
+                unit: cfab.unit || 'ea',
+                rate: cfab.unitPrice || cfab.rate || 0,
+                totalCost: cfab.totalCost || 0,
+                connWeight: cfab.connWeight || 0,
+                isGalvLine: cfab.isGalvLine || false,
+              };
+              if (cfabIsNew) {
+                await tx.childMaterialFabrication.create({
+                  data: { ...cfabData, childMaterialId: activeChildId },
+                });
+              } else {
+                await tx.childMaterialFabrication.update({
+                  where: { id: Number(cfab.id) }, data: cfabData,
+                });
               }
-
-              if (mat.children && mat.children.length > 0) {
-                for (let ci = 0; ci < mat.children.length; ci++) {
-                  const child = mat.children[ci];
-
-                  const createdChild = await tx.childMaterial.create({
-                    data: {
-                      parentId: createdMat.id,
-                      sortOrder: ci,
-                      category: child.category || '',
-                      shape: child.shape || '',
-                      description: child.description || '',
-                      length: child.length || 0,
-                      pieces: child.pieces || 0,
-                      stockLength: child.stockLength || 0,
-                      stocksRequired: child.stocksRequired || 0,
-                      waste: child.waste || 0,
-                      weightPerFt: child.weightPerFt || 0,
-                      fabWeight: child.fabWeight || 0,
-                      stockWeight: child.stockWeight || 0,
-                      pricePerFt: child.pricePerFt || 0,
-                      pricePerLb: child.pricePerLb || 0,
-                      totalCost: child.totalCost || 0,
-                      galvanized: child.galvanized || false,
-                      galvRate: child.galvRate || 0,
-                      width: child.width || null,
-                      thickness: child.thickness || null,
-                    }
-                  });
-
-                  if (child.fabrication && child.fabrication.length > 0) {
-                    for (let cfi = 0; cfi < child.fabrication.length; cfi++) {
-                      const cfab = child.fabrication[cfi];
-                      await tx.childMaterialFabrication.create({
-                        data: {
-                          childMaterialId: createdChild.id,
-                          sortOrder: cfi,
-                          operation: cfab.operation || '',
-                          quantity: cfab.quantity || 0,
-                          unit: cfab.unit || 'ea',
-                          rate: cfab.unitPrice || cfab.rate || 0,
-                          totalCost: cfab.totalCost || 0,
-                          connWeight: cfab.connWeight || 0,
-                          isGalvLine: cfab.isGalvLine || false,
-                        }
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          if (item.fabrication && item.fabrication.length > 0) {
-            for (let ifi = 0; ifi < item.fabrication.length; ifi++) {
-              const ifab = item.fabrication[ifi];
-              await tx.itemFabrication.create({
-                data: {
-                  itemId: createdItem.id,
-                  sortOrder: ifi,
-                  operation: ifab.operation || '',
-                  quantity: ifab.quantity || 0,
-                  unit: ifab.unit || 'ea',
-                  rate: ifab.unitPrice || ifab.rate || 0,
-                  totalCost: ifab.totalCost || 0,
-                }
-              });
-            }
-          }
-
-          if (item.recapCosts) {
-            const recapEntries = typeof item.recapCosts === 'object' && !Array.isArray(item.recapCosts)
-              ? Object.entries(item.recapCosts)
-              : [];
-
-            for (const [costType, costData] of recapEntries) {
-              await tx.recapCost.create({
-                data: {
-                  itemId: createdItem.id,
-                  costType,
-                  cost: costData.cost || 0,
-                  markup: costData.markup || 0,
-                  total: costData.total || 0,
-                  hours: costData.hours || 0,
-                  rate: costData.rate || 0,
-                }
-              });
-            }
-          }
-
-          if (item.snapshots && item.snapshots.length > 0) {
-            for (let si = 0; si < item.snapshots.length; si++) {
-              const snap = item.snapshots[si];
-              await tx.itemSnapshot.create({
-                data: {
-                  itemId: createdItem.id,
-                  sortOrder: si,
-                  imageData: snap.imageData || '',
-                  caption: snap.caption || '',
-                }
-              });
             }
           }
         }
-      }
 
-      if (data.adjustments && data.adjustments.length > 0) {
-        for (const adj of data.adjustments) {
-          await tx.adjustment.create({
-            data: {
-              projectId,
-              description: adj.description || '',
-              amount: parseFloat(adj.amount) || 0,
+        // ── 3e. Diff item-level fabrication ──────────────────────────────
+        const existingItemFabIds = new Set((curItem?.fabrication || []).map(f => f.id));
+        const incomingItemFabs = item.fabrication || [];
+        const itemFabDiff = diffList(incomingItemFabs, existingItemFabIds);
+
+        if (itemFabDiff.toDelete.length > 0) {
+          await tx.itemFabrication.deleteMany({
+            where: { id: { in: itemFabDiff.toDelete } },
+          });
+        }
+        for (let ifi = 0; ifi < incomingItemFabs.length; ifi++) {
+          const ifab = incomingItemFabs[ifi];
+          const ifabIsNew = !isExistingId(ifab.id, existingItemFabIds);
+          const ifabData = {
+            sortOrder: ifi,
+            operation: ifab.operation || '',
+            quantity: ifab.quantity || 0,
+            unit: ifab.unit || 'ea',
+            rate: ifab.unitPrice || ifab.rate || 0,
+            totalCost: ifab.totalCost || 0,
+          };
+          if (ifabIsNew) {
+            await tx.itemFabrication.create({
+              data: { ...ifabData, itemId: activeItemId },
+            });
+          } else {
+            await tx.itemFabrication.update({
+              where: { id: Number(ifab.id) }, data: ifabData,
+            });
+          }
+        }
+
+        // ── 3f. Diff recap costs (keyed by costType, not by ID) ──────────
+        // RecapCosts use @@unique([itemId, costType]) so we upsert by composite key.
+        const existingRecapMap = new Map(
+          (curItem?.recapCosts || []).map(rc => [rc.costType, rc])
+        );
+        const incomingRecapEntries = typeof item.recapCosts === 'object' && !Array.isArray(item.recapCosts)
+          ? Object.entries(item.recapCosts)
+          : [];
+        const incomingCostTypes = new Set(incomingRecapEntries.map(([ct]) => ct));
+
+        // Delete recap costs not in the incoming payload
+        const recapToDelete = [...existingRecapMap.keys()].filter(ct => !incomingCostTypes.has(ct));
+        if (recapToDelete.length > 0) {
+          await tx.recapCost.deleteMany({
+            where: { itemId: activeItemId, costType: { in: recapToDelete } },
+          });
+        }
+
+        for (const [costType, costData] of incomingRecapEntries) {
+          const rcData = {
+            cost: costData.cost || 0,
+            markup: costData.markup || 0,
+            total: costData.total || 0,
+            hours: costData.hours || 0,
+            rate: costData.rate || 0,
+          };
+          if (existingRecapMap.has(costType)) {
+            await tx.recapCost.update({
+              where: { itemId_costType: { itemId: activeItemId, costType } },
+              data: rcData,
+            });
+          } else {
+            await tx.recapCost.create({
+              data: { ...rcData, itemId: activeItemId, costType },
+            });
+          }
+        }
+
+        // ── 3g. Diff snapshots ───────────────────────────────────────────
+        // Snapshots may not include imageData in the payload (excluded from
+        // default include per Fix 2). Only update caption/sortOrder for
+        // existing snapshots; only set imageData on new snapshots.
+        const existingSnapIds = new Set((curItem?.snapshots || []).map(s => s.id));
+        const incomingSnaps = item.snapshots || [];
+        const snapDiff = diffList(incomingSnaps, existingSnapIds);
+
+        if (snapDiff.toDelete.length > 0) {
+          await tx.itemSnapshot.deleteMany({
+            where: { id: { in: snapDiff.toDelete } },
+          });
+        }
+        for (let si = 0; si < incomingSnaps.length; si++) {
+          const snap = incomingSnaps[si];
+          const snapIsNew = !isExistingId(snap.id, existingSnapIds);
+          if (snapIsNew) {
+            await tx.itemSnapshot.create({
+              data: {
+                itemId: activeItemId,
+                sortOrder: si,
+                imageData: snap.imageData || '',
+                caption: snap.caption || '',
+              },
+            });
+          } else {
+            // Only update metadata; preserve existing imageData in the DB
+            const snapUpdate = { sortOrder: si, caption: snap.caption || '' };
+            // If the client sends imageData (e.g. replacement), apply it
+            if (snap.imageData) {
+              snapUpdate.imageData = snap.imageData;
             }
-          });
+            await tx.itemSnapshot.update({
+              where: { id: Number(snap.id) }, data: snapUpdate,
+            });
+          }
         }
       }
 
-      if (data.selectedExclusions && data.selectedExclusions.length > 0) {
-        for (const exc of data.selectedExclusions) {
-          await tx.exclusion.create({
-            data: { projectId, text: exc, isCustom: false }
-          });
-        }
+      // ── 4. Diff adjustments ──────────────────────────────────────────────
+      const existingAdjIds = new Set(current.adjustments.map(a => a.id));
+      const incomingAdjs = data.adjustments || [];
+      const adjDiff = diffList(incomingAdjs, existingAdjIds);
+
+      if (adjDiff.toDelete.length > 0) {
+        await tx.adjustment.deleteMany({ where: { id: { in: adjDiff.toDelete } } });
       }
-      if (data.customExclusions && data.customExclusions.length > 0) {
-        for (const exc of data.customExclusions) {
-          await tx.exclusion.create({
-            data: { projectId, text: exc, isCustom: true }
-          });
-        }
+      for (const adj of adjDiff.toUpdate) {
+        await tx.adjustment.update({
+          where: { id: Number(adj.id) },
+          data: { description: adj.description || '', amount: parseFloat(adj.amount) || 0 },
+        });
+      }
+      for (const adj of adjDiff.toCreate) {
+        await tx.adjustment.create({
+          data: { projectId, description: adj.description || '', amount: parseFloat(adj.amount) || 0 },
+        });
       }
 
-      if (data.selectedQualifications && data.selectedQualifications.length > 0) {
-        for (const qual of data.selectedQualifications) {
-          await tx.qualification.create({
-            data: { projectId, text: qual, isCustom: false }
-          });
-        }
-      }
-      if (data.customQualifications && data.customQualifications.length > 0) {
-        for (const qual of data.customQualifications) {
-          await tx.qualification.create({
-            data: { projectId, text: qual, isCustom: true }
-          });
-        }
+      // ── 5. Replace text-only collections (no IDs in payload) ─────────────
+      // Exclusions, qualifications, custom project types, custom delivery
+      // options, and custom recap columns are sent as plain text arrays
+      // without stable IDs, so we delete-and-recreate them. These are small
+      // flat sets with no nested children — the cost is negligible.
+
+      await tx.exclusion.deleteMany({ where: { projectId } });
+      const allExclusions = [
+        ...(data.selectedExclusions || []).map(text => ({ projectId, text, isCustom: false })),
+        ...(data.customExclusions || []).map(text => ({ projectId, text, isCustom: true })),
+      ];
+      if (allExclusions.length > 0) {
+        await tx.exclusion.createMany({ data: allExclusions });
       }
 
-      if (data.customProjectTypes && data.customProjectTypes.length > 0) {
-        for (const t of data.customProjectTypes) {
-          await tx.customProjectType.create({
-            data: { projectId, text: t }
-          });
-        }
+      await tx.qualification.deleteMany({ where: { projectId } });
+      const allQualifications = [
+        ...(data.selectedQualifications || []).map(text => ({ projectId, text, isCustom: false })),
+        ...(data.customQualifications || []).map(text => ({ projectId, text, isCustom: true })),
+      ];
+      if (allQualifications.length > 0) {
+        await tx.qualification.createMany({ data: allQualifications });
       }
 
-      if (data.customDeliveryOptions && data.customDeliveryOptions.length > 0) {
-        for (const opt of data.customDeliveryOptions) {
-          await tx.customDeliveryOption.create({
-            data: { projectId, text: opt.text, isSelected: opt.isSelected || false }
-          });
-        }
+      await tx.customProjectType.deleteMany({ where: { projectId } });
+      const cptData = (data.customProjectTypes || []).map(text => ({ projectId, text }));
+      if (cptData.length > 0) {
+        await tx.customProjectType.createMany({ data: cptData });
       }
 
-      if (data.customRecapColumns && data.customRecapColumns.length > 0) {
-        for (const col of data.customRecapColumns) {
-          await tx.customRecapColumn.create({
-            data: {
-              projectId,
-              key: col.key,
-              name: col.name,
-            }
-          });
-        }
+      await tx.customDeliveryOption.deleteMany({ where: { projectId } });
+      const cdoData = (data.customDeliveryOptions || []).map(opt => ({
+        projectId, text: opt.text, isSelected: opt.isSelected || false,
+      }));
+      if (cdoData.length > 0) {
+        await tx.customDeliveryOption.createMany({ data: cdoData });
       }
 
+      await tx.customRecapColumn.deleteMany({ where: { projectId } });
+      const crcData = (data.customRecapColumns || []).map(col => ({
+        projectId, key: col.key, name: col.name,
+      }));
+      if (crcData.length > 0) {
+        await tx.customRecapColumn.createMany({ data: crcData });
+      }
+
+      // ── 6. Return the full updated project tree ──────────────────────────
       return await tx.project.findUnique({
         where: { id: projectId },
         include: FULL_PROJECT_INCLUDE
