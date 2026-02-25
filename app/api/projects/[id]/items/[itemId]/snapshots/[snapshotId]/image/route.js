@@ -1,7 +1,7 @@
-import prisma from '../../../../../../../lib/db';
+import prisma from '../../../../../../../../../lib/db';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../../../lib/auth';
+import { authOptions } from '../../../../../../../../../lib/auth';
 
 // GET /api/projects/[id]/items/[itemId]/snapshots/[snapshotId]/image
 // Returns the base64 imageData for a single snapshot.
