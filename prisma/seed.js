@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
+  // Dummy credentials for local development only.
+  // Replace with real accounts before deploying to production.
   const users = [
     {
       email: 'tdawson@bergerinc.com',
@@ -44,9 +46,6 @@ async function main() {
   }
 
   console.log('\nSeed complete!');
-  console.log('  tdawson@bergerinc.com  /  BergerIron2024!');
-  console.log('  estimator@bergerinc.com  /  BergerIron2024!');
-  console.log('  test@berger.com  /  test123');
 }
 
 main()

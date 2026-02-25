@@ -54,6 +54,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Missing required fields: email, firstName, lastName, password, role' }, { status: 400 });
     }
 
+    if (typeof data.password !== 'string' || data.password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
+    }
+
     const validRoles = ['ADMIN', 'ESTIMATOR', 'PM', 'FIELD_SHOP'];
     if (!validRoles.includes(data.role)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });

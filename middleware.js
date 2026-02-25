@@ -15,5 +15,7 @@ export const config = {
     '/api/projects/:path*',
     '/api/admin/:path*',
     '/api/dashboard/:path*',
+    '/api/notifications/:path*',
+    '/api/import-csv/:path*',
   ],
 };

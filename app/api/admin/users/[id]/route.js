@@ -51,6 +51,9 @@ export async function PATCH(request, { params }) {
     }
     if (data.active !== undefined) updateData.active = data.active;
     if (data.password) {
+      if (typeof data.password !== 'string' || data.password.length < 8) {
+        return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
+      }
       updateData.password = await bcrypt.hash(data.password, 12);
     }
 
