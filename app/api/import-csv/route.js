@@ -140,6 +140,7 @@ function parseTakeoffCSV(text) {
       itemDescription: col(values, 'Item_Description', 'Item Description'),
       memberMark:     col(values, 'Member_Mark', 'Member Mark'),
       partLabel:      col(values, 'Part_Label', 'Part Label'),
+      pageLabel:      col(values, 'Page_Label', 'Page Label'),
       drawingRef:     col(values, 'Drawing_Ref', 'Drawing Ref'),
       shapeSize:      normalizeShapeSize(col(values, 'Shape_Size', 'Shape Size', '(Non-Flat) Mat Size', 'Mat Size')),
       quantity:       qty,
@@ -241,6 +242,69 @@ function getMarkBase(mark) {
   return dotIdx === -1 ? mark : mark.slice(0, dotIdx);
 }
 
+// ── CONSOLIDATION ────────────────────────────────────────────────────────────
+
+// Build a canonical fingerprint from a member's data so that identical pieces
+// (same size, length, description, galvanized status, and fab ops) can be merged
+// regardless of their member marks.
+function memberFingerprint(member) {
+  const fabKey = member.fabrication
+    .map(f => `${f.operation}:${f.quantity}:${f.unit}`)
+    .sort()
+    .join('|');
+  return [
+    member.size,
+    member.length.toFixed(4),
+    member.description,
+    member.galvanized ? 'G' : '',
+    fabKey,
+  ].join('||');
+}
+
+// Consolidate identical members within a list, summing their pieces.
+// Recursively consolidates children within each consolidated parent.
+function consolidateMembers(members) {
+  const groups = new Map();   // fingerprint -> consolidated member
+  const order = [];           // preserve first-seen order
+
+  for (const member of members) {
+    const fp = memberFingerprint(member);
+    if (groups.has(fp)) {
+      const existing = groups.get(fp);
+      existing.pieces += member.pieces;
+      existing.consolidatedMarks.push(member.mark);
+      // Accumulate fab op quantities from the merged member
+      for (let i = 0; i < existing.fabrication.length; i++) {
+        if (member.fabrication[i]) {
+          existing.fabrication[i] = {
+            ...existing.fabrication[i],
+            quantity: existing.fabrication[i].quantity + member.fabrication[i].quantity,
+          };
+        }
+      }
+      // Pool children from merged parents
+      existing.children.push(...(member.children || []));
+    } else {
+      const consolidated = {
+        ...member,
+        consolidatedMarks: [member.mark],
+        children: [...(member.children || [])],
+      };
+      groups.set(fp, consolidated);
+      order.push(fp);
+    }
+  }
+
+  // Recursively consolidate children within each consolidated parent
+  return order.map(fp => {
+    const member = groups.get(fp);
+    if (member.children.length > 0) {
+      member.children = consolidateMembers(member.children);
+    }
+    return member;
+  });
+}
+
 // ── AGGREGATION ──────────────────────────────────────────────────────────────
 
 // Merge fab ops arrays: accumulate quantities for drill/connection ops,
@@ -287,10 +351,14 @@ function aggregateTakeoffData(rawRows) {
 
     // Update item name / drawing ref from first non-blank occurrence
     if (!item.itemName && row.itemDescription) item.itemName = row.itemDescription;
-    if (row.drawingRef && !item.drawingRef.split(',').map(s => s.trim()).includes(row.drawingRef)) {
-      item.drawingRef = item.drawingRef
-        ? item.drawingRef + ', ' + row.drawingRef
-        : row.drawingRef;
+    // Merge both Page_Label and Drawing_Ref into the item drawing ref (deduplicated)
+    const refValues = [row.pageLabel, row.drawingRef].filter(Boolean);
+    for (const ref of refValues) {
+      if (!item.drawingRef.split(',').map(s => s.trim()).includes(ref)) {
+        item.drawingRef = item.drawingRef
+          ? item.drawingRef + ', ' + ref
+          : ref;
+      }
     }
 
     // Track coating for aggregation
@@ -312,7 +380,7 @@ function aggregateTakeoffData(rawRows) {
         description: row.partLabel || '',
         size: row.shapeSize || '',
         length: row.lengthFt,
-        pieces: row.quantity,
+        pieces: 0,
         galvanized: row.galvanized,
         fabrication: [],
         children: [],
@@ -320,7 +388,7 @@ function aggregateTakeoffData(rawRows) {
     }
 
     const member = item.membersMap.get(mark);
-    // Accumulate pieces if the same mark appears multiple times
+    // Accumulate pieces (works for first row and subsequent rows with same mark)
     member.pieces += row.quantity;
     // Merge fab ops
     member.fabrication = mergeFabOps(member.fabrication, rowFabOps);
@@ -380,10 +448,21 @@ function aggregateTakeoffData(rawRows) {
       }
     }
 
-    // Count stats
-    const memberCount = allMembers.length;
+    // Consolidate identical members (same size, length, description, fab ops)
+    // into single rows with summed quantities to reduce estimate line count
+    const consolidatedParents = consolidateMembers(parents);
+
+    // Count stats from consolidated result
+    let memberCount = 0;
     let fabOpCount = 0;
-    for (const m of allMembers) fabOpCount += m.fabrication.length;
+    const countMembers = (members) => {
+      for (const m of members) {
+        memberCount++;
+        fabOpCount += m.fabrication.length;
+        if (m.children?.length) countMembers(m.children);
+      }
+    };
+    countMembers(consolidatedParents);
     totalMembers += memberCount;
     totalFabOps += fabOpCount;
 
@@ -391,7 +470,7 @@ function aggregateTakeoffData(rawRows) {
       itemNumber:         item.itemNumber,
       itemName:           item.itemName,
       drawingRef:         item.drawingRef,
-      members:            parents,
+      members:            consolidatedParents,
       coatingUniform,
       coatingMixed,
       coatingMixedValues,

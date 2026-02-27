@@ -545,6 +545,11 @@ const steelDatabase = {
   'HSS8x4x3/16': { weight: 12.28, category: 'HSS Rect' },
   'HSS8x3x3/8': { weight: 20.99, category: 'HSS Rect' },
   'HSS8x3x1/4': { weight: 14.66, category: 'HSS Rect' },
+  'HSS8x2x3/8': { weight: 22.37, category: 'HSS Rect' },
+  'HSS8x2x5/16': { weight: 19.08, category: 'HSS Rect' },
+  'HSS8x2x1/4': { weight: 15.62, category: 'HSS Rect' },
+  'HSS8x2x3/16': { weight: 11.97, category: 'HSS Rect' },
+  'HSS8x2x1/8': { weight: 8.16, category: 'HSS Rect' },
   'HSS6x4x3/8': { weight: 18.93, category: 'HSS Rect' },
   'HSS6x4x1/4': { weight: 13.29, category: 'HSS Rect' },
   'HSS6x4x3/16': { weight: 10.24, category: 'HSS Rect' },
@@ -1305,8 +1310,25 @@ const translateSizeToAISC = (revuSize) => {
     if (steelDatabase[hssSize]) {
       return { size: hssSize, category: steelDatabase[hssSize].category, matched: true };
     }
+
+    // Pattern 3b: Handle gauge notation  "HSS8x2x11ga" -> "HSS8x2x1/8"
+    const GAUGE_TO_FRACTION = {
+      '3':  '1/4',
+      '7':  '3/16',
+      '11': '1/8',
+    };
+    const gaugeMatch = hssSize.match(/^(HSS[\dx]+x)(\d+)\s*ga$/i);
+    if (gaugeMatch) {
+      const fraction = GAUGE_TO_FRACTION[gaugeMatch[2]];
+      if (fraction) {
+        const converted = gaugeMatch[1] + fraction;
+        if (steelDatabase[converted]) {
+          return { size: converted, category: steelDatabase[converted].category, matched: true };
+        }
+      }
+    }
   }
-  
+
   // Pattern 4: Handle "L 4 x 4 x 1/4" -> "L4x4x1/4"
   const angleMatch = normalized.match(/^(L)\s*(.+)/i);
   if (angleMatch) {
@@ -2197,6 +2219,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               id: mat.id,
               category: mat.category || '',
               shape: mat.shape || '',
+              size: mat.shape || '',
               description: mat.description || '',
               length: mat.length || 0,
               pieces: mat.pieces || 0,
@@ -2231,6 +2254,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 id: child.id,
                 category: child.category || '',
                 shape: child.shape || '',
+                size: child.shape || '',
                 description: child.description || '',
                 length: child.length || 0,
                 pieces: child.pieces || 0,

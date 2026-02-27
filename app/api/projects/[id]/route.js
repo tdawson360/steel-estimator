@@ -326,7 +326,7 @@ export async function PUT(request, { params }) {
           const matData = {
             sortOrder: mi,
             category: mat.category || '',
-            shape: mat.shape || '',
+            shape: mat.size || mat.shape || '',
             description: mat.description || '',
             length: mat.length || 0,
             pieces: mat.pieces || 0,
@@ -411,7 +411,7 @@ export async function PUT(request, { params }) {
             const childData = {
               sortOrder: ci,
               category: child.category || '',
-              shape: child.shape || '',
+              shape: child.size || child.shape || '',
               description: child.description || '',
               length: child.length || 0,
               pieces: child.pieces || 0,
