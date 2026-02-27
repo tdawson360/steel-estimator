@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
-import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator } from 'lucide-react';
+import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical } from 'lucide-react';
 import CustomerSearchInput from './CustomerSearchInput';
 
 // Company Logo (Base64 encoded)
@@ -2307,7 +2307,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             })),
           };
         });
-        setItems(loadedItems);
+        setItems(loadedItems.map(item => ({ ...item, materials: resequenceMaterials(item.materials) })));
         const expanded = {};
         loadedItems.forEach(item => { expanded[item.id] = true; });
         setExpandedItems(expanded);
@@ -2944,8 +2944,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     
     // Sort items by item number
     updatedItems.sort((a, b) => a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true }));
-    
-    setItems(updatedItems);
+
+    setItems(updatedItems.map(item => ({ ...item, materials: resequenceMaterials(item.materials) })));
     setExpandedItems(newExpandedItems);
     setShowImportModal(false);
     setImportPreview(null);
@@ -3244,6 +3244,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     return materials.filter(m => !m.parentMaterialId);
   };
 
+  // Re-sequence materials: assigns A,B,C to parents and A1,A2,B1,B2 to children
+  // Also rebuilds array in normalized order (parent → children → parent → children)
+  const resequenceMaterials = (materials) => {
+    const parents = materials.filter(m => !m.parentMaterialId);
+    const result = [];
+    parents.forEach((parent, idx) => {
+      const letter = String.fromCharCode(65 + idx); // A=65
+      result.push({ ...parent, sequence: letter });
+      const children = materials.filter(m => m.parentMaterialId === parent.id);
+      children.forEach((child, childIdx) => {
+        result.push({ ...child, sequence: `${letter}${childIdx + 1}` });
+      });
+    });
+    return result;
+  };
+
   const addMaterial = (itemId) => {
     setItems(items.map(item => {
       if (item.id !== itemId) return item;
@@ -3467,14 +3483,101 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           .filter(m => m.parentMaterialId === materialId)
           .map(m => m.id);
         idsToDelete.push(...childIds);
-        
-        return { 
-          ...item, 
-          materials: item.materials.filter(m => !idsToDelete.includes(m.id))
-        };
+
+        const remaining = item.materials.filter(m => !idsToDelete.includes(m.id));
+        return { ...item, materials: resequenceMaterials(remaining) };
       }
       return item;
     }));
+  };
+
+  // Drag-and-drop reordering for materials
+  const dragRef = useRef({ sourceId: null, sourceItemId: null, isParent: false });
+  const [dropTarget, setDropTarget] = useState(null); // { materialId, position: 'before'|'after' }
+
+  const handleDragStart = (e, itemId, materialId, isParent) => {
+    dragRef.current = { sourceId: materialId, sourceItemId: itemId, isParent };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+  };
+
+  const handleDragOver = (e, itemId, targetId, targetIsParent, targetParentId) => {
+    e.preventDefault();
+    const { sourceId, sourceItemId, isParent: sourceIsParent } = dragRef.current;
+    if (!sourceId || sourceItemId !== itemId) return;
+    // Parents can only drag among parents; children only within same parent
+    if (sourceIsParent !== targetIsParent) return;
+    if (!sourceIsParent) {
+      // Children must share the same parent
+      const item = items.find(i => i.id === itemId);
+      const sourceMat = item?.materials.find(m => m.id === sourceId);
+      if (sourceMat?.parentMaterialId !== targetParentId) return;
+    }
+    if (sourceId === targetId) { setDropTarget(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const position = e.clientY < midY ? 'before' : 'after';
+    setDropTarget({ materialId: targetId, position });
+  };
+
+  const handleDrop = (e, itemId) => {
+    e.preventDefault();
+    const { sourceId, isParent: sourceIsParent } = dragRef.current;
+    if (!sourceId || !dropTarget) { setDropTarget(null); return; }
+
+    setItems(items.map(item => {
+      if (item.id !== itemId) return item;
+      let mats = [...item.materials];
+      if (sourceIsParent) {
+        mats = reorderParent(mats, sourceId, dropTarget.materialId, dropTarget.position);
+      } else {
+        mats = reorderChild(mats, sourceId, dropTarget.materialId, dropTarget.position);
+      }
+      return { ...item, materials: resequenceMaterials(mats) };
+    }));
+    setDropTarget(null);
+    dragRef.current = { sourceId: null, sourceItemId: null, isParent: false };
+  };
+
+  const handleDragEnd = () => {
+    setDropTarget(null);
+    dragRef.current = { sourceId: null, sourceItemId: null, isParent: false };
+  };
+
+  const reorderParent = (materials, sourceId, targetId, position) => {
+    // Collect parent groups (parent + its children) in current order
+    const parents = materials.filter(m => !m.parentMaterialId);
+    const groups = parents.map(p => ({
+      parent: p,
+      children: materials.filter(m => m.parentMaterialId === p.id)
+    }));
+    // Remove source group
+    const srcIdx = groups.findIndex(g => g.parent.id === sourceId);
+    const [srcGroup] = groups.splice(srcIdx, 1);
+    // Find target index and insert
+    const tgtIdx = groups.findIndex(g => g.parent.id === targetId);
+    const insertIdx = position === 'before' ? tgtIdx : tgtIdx + 1;
+    groups.splice(insertIdx, 0, srcGroup);
+    // Flatten back
+    return groups.flatMap(g => [g.parent, ...g.children]);
+  };
+
+  const reorderChild = (materials, sourceId, targetId, position) => {
+    const sourceMat = materials.find(m => m.id === sourceId);
+    const parentId = sourceMat.parentMaterialId;
+    // Get children of the same parent in current order
+    const children = materials.filter(m => m.parentMaterialId === parentId);
+    const srcIdx = children.findIndex(c => c.id === sourceId);
+    const [srcChild] = children.splice(srcIdx, 1);
+    const tgtIdx = children.findIndex(c => c.id === targetId);
+    const insertIdx = position === 'before' ? tgtIdx : tgtIdx + 1;
+    children.splice(insertIdx, 0, srcChild);
+    // Rebuild materials: keep everything except this parent's children, then re-insert children after parent
+    const withoutChildren = materials.filter(m => m.parentMaterialId !== parentId);
+    const parentIdx = withoutChildren.findIndex(m => m.id === parentId);
+    const result = [...withoutChildren];
+    result.splice(parentIdx + 1, 0, ...children);
+    return result;
   };
 
   // Material-level Fabrication functions
@@ -4415,7 +4518,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             <table className="w-full text-xs border-collapse">
                               <thead>
                                 <tr className="bg-gray-100 dark:bg-gray-700">
-                                  <th className="border p-1 text-center w-10">Seq</th>
+                                  <th className="border p-1 text-center w-12">Seq</th>
                                   <th className="border p-1 text-center">Description</th>
                                   <th className="border p-1 text-center w-28">Category</th>
                                   <th className="border p-1 text-center w-32">Size</th>
@@ -4438,8 +4541,26 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                 {getParentMaterials(item.materials).map(mat => (
                                   <React.Fragment key={mat.id}>
                                     {/* Parent row */}
-                                    <tr className="bg-white dark:bg-gray-900">
-                                      <td className="border p-1 font-bold text-blue-700">{mat.sequence || 'A'}</td>
+                                    <tr
+                                      className="bg-white dark:bg-gray-900"
+                                      draggable
+                                      onDragStart={e => handleDragStart(e, item.id, mat.id, true)}
+                                      onDragOver={e => handleDragOver(e, item.id, mat.id, true, null)}
+                                      onDragLeave={() => setDropTarget(dt => dt?.materialId === mat.id ? null : dt)}
+                                      onDrop={e => handleDrop(e, item.id)}
+                                      onDragEnd={handleDragEnd}
+                                      style={dropTarget?.materialId === mat.id ? {
+                                        boxShadow: dropTarget.position === 'before'
+                                          ? 'inset 0 3px 0 0 #3b82f6'
+                                          : 'inset 0 -3px 0 0 #3b82f6'
+                                      } : undefined}
+                                    >
+                                      <td className="border p-1 font-bold text-blue-700">
+                                        <div className="flex items-center gap-0.5">
+                                          <GripVertical size={12} className="text-gray-400 cursor-grab flex-shrink-0" />
+                                          {mat.sequence || 'A'}
+                                        </div>
+                                      </td>
                                       <td className="border p-1"><input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" /></td>
                                       <td className="border p-1">
                                         <select value={mat.category} onChange={e => updateMaterial(item.id, mat.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
@@ -4763,8 +4884,26 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                     {/* Child rows (attachments) */}
                                     {getChildMaterials(item.materials, mat.id).map(child => (
                                       <React.Fragment key={child.id}>
-                                      <tr className="bg-gray-50 dark:bg-gray-800">
-                                        <td className="border p-1 pl-4 text-gray-600 dark:text-gray-400 font-medium">{child.sequence}</td>
+                                      <tr
+                                        className="bg-gray-50 dark:bg-gray-800"
+                                        draggable
+                                        onDragStart={e => handleDragStart(e, item.id, child.id, false)}
+                                        onDragOver={e => handleDragOver(e, item.id, child.id, false, child.parentMaterialId)}
+                                        onDragLeave={() => setDropTarget(dt => dt?.materialId === child.id ? null : dt)}
+                                        onDrop={e => handleDrop(e, item.id)}
+                                        onDragEnd={handleDragEnd}
+                                        style={dropTarget?.materialId === child.id ? {
+                                          boxShadow: dropTarget.position === 'before'
+                                            ? 'inset 0 3px 0 0 #3b82f6'
+                                            : 'inset 0 -3px 0 0 #3b82f6'
+                                        } : undefined}
+                                      >
+                                        <td className="border p-1 pl-3 text-gray-600 dark:text-gray-400 font-medium">
+                                          <div className="flex items-center gap-0.5">
+                                            <GripVertical size={10} className="text-gray-300 cursor-grab flex-shrink-0" />
+                                            {child.sequence}
+                                          </div>
+                                        </td>
                                         <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Attachment desc" /></td>
                                         <td className="border p-1">
                                           <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
