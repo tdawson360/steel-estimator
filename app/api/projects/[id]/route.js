@@ -379,7 +379,7 @@ export async function PUT(request, { params }) {
               rate: fab.unitPrice || fab.rate || 0,
               totalCost: fab.totalCost || 0,
               connWeight: fab.connWeight || 0,
-              isGalvLine: fab.isGalvLine || false,
+              isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
             };
             if (fabIsNew) {
               await tx.materialFabrication.create({
@@ -464,7 +464,7 @@ export async function PUT(request, { params }) {
                 rate: cfab.unitPrice || cfab.rate || 0,
                 totalCost: cfab.totalCost || 0,
                 connWeight: cfab.connWeight || 0,
-                isGalvLine: cfab.isGalvLine || false,
+                isGalvLine: cfab.isGalvLine || cfab.isAutoGalv || cfab.isConnGalv || false,
               };
               if (cfabIsNew) {
                 await tx.childMaterialFabrication.create({

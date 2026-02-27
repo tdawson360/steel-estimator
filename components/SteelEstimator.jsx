@@ -2238,6 +2238,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               thickness: mat.thickness || null,
               fabrication: (mat.fabrication || []).map(f => {
                 const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
+                const isGalv = f.isGalvLine || false;
                 return {
                   id: f.id,
                   operation: f.operation || '',
@@ -2247,7 +2248,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   unitPrice: derivedRate,
                   totalCost: f.totalCost || 0,
                   connWeight: f.connWeight || 0,
-                  isGalvLine: f.isGalvLine || false,
+                  isGalvLine: isGalv,
+                  ...(isGalv ? {
+                    isAutoGalv: true,
+                    description: f.operation === 'Galvanizing' ? `Galv - ${mat.description || mat.shape}` : (f.operation || ''),
+                    multiplyByPieces: false,
+                  } : {}),
                 };
               }),
               children: (mat.children || []).map(child => ({
@@ -2273,6 +2279,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 thickness: child.thickness || null,
                 fabrication: (child.fabrication || []).map(f => {
                   const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
+                  const isGalv = f.isGalvLine || false;
                   return {
                     id: f.id,
                     operation: f.operation || '',
@@ -2282,7 +2289,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     unitPrice: derivedRate,
                     totalCost: f.totalCost || 0,
                     connWeight: f.connWeight || 0,
-                    isGalvLine: f.isGalvLine || false,
+                    isGalvLine: isGalv,
+                    ...(isGalv ? {
+                      isAutoGalv: true,
+                      description: f.operation === 'Galvanizing' ? `Galv - ${child.description || child.shape}` : (f.operation || ''),
+                      multiplyByPieces: false,
+                    } : {}),
                   };
                 }),
               })),
@@ -3058,7 +3070,23 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             };
           }),
         };
-        flatMaterials.push(calculateMaterial(newMat));
+        const calcMat = calculateMaterial(newMat);
+        // Auto-generate galv fab row when import marks material as galvanized
+        if (calcMat.galvanized) {
+          calcMat.fabrication.push({
+            id: Date.now() + Math.random(),
+            operation: 'Galvanizing',
+            connectTo: 'apply',
+            description: `Galv - ${calcMat.description || calcMat.size}`,
+            quantity: calcMat.fabWeight || 0,
+            unit: 'LB',
+            unitPrice: 0,
+            multiplyByPieces: false,
+            totalCost: 0,
+            isAutoGalv: true
+          });
+        }
+        flatMaterials.push(calcMat);
         parentIdMap.set(member.mark, matId);
 
         // Process children
@@ -3578,6 +3606,64 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     const result = [...withoutChildren];
     result.splice(parentIdx + 1, 0, ...children);
     return result;
+  };
+
+  // Drag-and-drop reordering for fab ops
+  const fabDragRef = useRef({ sourceFabId: null, sourceItemId: null, sourceMaterialId: null });
+  const [fabDropTarget, setFabDropTarget] = useState(null); // { fabId, position: 'before'|'after' }
+
+  const handleFabDragStart = (e, itemId, materialId, fabId) => {
+    e.stopPropagation(); // Don't trigger parent row drag
+    fabDragRef.current = { sourceFabId: fabId, sourceItemId: itemId, sourceMaterialId: materialId };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  };
+
+  const handleFabDragOver = (e, itemId, materialId, targetFabId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const { sourceFabId, sourceItemId, sourceMaterialId } = fabDragRef.current;
+    if (!sourceFabId || sourceItemId !== itemId || sourceMaterialId !== materialId) return;
+    if (sourceFabId === targetFabId) { setFabDropTarget(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const position = e.clientY < midY ? 'before' : 'after';
+    setFabDropTarget({ fabId: targetFabId, position });
+  };
+
+  const handleFabDrop = (e, itemId, materialId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const { sourceFabId } = fabDragRef.current;
+    if (!sourceFabId || !fabDropTarget) { setFabDropTarget(null); return; }
+
+    setItems(items.map(item => {
+      if (item.id !== itemId) return item;
+      return {
+        ...item,
+        materials: item.materials.map(mat => {
+          if (mat.id !== materialId) return mat;
+          const fabs = [...(mat.fabrication || [])];
+          // Only reorder non-galv fabs; galv stays at end
+          const draggable = fabs.filter(f => !f.isAutoGalv && !f.isConnGalv);
+          const galvRows = fabs.filter(f => f.isAutoGalv || f.isConnGalv);
+          const srcIdx = draggable.findIndex(f => f.id === sourceFabId);
+          if (srcIdx === -1) return mat;
+          const [srcFab] = draggable.splice(srcIdx, 1);
+          const tgtIdx = draggable.findIndex(f => f.id === fabDropTarget.fabId);
+          const insertIdx = fabDropTarget.position === 'before' ? tgtIdx : tgtIdx + 1;
+          draggable.splice(insertIdx, 0, srcFab);
+          return { ...mat, fabrication: [...draggable, ...galvRows] };
+        })
+      };
+    }));
+    setFabDropTarget(null);
+    fabDragRef.current = { sourceFabId: null, sourceItemId: null, sourceMaterialId: null };
+  };
+
+  const handleFabDragEnd = () => {
+    setFabDropTarget(null);
+    fabDragRef.current = { sourceFabId: null, sourceItemId: null, sourceMaterialId: null };
   };
 
   // Material-level Fabrication functions
@@ -4499,8 +4585,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         className="w-16 p-1 border rounded text-sm font-mono dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                       <input type="text" value={item.itemName} onChange={e => updateItem(item.id, 'itemName', e.target.value)}
                         className="flex-1 p-1 border rounded text-sm font-semibold dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
-                      <input type="text" value={item.drawingRef} onChange={e => updateItem(item.id, 'drawingRef', e.target.value)}
-                        className="w-24 p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Dwg Ref" />
+                      <div className="relative flex-shrink min-w-24" style={{ width: Math.max(96, Math.min(400, (item.drawingRef || '').length * 7.5 + 32)) }}>
+                        <input type="text" value={item.drawingRef} onChange={e => updateItem(item.id, 'drawingRef', e.target.value)}
+                          className="w-full p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Dwg Ref" title={item.drawingRef || 'Drawing Reference'} />
+                      </div>
                     </div>
                     <button onClick={() => deleteItem(item.id)} className="text-red-600 hover:text-red-800 ml-2"><Trash2 size={16} /></button>
                   </div>
@@ -4673,9 +4761,28 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       const isConnection = CONNECTION_WEIGHT_OPS.has(fab.operation);
                                       
                                       return (
-                                      <tr key={fab.id} className="bg-green-50 dark:bg-green-950">
+                                      <tr
+                                        key={fab.id}
+                                        className="bg-green-50 dark:bg-green-950"
+                                        draggable
+                                        onDragStart={e => handleFabDragStart(e, item.id, mat.id, fab.id)}
+                                        onDragOver={e => handleFabDragOver(e, item.id, mat.id, fab.id)}
+                                        onDragLeave={() => setFabDropTarget(dt => dt?.fabId === fab.id ? null : dt)}
+                                        onDrop={e => handleFabDrop(e, item.id, mat.id)}
+                                        onDragEnd={handleFabDragEnd}
+                                        style={fabDropTarget?.fabId === fab.id ? {
+                                          boxShadow: fabDropTarget.position === 'before'
+                                            ? 'inset 0 3px 0 0 #22c55e'
+                                            : 'inset 0 -3px 0 0 #22c55e'
+                                        } : undefined}
+                                      >
                                         {/* Seq */}
-                                        <td className="border p-1 text-green-600 text-center text-xs font-medium">[Fab]</td>
+                                        <td className="border p-1 text-green-600 text-center text-xs font-medium">
+                                          <div className="flex items-center justify-center gap-0.5">
+                                            <GripVertical size={10} className="text-green-400 cursor-grab flex-shrink-0" />
+                                            <span>[Fab]</span>
+                                          </div>
+                                        </td>
                                         {/* Description - Operation dropdown */}
                                         <td className="border p-1">
                                           {fab.operation === 'Custom' ? (
@@ -5024,9 +5131,28 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           : fabricationOperations.welding;
                                         
                                         return (
-                                        <tr key={fab.id} className="bg-green-50 dark:bg-green-950">
+                                        <tr
+                                          key={fab.id}
+                                          className="bg-green-50 dark:bg-green-950"
+                                          draggable
+                                          onDragStart={e => handleFabDragStart(e, item.id, child.id, fab.id)}
+                                          onDragOver={e => handleFabDragOver(e, item.id, child.id, fab.id)}
+                                          onDragLeave={() => setFabDropTarget(dt => dt?.fabId === fab.id ? null : dt)}
+                                          onDrop={e => handleFabDrop(e, item.id, child.id)}
+                                          onDragEnd={handleFabDragEnd}
+                                          style={fabDropTarget?.fabId === fab.id ? {
+                                            boxShadow: fabDropTarget.position === 'before'
+                                              ? 'inset 0 3px 0 0 #22c55e'
+                                              : 'inset 0 -3px 0 0 #22c55e'
+                                          } : undefined}
+                                        >
                                           {/* Seq */}
-                                          <td className="border p-1 text-green-600 text-center text-xs font-medium">[Fab]</td>
+                                          <td className="border p-1 text-green-600 text-center text-xs font-medium">
+                                            <div className="flex items-center justify-center gap-0.5">
+                                              <GripVertical size={10} className="text-green-400 cursor-grab flex-shrink-0" />
+                                              <span>[Fab]</span>
+                                            </div>
+                                          </td>
                                           {/* Description - shows ↳ A: prefix + operation */}
                                           <td className="border p-1">
                                             <div className="flex items-center gap-1">
