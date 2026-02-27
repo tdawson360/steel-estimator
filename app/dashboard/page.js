@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown,
-  Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus,
+  Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus, Clock,
 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 
@@ -99,6 +99,49 @@ function SortHeader({ col, label, sortCol, sortDir, onSort, className = '' }) {
         )}
       </span>
     </th>
+  );
+}
+
+// ── FOLLOW-UP WIDGET ──────────────────────────────────────────────────────────
+
+function FollowUpWidget() {
+  const [followUps, setFollowUps] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/customers/follow-ups')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setFollowUps(data); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  if (!loaded || followUps.length === 0) return null;
+
+  return (
+    <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+        <Clock size={14} className="text-amber-500" />
+        Upcoming Follow-Ups
+      </h3>
+      <div className="space-y-2">
+        {followUps.map(f => {
+          const daysUntil = Math.ceil((new Date(f.followUpDate) - new Date()) / (1000 * 60 * 60 * 24));
+          const urgentCls = daysUntil <= 1 ? 'text-red-600 dark:text-red-400' : daysUntil <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400';
+          return (
+            <a key={f.id} href={`/customers/${f.customer?.id}`}
+              className="flex items-center justify-between p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{f.customer?.name}</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{f.description}</p>
+              </div>
+              <span className={`text-xs font-medium whitespace-nowrap ml-3 ${urgentCls}`}>
+                {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`}
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -317,6 +360,9 @@ function DashboardContent() {
             </button>
           )}
         </div>
+
+        {/* Upcoming Follow-Ups Widget */}
+        <FollowUpWidget />
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">

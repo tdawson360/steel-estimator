@@ -40,6 +40,7 @@ model User {
   publishedProjects   Project[] @relation("PublishedBy")
   estimatedProjects   Project[] @relation("EstimatorProjects")
   notifications       Notification[] @relation("UserNotifications")
+  activities          CustomerActivity[]
 }
 
 // =============================================================================
@@ -126,6 +127,10 @@ model Project {
   parentProject    Project?  @relation("ProjectRevisions", fields: [parentProjectId], references: [id])
   revisions        Project[] @relation("ProjectRevisions")
   
+  // CRM link (optional — customer may not be set)
+  customerId           Int?
+  customer             Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
   // Everything inside this project
   items                Item[]
   breakoutGroups       BreakoutGroup[]
@@ -136,9 +141,11 @@ model Project {
   notifications        Notification[]
   customProjectTypes   CustomProjectType[]
   customDeliveryOptions CustomDeliveryOption[]
+  customerActivities   CustomerActivity[]
 
   @@index([createdById])
   @@index([estimatorId])
+  @@index([customerId])
 }
 
 // =============================================================================
@@ -599,4 +606,80 @@ model Notification {
 
   @@index([recipientId, isRead])
   @@index([recipientId, createdAt])
+}
+
+// =============================================================================
+// CRM — CUSTOMER
+// =============================================================================
+// A company/customer that can be linked to multiple projects.
+
+model Customer {
+  id          Int       @id @default(autoincrement())
+  name        String
+  shortName   String?
+  address     String?
+  city        String?
+  state       String?
+  zip         String?
+  phone       String?
+  website     String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contacts    CustomerContact[]
+  activities  CustomerActivity[]
+  projects    Project[]
+
+  @@index([name])
+}
+
+// =============================================================================
+// CRM — CUSTOMER CONTACT
+// =============================================================================
+// Individual contacts at a customer company.
+
+model CustomerContact {
+  id          Int       @id @default(autoincrement())
+  customerId  Int
+  firstName   String
+  lastName    String
+  title       String?
+  email       String?
+  phone       String?
+  mobile      String?
+  isPrimary   Boolean   @default(false)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+// =============================================================================
+// CRM — CUSTOMER ACTIVITY
+// =============================================================================
+// Activity log: notes, calls, emails, meetings, bid events, follow-ups.
+
+model CustomerActivity {
+  id            Int       @id @default(autoincrement())
+  customerId    Int
+  projectId     Int?
+  type          String    // NOTE, CALL, EMAIL, MEETING, BID_RECEIVED, BID_SUBMITTED, FOLLOW_UP
+  description   String
+  activityDate  DateTime  @default(now())
+  followUpDate  DateTime?
+  completedAt   DateTime?
+  createdById   Int
+  createdAt     DateTime  @default(now())
+
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  project       Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy     User      @relation(fields: [createdById], references: [id])
+
+  @@index([customerId, activityDate])
+  @@index([followUpDate])
+  @@index([createdById])
 }

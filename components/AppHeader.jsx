@@ -119,7 +119,15 @@ export default function AppHeader() {
         <a href="/dashboard" data-testid="link-dashboard">
           <img src={COMPANY_LOGO} alt="Berger Iron Works" className="h-8 w-auto" />
         </a>
-        <span className="text-xs text-gray-400">Steel Estimator</span>
+        <span className="text-xs text-gray-400 hidden sm:inline">Steel Estimator</span>
+        <nav className="flex items-center gap-1 ml-2">
+          <a href="/dashboard" className="px-2.5 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
+            Dashboard
+          </a>
+          <a href="/customers" className="px-2.5 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
+            Customers
+          </a>
+        </nav>
       </div>
 
       <div className="flex items-center gap-2">

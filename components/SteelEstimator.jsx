@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator } from 'lucide-react';
+import CustomerSearchInput from './CustomerSearchInput';
 
 // Company Logo (Base64 encoded)
 import COMPANY_LOGO from '../lib/logo.js';
@@ -1622,6 +1623,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [projectName, setProjectName] = useState('');
   const [projectAddress, setProjectAddress] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [customerId, setCustomerId] = useState(null);
   const [billingAddress, setBillingAddress] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -2114,6 +2116,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       setProjectName(data.projectName || '');
       setProjectAddress(data.projectAddress || '');
       setCustomerName(data.customerName || '');
+      setCustomerId(data.customerId || null);
       setBillingAddress(data.billingAddress || '');
       setCustomerContact(data.customerContact || '');
       setCustomerPhone(data.customerPhone || '');
@@ -2303,6 +2306,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         projectName,
         projectAddress,
         customerName,
+        customerId: customerId || null,
         billingAddress,
         customerContact,
         customerPhone,
@@ -2361,7 +2365,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
+  }, [currentProjectId, projectName, projectAddress, customerName, customerId, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
 
   // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
   useEffect(() => { saveRef.current = handleSave; });
@@ -2376,7 +2380,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     }, 3000);
     return () => clearTimeout(autoSaveTimerRef.current);
   }, [
-    projectName, projectAddress, customerName, billingAddress,
+    projectName, projectAddress, customerName, customerId, billingAddress,
     customerContact, customerPhone, customerEmail, estimateDate,
     bidTime, estimatedBy, drawingDate, drawingRevision, architect,
     estimatorId, dashboardStatus, newOrCo, notes,
@@ -4011,8 +4015,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Company Name</label>
-                    <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)}
-                      className="w-full p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                    <CustomerSearchInput
+                      value={customerName}
+                      customerId={customerId}
+                      onChange={(name, id) => { setCustomerName(name); setCustomerId(id); }}
+                    />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Billing Address</label>

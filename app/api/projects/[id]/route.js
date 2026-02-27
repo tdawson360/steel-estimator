@@ -188,6 +188,7 @@ export async function PUT(request, { params }) {
           projectName: data.projectName ?? '',
           projectAddress: data.projectAddress ?? '',
           customerName: data.customerName ?? '',
+          customerId: data.customerId !== undefined ? (data.customerId || null) : undefined,
           billingAddress: data.billingAddress ?? '',
           customerContact: data.customerContact ?? '',
           customerPhone: data.customerPhone ?? '',
