@@ -4602,9 +4602,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <button onClick={() => addMaterial(item.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs"><Plus size={14} /> Add Material</button>
                         </div>
                         {item.materials.length > 0 && (
-                          <div className="overflow-x-auto">
+                          <div style={{ overflowX: 'clip' }}>
                             <table className="w-full text-xs border-collapse">
-                              <thead>
+                              <thead className="sticky top-0 z-10">
                                 <tr className="bg-gray-100 dark:bg-gray-700">
                                   <th className="border p-1 text-center w-12">Seq</th>
                                   <th className="border p-1 text-center">Description</th>
