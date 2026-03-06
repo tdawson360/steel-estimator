@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, Image } from '@react-pdf/renderer';
 import { styles, COLORS, CompanyHeader, PageFooter, SectionBar } from './PdfShared';
-import { fmtPrice, fmtQuotePrice, getItemTotal, getItemCostBreakdown, visibleFabOps, roundCustom } from './pdfUtils';
+import { fmtPrice, fmtRate, fmtQuotePrice, getItemTotal, getItemCostBreakdown, visibleFabOps, roundCustom } from './pdfUtils';
 
 // ─── Shared: Blueprint Snapshots grid ──────────────────────────────────────
 
@@ -332,7 +332,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
         <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
         <Text style={{ width: COL.wt, fontSize: 7 }} />
         <Text style={{ width: COL.fabWt, fontSize: 7 }} />
-        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{unitRate ? fmtPrice(unitRate) : ''}</Text>
+        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{unitRate ? fmtRate(unitRate) : ''}</Text>
         <Text style={{ width: COL.total, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.totalCost ? fmtPrice(f.totalCost) : ''}</Text>
       </View>
     );
@@ -368,7 +368,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
               <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right' }}>{mat.pieces || mat.quantity || '-'}</Text>
               <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right' }}>{mat.weightPerFoot ? mat.weightPerFoot.toFixed(1) : ''}</Text>
               <Text style={{ width: COL.fabWt, fontSize: 8, textAlign: 'right' }}>{mat.fabWeight ? roundCustom(mat.fabWeight).toLocaleString() : ''}</Text>
-              <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right' }}>{mat.unitPrice ? fmtPrice(mat.unitPrice) : ''}</Text>
+              <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right' }}>{mat.unitPrice ? fmtRate(mat.unitPrice) : ''}</Text>
               <Text style={{ width: COL.total, fontSize: 8, textAlign: 'right' }}>{mat.totalCost ? fmtPrice(mat.totalCost) : ''}</Text>
             </View>
             {matFabRows.map(f => renderFabRow(f, 12))}
@@ -384,7 +384,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
                     <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.pieces || child.quantity || '-'}</Text>
                     <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.weightPerFoot ? child.weightPerFoot.toFixed(1) : ''}</Text>
                     <Text style={{ width: COL.fabWt, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.fabWeight ? roundCustom(child.fabWeight).toLocaleString() : ''}</Text>
-                    <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.unitPrice ? fmtPrice(child.unitPrice) : ''}</Text>
+                    <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.unitPrice ? fmtRate(child.unitPrice) : ''}</Text>
                     <Text style={{ width: COL.total, fontSize: 8, textAlign: 'right', color: COLORS.gray }}>{child.totalCost ? fmtPrice(child.totalCost) : ''}</Text>
                   </View>
                   {childFabRows.map(f => renderFabRow(f, 20))}

@@ -11,6 +11,11 @@ export const fmtPrice = (num) => {
   return '$' + roundCustom(num).toLocaleString();
 };
 
+export const fmtRate = (num) => {
+  if (num === null || num === undefined || isNaN(num)) return '$0.00';
+  return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export const fmtQuotePrice = (num) => {
   const rounded = roundCustom(num);
   return '$' + rounded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

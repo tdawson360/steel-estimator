@@ -225,18 +225,20 @@ model Material {
   stockWeight    Float   @default(0)      // Total stock weight purchased
   
   // Pricing
+  priceBy        String  @default("LB")   // "LB", "LF", or "EA"
+  unitPrice      Float   @default(0)      // Cost per unit (per lb, per ft, or per ea)
   pricePerFt     Float   @default(0)      // Cost per foot
   pricePerLb     Float   @default(0)      // Cost per pound
   totalCost      Float   @default(0)      // Calculated total material cost
-  
+
   // Galvanizing
   galvanized     Boolean @default(false)
   galvRate       Float   @default(0)
-  
+
   // Plate-specific fields
   width          Float?                   // Plate width in inches
   thickness      Float?                   // Plate thickness in inches
-  
+
   // Parent relationship
   itemId         Int
   item           Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -299,6 +301,8 @@ model ChildMaterial {
   weightPerFt    Float   @default(0)
   fabWeight      Float   @default(0)
   stockWeight    Float   @default(0)
+  priceBy        String  @default("LB")
+  unitPrice      Float   @default(0)
   pricePerFt     Float   @default(0)
   pricePerLb     Float   @default(0)
   totalCost      Float   @default(0)
@@ -306,7 +310,7 @@ model ChildMaterial {
   galvRate       Float   @default(0)
   width          Float?
   thickness      Float?
-  
+
   // Parent material this belongs to
   parentId       Int
   parent         Material @relation(fields: [parentId], references: [id], onDelete: Cascade)

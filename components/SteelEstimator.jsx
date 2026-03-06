@@ -1232,6 +1232,12 @@ const fmtPrice = (num) => {
   return '$' + roundCustom(num).toLocaleString();
 };
 
+// Format rate with 2 decimal places (e.g., $1.25)
+const fmtRate = (num) => {
+  if (num === null || num === undefined || isNaN(num)) return '$0.00';
+  return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // Format price for quotes with 2 decimal places (e.g., $1,234.00)
 const fmtQuotePrice = (num) => {
   const rounded = roundCustom(num);
@@ -1817,7 +1823,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     let totalWeight = 0;
     stockList.forEach(stock => {
       totalWeight += stock.totalWeight;
-      text += `${stock.size.padEnd(20)}${(stock.stockLength + "'").padEnd(10)}${String(stock.totalStocks).padEnd(8)}${stock.weightPerFoot.toFixed(1).padEnd(10)}${String(roundCustom(stock.totalWeight)).padEnd(12)}${'$_______'}\n`;
+      text += `${stock.size.padEnd(20)}${(stock.stockLength + "'").padEnd(10)}${String(stock.totalStocks).padEnd(8)}${(stock.weightPerFoot || 0).toFixed(1).padEnd(10)}${String(roundCustom(stock.totalWeight)).padEnd(12)}${'$_______'}\n`;
     });
     
     text += `${'-'.repeat(72)}\n`;
@@ -1920,7 +1926,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/LB,Your $/LF,Your $/EA,Your Total,Lead Time,Notes\n';
 
     stockList.forEach(stock => {
-      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${stock.weightPerFoot.toFixed(2)},${roundCustom(stock.totalWeight)},,,,,\n`;
+      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${(stock.weightPerFoot || 0).toFixed(2)},${roundCustom(stock.totalWeight)},,,,,\n`;
     });
     
     csv += '\n';
@@ -2229,6 +2235,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               weightPerFt: mat.weightPerFt || 0,
               fabWeight: mat.fabWeight || 0,
               stockWeight: mat.stockWeight || 0,
+              priceBy: mat.priceBy || 'LB',
+              unitPrice: mat.unitPrice || 0,
               pricePerFt: mat.pricePerFt || 0,
               pricePerLb: mat.pricePerLb || 0,
               totalCost: mat.totalCost || 0,
@@ -2270,6 +2278,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 weightPerFt: child.weightPerFt || 0,
                 fabWeight: child.fabWeight || 0,
                 stockWeight: child.stockWeight || 0,
+                priceBy: child.priceBy || 'LB',
+                unitPrice: child.unitPrice || 0,
                 pricePerFt: child.pricePerFt || 0,
                 pricePerLb: child.pricePerLb || 0,
                 totalCost: child.totalCost || 0,
@@ -4087,10 +4097,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         if (mat.size && mat.stocksRequired > 0) {
           const key = `${mat.size}-${mat.stockLength}`;
           if (!stockSummary[key]) {
-            stockSummary[key] = { size: mat.size, stockLength: mat.stockLength, weightPerFoot: mat.weightPerFoot, totalStocks: 0, totalWeight: 0 };
+            stockSummary[key] = { size: mat.size, stockLength: mat.stockLength, weightPerFoot: mat.weightPerFoot || 0, totalStocks: 0, totalWeight: 0 };
           }
           stockSummary[key].totalStocks += mat.stocksRequired;
-          stockSummary[key].totalWeight += mat.stocksRequired * mat.stockLength * mat.weightPerFoot;
+          stockSummary[key].totalWeight += mat.stocksRequired * mat.stockLength * (mat.weightPerFoot || 0);
         }
       });
     });
@@ -5656,7 +5666,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       <td className="border p-2 font-semibold">{stock.size}</td>
                       <td className="border p-2 text-right">{stock.stockLength}'</td>
                       <td className="border p-2 text-right font-bold">{stock.totalStocks}</td>
-                      <td className="border p-2 text-right">{stock.weightPerFoot.toFixed(2)}</td>
+                      <td className="border p-2 text-right">{(stock.weightPerFoot || 0).toFixed(2)}</td>
                       <td className="border p-2 text-right font-semibold">{fmtWt(stock.totalWeight)} lbs</td>
                     </tr>
                   ))}
@@ -5730,7 +5740,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                   <td className="p-2">{stock.size}</td>
                                   <td className="p-2 text-right">{stock.stockLength}'</td>
                                   <td className="p-2 text-right">{stock.totalStocks}</td>
-                                  <td className="p-2 text-right">{stock.weightPerFoot.toFixed(2)}</td>
+                                  <td className="p-2 text-right">{(stock.weightPerFoot || 0).toFixed(2)}</td>
                                   <td className="p-2 text-right">{fmtWt(stock.totalWeight)} lbs</td>
                                 </tr>
                               ))}
@@ -5922,7 +5932,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <td className="border border-gray-400 dark:border-gray-500 p-2">{stock.size}</td>
                           <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.stockLength}'</td>
                           <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.totalStocks}</td>
-                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{stock.weightPerFoot.toFixed(2)}</td>
+                          <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{(stock.weightPerFoot || 0).toFixed(2)}</td>
                           <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">{fmtWt(stock.totalWeight)} lbs</td>
                           <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">$</td>
                           <td className="border border-gray-400 dark:border-gray-500 p-2 text-center">$</td>
