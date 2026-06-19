@@ -438,144 +438,533 @@ const steelDatabase = {
   'L2-1/2x2x3/8': { weight: 5.3, category: 'Angle' },
   'L2-1/2x2x5/16': { weight: 4.5, category: 'Angle' },
   'L2-1/2x2x1/4': { weight: 3.62, category: 'Angle' },
-  // HSS Square
-  'HSS20x20x5/8': { weight: 127.37, category: 'HSS Square' },
-  'HSS20x20x1/2': { weight: 103.30, category: 'HSS Square' },
-  'HSS20x20x3/8': { weight: 78.52, category: 'HSS Square' },
-  'HSS18x18x5/8': { weight: 114.23, category: 'HSS Square' },
-  'HSS18x18x1/2': { weight: 93.34, category: 'HSS Square' },
-  'HSS18x18x3/8': { weight: 71.07, category: 'HSS Square' },
-  'HSS16x16x5/8': { weight: 101.09, category: 'HSS Square' },
-  'HSS16x16x1/2': { weight: 82.77, category: 'HSS Square' },
-  'HSS16x16x3/8': { weight: 63.10, category: 'HSS Square' },
-  'HSS16x16x5/16': { weight: 52.91, category: 'HSS Square' },
-  'HSS14x14x5/8': { weight: 87.95, category: 'HSS Square' },
-  'HSS14x14x1/2': { weight: 72.10, category: 'HSS Square' },
-  'HSS14x14x3/8': { weight: 55.15, category: 'HSS Square' },
-  'HSS14x14x5/16': { weight: 46.30, category: 'HSS Square' },
-  'HSS12x12x5/8': { weight: 74.81, category: 'HSS Square' },
-  'HSS12x12x1/2': { weight: 61.43, category: 'HSS Square' },
-  'HSS12x12x3/8': { weight: 47.14, category: 'HSS Square' },
-  'HSS12x12x5/16': { weight: 39.68, category: 'HSS Square' },
-  'HSS12x12x1/4': { weight: 32.03, category: 'HSS Square' },
-  'HSS10x10x5/8': { weight: 61.67, category: 'HSS Square' },
-  'HSS10x10x1/2': { weight: 50.77, category: 'HSS Square' },
-  'HSS10x10x3/8': { weight: 39.18, category: 'HSS Square' },
-  'HSS10x10x5/16': { weight: 33.05, category: 'HSS Square' },
-  'HSS10x10x1/4': { weight: 26.76, category: 'HSS Square' },
-  'HSS8x8x5/8': { weight: 48.53, category: 'HSS Square' },
-  'HSS8x8x1/2': { weight: 40.09, category: 'HSS Square' },
-  'HSS8x8x3/8': { weight: 31.15, category: 'HSS Square' },
-  'HSS8x8x5/16': { weight: 26.41, category: 'HSS Square' },
-  'HSS8x8x1/4': { weight: 21.46, category: 'HSS Square' },
-  'HSS8x8x3/16': { weight: 16.35, category: 'HSS Square' },
-  'HSS6x6x5/8': { weight: 35.39, category: 'HSS Square' },
-  'HSS6x6x1/2': { weight: 29.41, category: 'HSS Square' },
-  'HSS6x6x3/8': { weight: 23.02, category: 'HSS Square' },
-  'HSS6x6x5/16': { weight: 19.60, category: 'HSS Square' },
-  'HSS6x6x1/4': { weight: 16.02, category: 'HSS Square' },
-  'HSS6x6x3/16': { weight: 12.28, category: 'HSS Square' },
-  'HSS5x5x1/2': { weight: 21.40, category: 'HSS Square' },
-  'HSS5x5x3/8': { weight: 16.89, category: 'HSS Square' },
-  'HSS5x5x5/16': { weight: 14.42, category: 'HSS Square' },
-  'HSS5x5x1/4': { weight: 11.85, category: 'HSS Square' },
-  'HSS5x5x3/16': { weight: 9.12, category: 'HSS Square' },
-  'HSS4x4x1/2': { weight: 16.06, category: 'HSS Square' },
-  'HSS4x4x3/8': { weight: 12.76, category: 'HSS Square' },
-  'HSS4x4x5/16': { weight: 10.96, category: 'HSS Square' },
-  'HSS4x4x1/4': { weight: 9.06, category: 'HSS Square' },
-  'HSS4x4x3/16': { weight: 7.03, category: 'HSS Square' },
-  'HSS3-1/2x3-1/2x3/8': { weight: 10.70, category: 'HSS Square' },
-  'HSS3-1/2x3-1/2x5/16': { weight: 9.23, category: 'HSS Square' },
-  'HSS3-1/2x3-1/2x1/4': { weight: 7.67, category: 'HSS Square' },
-  'HSS3-1/2x3-1/2x3/16': { weight: 5.97, category: 'HSS Square' },
-  'HSS3x3x3/8': { weight: 8.63, category: 'HSS Square' },
-  'HSS3x3x5/16': { weight: 7.49, category: 'HSS Square' },
-  'HSS3x3x1/4': { weight: 6.26, category: 'HSS Square' },
-  'HSS3x3x3/16': { weight: 4.91, category: 'HSS Square' },
-  'HSS2-1/2x2-1/2x1/4': { weight: 4.84, category: 'HSS Square' },
-  'HSS2-1/2x2-1/2x3/16': { weight: 3.82, category: 'HSS Square' },
-  'HSS2x2x1/4': { weight: 3.42, category: 'HSS Square' },
-  'HSS2x2x3/16': { weight: 2.72, category: 'HSS Square' },
-  'HSS2x2x1/8': { weight: 1.97, category: 'HSS Square' },
-  // HSS Rectangular
-  'HSS20x12x5/8': { weight: 101.09, category: 'HSS Rect' },
-  'HSS20x12x1/2': { weight: 82.77, category: 'HSS Rect' },
-  'HSS20x12x3/8': { weight: 63.10, category: 'HSS Rect' },
-  'HSS20x8x5/8': { weight: 87.95, category: 'HSS Rect' },
-  'HSS20x8x1/2': { weight: 72.10, category: 'HSS Rect' },
-  'HSS20x8x3/8': { weight: 55.15, category: 'HSS Rect' },
-  'HSS16x12x5/8': { weight: 87.95, category: 'HSS Rect' },
-  'HSS16x12x1/2': { weight: 72.10, category: 'HSS Rect' },
-  'HSS16x12x3/8': { weight: 55.15, category: 'HSS Rect' },
-  'HSS16x8x5/8': { weight: 74.81, category: 'HSS Rect' },
-  'HSS16x8x1/2': { weight: 61.43, category: 'HSS Rect' },
-  'HSS16x8x3/8': { weight: 47.14, category: 'HSS Rect' },
-  'HSS16x8x1/4': { weight: 32.03, category: 'HSS Rect' },
-  'HSS14x10x1/2': { weight: 61.43, category: 'HSS Rect' },
-  'HSS14x10x3/8': { weight: 47.14, category: 'HSS Rect' },
-  'HSS14x10x1/4': { weight: 32.03, category: 'HSS Rect' },
-  'HSS14x6x1/2': { weight: 50.77, category: 'HSS Rect' },
-  'HSS14x6x3/8': { weight: 39.18, category: 'HSS Rect' },
-  'HSS14x6x1/4': { weight: 26.76, category: 'HSS Rect' },
-  'HSS12x8x1/2': { weight: 50.77, category: 'HSS Rect' },
-  'HSS12x8x3/8': { weight: 39.18, category: 'HSS Rect' },
-  'HSS12x8x1/4': { weight: 26.76, category: 'HSS Rect' },
-  'HSS12x6x1/2': { weight: 45.43, category: 'HSS Rect' },
-  'HSS12x6x3/8': { weight: 35.21, category: 'HSS Rect' },
-  'HSS12x6x1/4': { weight: 24.12, category: 'HSS Rect' },
-  'HSS12x4x1/2': { weight: 40.09, category: 'HSS Rect' },
-  'HSS12x4x3/8': { weight: 31.15, category: 'HSS Rect' },
-  'HSS12x4x1/4': { weight: 21.46, category: 'HSS Rect' },
-  'HSS10x8x1/2': { weight: 45.43, category: 'HSS Rect' },
-  'HSS10x8x3/8': { weight: 35.21, category: 'HSS Rect' },
-  'HSS10x8x1/4': { weight: 24.12, category: 'HSS Rect' },
-  'HSS10x6x1/2': { weight: 40.09, category: 'HSS Rect' },
-  'HSS10x6x3/8': { weight: 31.15, category: 'HSS Rect' },
-  'HSS10x6x1/4': { weight: 21.46, category: 'HSS Rect' },
-  'HSS10x4x1/2': { weight: 34.75, category: 'HSS Rect' },
-  'HSS10x4x3/8': { weight: 27.08, category: 'HSS Rect' },
-  'HSS10x4x1/4': { weight: 18.75, category: 'HSS Rect' },
-  'HSS8x6x1/2': { weight: 34.75, category: 'HSS Rect' },
-  'HSS8x6x3/8': { weight: 27.08, category: 'HSS Rect' },
-  'HSS8x6x1/4': { weight: 18.75, category: 'HSS Rect' },
-  'HSS8x4x1/2': { weight: 29.41, category: 'HSS Rect' },
-  'HSS8x4x3/8': { weight: 23.02, category: 'HSS Rect' },
-  'HSS8x4x1/4': { weight: 16.02, category: 'HSS Rect' },
-  'HSS8x4x3/16': { weight: 12.28, category: 'HSS Rect' },
-  'HSS8x3x3/8': { weight: 20.99, category: 'HSS Rect' },
-  'HSS8x3x1/4': { weight: 14.66, category: 'HSS Rect' },
+  // HSS Square — AISC Shapes Database v16.0 nominal weights (lb/ft)
+  'HSS22x22x1': { weight: 277.07, category: 'HSS Square' },
+  'HSS22x22x7/8': { weight: 244.88, category: 'HSS Square' },
+  'HSS22x22x3/4': { weight: 212.00, category: 'HSS Square' },
+  'HSS22x22x5/8': { weight: 178.41, category: 'HSS Square' },
+  'HSS22x22x1/2': { weight: 144.13, category: 'HSS Square' },
+  'HSS20x20x1': { weight: 249.85, category: 'HSS Square' },
+  'HSS20x20x7/8': { weight: 221.06, category: 'HSS Square' },
+  'HSS20x20x3/4': { weight: 191.58, category: 'HSS Square' },
+  'HSS20x20x5/8': { weight: 161.40, category: 'HSS Square' },
+  'HSS20x20x1/2': { weight: 130.52, category: 'HSS Square' },
+  'HSS20x20x3/8': { weight: 98.94, category: 'HSS Square' },
+  'HSS20x20x5/16': { weight: 82.88, category: 'HSS Square' },
+  'HSS18x18x1': { weight: 222.63, category: 'HSS Square' },
+  'HSS18x18x7/8': { weight: 197.24, category: 'HSS Square' },
+  'HSS18x18x3/4': { weight: 171.16, category: 'HSS Square' },
+  'HSS18x18x5/8': { weight: 144.39, category: 'HSS Square' },
+  'HSS18x18x1/2': { weight: 116.91, category: 'HSS Square' },
+  'HSS18x18x3/8': { weight: 88.73, category: 'HSS Square' },
+  'HSS18x18x5/16': { weight: 74.38, category: 'HSS Square' },
+  'HSS18x18x1/4': { weight: 59.85, category: 'HSS Square' },
+  'HSS16x16x1': { weight: 195.40, category: 'HSS Square' },
+  'HSS16x16x7/8': { weight: 173.43, category: 'HSS Square' },
+  'HSS16x16x3/4': { weight: 150.75, category: 'HSS Square' },
+  'HSS16x16x5/8': { weight: 127.37, category: 'HSS Square' },
+  'HSS16x16x1/2': { weight: 103.30, category: 'HSS Square' },
+  'HSS16x16x3/8': { weight: 78.52, category: 'HSS Square' },
+  'HSS16x16x5/16': { weight: 65.87, category: 'HSS Square' },
+  'HSS16x16x1/4': { weight: 53.05, category: 'HSS Square' },
+  'HSS14x14x1': { weight: 168.18, category: 'HSS Square' },
+  'HSS14x14x7/8': { weight: 149.61, category: 'HSS Square' },
+  'HSS14x14x3/4': { weight: 130.33, category: 'HSS Square' },
+  'HSS14x14x5/8': { weight: 110.36, category: 'HSS Square' },
+  'HSS14x14x1/2': { weight: 89.68, category: 'HSS Square' },
+  'HSS14x14x3/8': { weight: 68.31, category: 'HSS Square' },
+  'HSS14x14x5/16': { weight: 57.36, category: 'HSS Square' },
+  'HSS14x14x1/4': { weight: 46.24, category: 'HSS Square' },
+  'HSS12x12x1': { weight: 140.96, category: 'HSS Square' },
+  'HSS12x12x7/8': { weight: 125.79, category: 'HSS Square' },
+  'HSS12x12x3/4': { weight: 109.91, category: 'HSS Square' },
+  'HSS12x12x5/8': { weight: 93.34, category: 'HSS Square' },
+  'HSS12x12x1/2': { weight: 76.07, category: 'HSS Square' },
+  'HSS12x12x3/8': { weight: 58.10, category: 'HSS Square' },
+  'HSS12x12x5/16': { weight: 48.86, category: 'HSS Square' },
+  'HSS12x12x1/4': { weight: 39.43, category: 'HSS Square' },
+  'HSS12x12x3/16': { weight: 29.84, category: 'HSS Square' },
+  'HSS10x10x3/4': { weight: 89.50, category: 'HSS Square' },
+  'HSS10x10x5/8': { weight: 76.33, category: 'HSS Square' },
+  'HSS10x10x1/2': { weight: 62.46, category: 'HSS Square' },
+  'HSS10x10x3/8': { weight: 47.90, category: 'HSS Square' },
+  'HSS10x10x5/16': { weight: 40.35, category: 'HSS Square' },
+  'HSS10x10x1/4': { weight: 32.63, category: 'HSS Square' },
+  'HSS10x10x3/16': { weight: 24.73, category: 'HSS Square' },
+  'HSS9x9x5/8': { weight: 67.82, category: 'HSS Square' },
+  'HSS9x9x1/2': { weight: 55.66, category: 'HSS Square' },
+  'HSS9x9x3/8': { weight: 42.79, category: 'HSS Square' },
+  'HSS9x9x5/16': { weight: 36.10, category: 'HSS Square' },
+  'HSS9x9x1/4': { weight: 29.23, category: 'HSS Square' },
+  'HSS9x9x3/16': { weight: 22.18, category: 'HSS Square' },
+  'HSS9x9x1/8': { weight: 14.96, category: 'HSS Square' },
+  'HSS8x8x5/8': { weight: 59.32, category: 'HSS Square' },
+  'HSS8x8x1/2': { weight: 48.85, category: 'HSS Square' },
+  'HSS8x8x3/8': { weight: 37.69, category: 'HSS Square' },
+  'HSS8x8x5/16': { weight: 31.84, category: 'HSS Square' },
+  'HSS8x8x1/4': { weight: 25.82, category: 'HSS Square' },
+  'HSS8x8x3/16': { weight: 19.63, category: 'HSS Square' },
+  'HSS8x8x1/8': { weight: 13.26, category: 'HSS Square' },
+  'HSS7x7x5/8': { weight: 50.81, category: 'HSS Square' },
+  'HSS7x7x1/2': { weight: 42.05, category: 'HSS Square' },
+  'HSS7x7x3/8': { weight: 32.58, category: 'HSS Square' },
+  'HSS7x7x5/16': { weight: 27.59, category: 'HSS Square' },
+  'HSS7x7x1/4': { weight: 22.42, category: 'HSS Square' },
+  'HSS7x7x3/16': { weight: 17.08, category: 'HSS Square' },
+  'HSS7x7x1/8': { weight: 11.56, category: 'HSS Square' },
+  'HSS6x6x5/8': { weight: 42.30, category: 'HSS Square' },
+  'HSS6x6x1/2': { weight: 35.24, category: 'HSS Square' },
+  'HSS6x6x3/8': { weight: 27.48, category: 'HSS Square' },
+  'HSS6x6x5/16': { weight: 23.34, category: 'HSS Square' },
+  'HSS6x6x1/4': { weight: 19.02, category: 'HSS Square' },
+  'HSS6x6x3/16': { weight: 14.53, category: 'HSS Square' },
+  'HSS6x6x1/8': { weight: 9.86, category: 'HSS Square' },
+  'HSS5-1/2x5-1/2x3/8': { weight: 24.93, category: 'HSS Square' },
+  'HSS5-1/2x5-1/2x5/16': { weight: 21.21, category: 'HSS Square' },
+  'HSS5-1/2x5-1/2x1/4': { weight: 17.32, category: 'HSS Square' },
+  'HSS5-1/2x5-1/2x3/16': { weight: 13.25, category: 'HSS Square' },
+  'HSS5-1/2x5-1/2x1/8': { weight: 9.01, category: 'HSS Square' },
+  'HSS5x5x1/2': { weight: 28.43, category: 'HSS Square' },
+  'HSS5x5x3/8': { weight: 22.37, category: 'HSS Square' },
+  'HSS5x5x5/16': { weight: 19.08, category: 'HSS Square' },
+  'HSS5x5x1/4': { weight: 15.62, category: 'HSS Square' },
+  'HSS5x5x3/16': { weight: 11.97, category: 'HSS Square' },
+  'HSS5x5x1/8': { weight: 8.16, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x1/2': { weight: 25.03, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x3/8': { weight: 19.82, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x5/16': { weight: 16.96, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x1/4': { weight: 13.91, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x3/16': { weight: 10.70, category: 'HSS Square' },
+  'HSS4-1/2x4-1/2x1/8': { weight: 7.31, category: 'HSS Square' },
+  'HSS4x4x1/2': { weight: 21.63, category: 'HSS Square' },
+  'HSS4x4x3/8': { weight: 17.27, category: 'HSS Square' },
+  'HSS4x4x5/16': { weight: 14.83, category: 'HSS Square' },
+  'HSS4x4x1/4': { weight: 12.21, category: 'HSS Square' },
+  'HSS4x4x3/16': { weight: 9.42, category: 'HSS Square' },
+  'HSS4x4x1/8': { weight: 6.46, category: 'HSS Square' },
+  'HSS3-1/2x3-1/2x3/8': { weight: 14.72, category: 'HSS Square' },
+  'HSS3-1/2x3-1/2x5/16': { weight: 12.70, category: 'HSS Square' },
+  'HSS3-1/2x3-1/2x1/4': { weight: 10.51, category: 'HSS Square' },
+  'HSS3-1/2x3-1/2x3/16': { weight: 8.15, category: 'HSS Square' },
+  'HSS3-1/2x3-1/2x1/8': { weight: 5.61, category: 'HSS Square' },
+  'HSS3x3x3/8': { weight: 12.17, category: 'HSS Square' },
+  'HSS3x3x5/16': { weight: 10.58, category: 'HSS Square' },
+  'HSS3x3x1/4': { weight: 8.81, category: 'HSS Square' },
+  'HSS3x3x3/16': { weight: 6.87, category: 'HSS Square' },
+  'HSS3x3x1/8': { weight: 4.75, category: 'HSS Square' },
+  'HSS2-1/2x2-1/2x5/16': { weight: 8.45, category: 'HSS Square' },
+  'HSS2-1/2x2-1/2x1/4': { weight: 7.11, category: 'HSS Square' },
+  'HSS2-1/2x2-1/2x3/16': { weight: 5.59, category: 'HSS Square' },
+  'HSS2-1/2x2-1/2x1/8': { weight: 3.90, category: 'HSS Square' },
+  'HSS2-1/4x2-1/4x1/4': { weight: 6.26, category: 'HSS Square' },
+  'HSS2-1/4x2-1/4x3/16': { weight: 4.96, category: 'HSS Square' },
+  'HSS2-1/4x2-1/4x1/8': { weight: 3.48, category: 'HSS Square' },
+  'HSS2x2x1/4': { weight: 5.41, category: 'HSS Square' },
+  'HSS2x2x3/16': { weight: 4.32, category: 'HSS Square' },
+  'HSS2x2x1/8': { weight: 3.05, category: 'HSS Square' },
+  'HSS1-1/2x1-1/2x1/4': { weight: 3.71, category: 'HSS Square' },
+  'HSS1-1/2x1-1/2x3/16': { weight: 3.04, category: 'HSS Square' },
+  'HSS1-1/2x1-1/2x1/8': { weight: 2.20, category: 'HSS Square' },
+  // HSS Rectangular — AISC Shapes Database v16.0 nominal weights (lb/ft)
+  'HSS34x10x1': { weight: 277.07, category: 'HSS Rect' },
+  'HSS34x10x7/8': { weight: 244.88, category: 'HSS Rect' },
+  'HSS34x10x3/4': { weight: 212.00, category: 'HSS Rect' },
+  'HSS34x10x5/8': { weight: 178.41, category: 'HSS Rect' },
+  'HSS30x10x1': { weight: 249.85, category: 'HSS Rect' },
+  'HSS30x10x7/8': { weight: 221.06, category: 'HSS Rect' },
+  'HSS30x10x3/4': { weight: 191.58, category: 'HSS Rect' },
+  'HSS30x10x5/8': { weight: 161.40, category: 'HSS Rect' },
+  'HSS30x10x1/2': { weight: 130.52, category: 'HSS Rect' },
+  'HSS24x20x3/4': { weight: 212.00, category: 'HSS Rect' },
+  'HSS24x20x5/8': { weight: 178.41, category: 'HSS Rect' },
+  'HSS24x20x1/2': { weight: 144.13, category: 'HSS Rect' },
+  'HSS24x20x3/8': { weight: 109.15, category: 'HSS Rect' },
+  'HSS24x20x5/16': { weight: 91.39, category: 'HSS Rect' },
+  'HSS24x18x3/4': { weight: 201.79, category: 'HSS Rect' },
+  'HSS24x18x5/8': { weight: 169.91, category: 'HSS Rect' },
+  'HSS24x18x1/2': { weight: 137.32, category: 'HSS Rect' },
+  'HSS24x18x3/8': { weight: 104.04, category: 'HSS Rect' },
+  'HSS24x18x5/16': { weight: 87.14, category: 'HSS Rect' },
+  'HSS24x16x3/4': { weight: 191.58, category: 'HSS Rect' },
+  'HSS24x16x5/8': { weight: 161.40, category: 'HSS Rect' },
+  'HSS24x16x1/2': { weight: 130.52, category: 'HSS Rect' },
+  'HSS24x16x3/8': { weight: 98.94, category: 'HSS Rect' },
+  'HSS24x16x5/16': { weight: 82.88, category: 'HSS Rect' },
+  'HSS24x14x3/4': { weight: 181.37, category: 'HSS Rect' },
+  'HSS24x14x5/8': { weight: 152.89, category: 'HSS Rect' },
+  'HSS24x14x1/2': { weight: 123.71, category: 'HSS Rect' },
+  'HSS24x14x3/8': { weight: 93.83, category: 'HSS Rect' },
+  'HSS24x14x5/16': { weight: 78.63, category: 'HSS Rect' },
+  'HSS24x14x1/4': { weight: 63.25, category: 'HSS Rect' },
+  'HSS24x12x1': { weight: 222.63, category: 'HSS Rect' },
+  'HSS24x12x7/8': { weight: 197.24, category: 'HSS Rect' },
+  'HSS24x12x3/4': { weight: 171.16, category: 'HSS Rect' },
+  'HSS24x12x5/8': { weight: 144.39, category: 'HSS Rect' },
+  'HSS24x12x1/2': { weight: 116.91, category: 'HSS Rect' },
+  'HSS24x12x3/8': { weight: 88.73, category: 'HSS Rect' },
+  'HSS24x12x5/16': { weight: 74.38, category: 'HSS Rect' },
+  'HSS24x12x1/4': { weight: 59.85, category: 'HSS Rect' },
+  'HSS24x8x1/2': { weight: 103.30, category: 'HSS Rect' },
+  'HSS24x8x3/8': { weight: 78.52, category: 'HSS Rect' },
+  'HSS24x8x5/16': { weight: 65.87, category: 'HSS Rect' },
+  'HSS24x8x1/4': { weight: 53.05, category: 'HSS Rect' },
+  'HSS22x20x3/4': { weight: 201.79, category: 'HSS Rect' },
+  'HSS22x20x5/8': { weight: 169.91, category: 'HSS Rect' },
+  'HSS22x20x1/2': { weight: 137.32, category: 'HSS Rect' },
+  'HSS22x20x3/8': { weight: 104.04, category: 'HSS Rect' },
+  'HSS22x20x5/16': { weight: 87.14, category: 'HSS Rect' },
+  'HSS22x18x3/4': { weight: 191.58, category: 'HSS Rect' },
+  'HSS22x18x5/8': { weight: 161.40, category: 'HSS Rect' },
+  'HSS22x18x1/2': { weight: 130.52, category: 'HSS Rect' },
+  'HSS22x18x3/8': { weight: 98.94, category: 'HSS Rect' },
+  'HSS22x18x5/16': { weight: 82.88, category: 'HSS Rect' },
+  'HSS22x16x3/4': { weight: 181.37, category: 'HSS Rect' },
+  'HSS22x16x5/8': { weight: 152.89, category: 'HSS Rect' },
+  'HSS22x16x1/2': { weight: 123.71, category: 'HSS Rect' },
+  'HSS22x16x3/8': { weight: 93.83, category: 'HSS Rect' },
+  'HSS22x16x5/16': { weight: 78.63, category: 'HSS Rect' },
+  'HSS22x16x1/4': { weight: 63.25, category: 'HSS Rect' },
+  'HSS22x14x3/4': { weight: 171.16, category: 'HSS Rect' },
+  'HSS22x14x5/8': { weight: 144.39, category: 'HSS Rect' },
+  'HSS22x14x1/2': { weight: 116.91, category: 'HSS Rect' },
+  'HSS22x14x3/8': { weight: 88.73, category: 'HSS Rect' },
+  'HSS22x14x5/16': { weight: 74.38, category: 'HSS Rect' },
+  'HSS22x14x1/4': { weight: 59.85, category: 'HSS Rect' },
+  'HSS22x10x5/8': { weight: 127.37, category: 'HSS Rect' },
+  'HSS22x10x1/2': { weight: 103.30, category: 'HSS Rect' },
+  'HSS22x10x3/8': { weight: 78.52, category: 'HSS Rect' },
+  'HSS22x10x5/16': { weight: 65.87, category: 'HSS Rect' },
+  'HSS22x10x1/4': { weight: 53.05, category: 'HSS Rect' },
+  'HSS20x16x3/4': { weight: 171.16, category: 'HSS Rect' },
+  'HSS20x16x5/8': { weight: 144.39, category: 'HSS Rect' },
+  'HSS20x16x1/2': { weight: 116.91, category: 'HSS Rect' },
+  'HSS20x16x3/8': { weight: 88.73, category: 'HSS Rect' },
+  'HSS20x16x5/16': { weight: 74.38, category: 'HSS Rect' },
+  'HSS20x16x1/4': { weight: 59.85, category: 'HSS Rect' },
+  'HSS20x12x1': { weight: 195.40, category: 'HSS Rect' },
+  'HSS20x12x7/8': { weight: 173.43, category: 'HSS Rect' },
+  'HSS20x12x3/4': { weight: 150.75, category: 'HSS Rect' },
+  'HSS20x12x5/8': { weight: 127.37, category: 'HSS Rect' },
+  'HSS20x12x1/2': { weight: 103.30, category: 'HSS Rect' },
+  'HSS20x12x3/8': { weight: 78.52, category: 'HSS Rect' },
+  'HSS20x12x5/16': { weight: 65.87, category: 'HSS Rect' },
+  'HSS20x8x1': { weight: 168.18, category: 'HSS Rect' },
+  'HSS20x8x7/8': { weight: 149.61, category: 'HSS Rect' },
+  'HSS20x8x3/4': { weight: 130.33, category: 'HSS Rect' },
+  'HSS20x8x5/8': { weight: 110.36, category: 'HSS Rect' },
+  'HSS20x8x1/2': { weight: 89.68, category: 'HSS Rect' },
+  'HSS20x8x3/8': { weight: 68.31, category: 'HSS Rect' },
+  'HSS20x8x5/16': { weight: 57.36, category: 'HSS Rect' },
+  'HSS20x6x5/8': { weight: 101.85, category: 'HSS Rect' },
+  'HSS20x6x1/2': { weight: 82.88, category: 'HSS Rect' },
+  'HSS20x6x3/8': { weight: 63.21, category: 'HSS Rect' },
+  'HSS20x6x5/16': { weight: 53.11, category: 'HSS Rect' },
+  'HSS20x6x1/4': { weight: 42.84, category: 'HSS Rect' },
+  'HSS20x4x1/2': { weight: 76.07, category: 'HSS Rect' },
+  'HSS20x4x3/8': { weight: 58.10, category: 'HSS Rect' },
+  'HSS20x4x5/16': { weight: 48.86, category: 'HSS Rect' },
+  'HSS20x4x1/4': { weight: 39.43, category: 'HSS Rect' },
+  'HSS18x10x5/8': { weight: 110.36, category: 'HSS Rect' },
+  'HSS18x10x1/2': { weight: 89.68, category: 'HSS Rect' },
+  'HSS18x10x3/8': { weight: 68.31, category: 'HSS Rect' },
+  'HSS18x10x5/16': { weight: 57.36, category: 'HSS Rect' },
+  'HSS18x10x1/4': { weight: 46.24, category: 'HSS Rect' },
+  'HSS18x8x5/8': { weight: 101.85, category: 'HSS Rect' },
+  'HSS18x8x1/2': { weight: 82.88, category: 'HSS Rect' },
+  'HSS18x8x3/8': { weight: 63.21, category: 'HSS Rect' },
+  'HSS18x8x5/16': { weight: 53.11, category: 'HSS Rect' },
+  'HSS18x8x1/4': { weight: 42.84, category: 'HSS Rect' },
+  'HSS18x6x3/4': { weight: 109.91, category: 'HSS Rect' },
+  'HSS18x6x5/8': { weight: 93.34, category: 'HSS Rect' },
+  'HSS18x6x1/2': { weight: 76.07, category: 'HSS Rect' },
+  'HSS18x6x3/8': { weight: 58.10, category: 'HSS Rect' },
+  'HSS18x6x5/16': { weight: 48.86, category: 'HSS Rect' },
+  'HSS18x6x1/4': { weight: 39.43, category: 'HSS Rect' },
+  'HSS16x12x1': { weight: 168.18, category: 'HSS Rect' },
+  'HSS16x12x7/8': { weight: 149.61, category: 'HSS Rect' },
+  'HSS16x12x3/4': { weight: 130.33, category: 'HSS Rect' },
+  'HSS16x12x5/8': { weight: 110.36, category: 'HSS Rect' },
+  'HSS16x12x1/2': { weight: 89.68, category: 'HSS Rect' },
+  'HSS16x12x3/8': { weight: 68.31, category: 'HSS Rect' },
+  'HSS16x12x5/16': { weight: 57.36, category: 'HSS Rect' },
+  'HSS16x10x5/8': { weight: 101.85, category: 'HSS Rect' },
+  'HSS16x10x1/2': { weight: 82.88, category: 'HSS Rect' },
+  'HSS16x10x3/8': { weight: 63.21, category: 'HSS Rect' },
+  'HSS16x10x5/16': { weight: 53.11, category: 'HSS Rect' },
+  'HSS16x10x1/4': { weight: 42.84, category: 'HSS Rect' },
+  'HSS16x8x7/8': { weight: 125.79, category: 'HSS Rect' },
+  'HSS16x8x3/4': { weight: 109.91, category: 'HSS Rect' },
+  'HSS16x8x5/8': { weight: 93.34, category: 'HSS Rect' },
+  'HSS16x8x1/2': { weight: 76.07, category: 'HSS Rect' },
+  'HSS16x8x3/8': { weight: 58.10, category: 'HSS Rect' },
+  'HSS16x8x5/16': { weight: 48.86, category: 'HSS Rect' },
+  'HSS16x8x1/4': { weight: 39.43, category: 'HSS Rect' },
+  'HSS16x6x5/8': { weight: 84.84, category: 'HSS Rect' },
+  'HSS16x6x1/2': { weight: 69.27, category: 'HSS Rect' },
+  'HSS16x6x3/8': { weight: 53.00, category: 'HSS Rect' },
+  'HSS16x6x5/16': { weight: 44.60, category: 'HSS Rect' },
+  'HSS16x6x1/4': { weight: 36.03, category: 'HSS Rect' },
+  'HSS16x6x3/16': { weight: 27.29, category: 'HSS Rect' },
+  'HSS16x4x5/8': { weight: 76.33, category: 'HSS Rect' },
+  'HSS16x4x1/2': { weight: 62.46, category: 'HSS Rect' },
+  'HSS16x4x3/8': { weight: 47.90, category: 'HSS Rect' },
+  'HSS16x4x5/16': { weight: 40.35, category: 'HSS Rect' },
+  'HSS16x4x1/4': { weight: 32.63, category: 'HSS Rect' },
+  'HSS16x4x3/16': { weight: 24.73, category: 'HSS Rect' },
+  'HSS14x12x5/8': { weight: 101.85, category: 'HSS Rect' },
+  'HSS14x12x1/2': { weight: 82.88, category: 'HSS Rect' },
+  'HSS14x12x3/8': { weight: 63.21, category: 'HSS Rect' },
+  'HSS14x12x5/16': { weight: 53.11, category: 'HSS Rect' },
+  'HSS14x12x1/4': { weight: 42.84, category: 'HSS Rect' },
+  'HSS14x10x7/8': { weight: 125.79, category: 'HSS Rect' },
+  'HSS14x10x3/4': { weight: 109.91, category: 'HSS Rect' },
+  'HSS14x10x5/8': { weight: 93.34, category: 'HSS Rect' },
+  'HSS14x10x1/2': { weight: 76.07, category: 'HSS Rect' },
+  'HSS14x10x3/8': { weight: 58.10, category: 'HSS Rect' },
+  'HSS14x10x5/16': { weight: 48.86, category: 'HSS Rect' },
+  'HSS14x10x1/4': { weight: 39.43, category: 'HSS Rect' },
+  'HSS14x8x5/8': { weight: 84.84, category: 'HSS Rect' },
+  'HSS14x8x1/2': { weight: 69.27, category: 'HSS Rect' },
+  'HSS14x8x3/8': { weight: 53.00, category: 'HSS Rect' },
+  'HSS14x8x5/16': { weight: 44.60, category: 'HSS Rect' },
+  'HSS14x8x1/4': { weight: 36.03, category: 'HSS Rect' },
+  'HSS14x8x3/16': { weight: 27.29, category: 'HSS Rect' },
+  'HSS14x6x5/8': { weight: 76.33, category: 'HSS Rect' },
+  'HSS14x6x1/2': { weight: 62.46, category: 'HSS Rect' },
+  'HSS14x6x3/8': { weight: 47.90, category: 'HSS Rect' },
+  'HSS14x6x5/16': { weight: 40.35, category: 'HSS Rect' },
+  'HSS14x6x1/4': { weight: 32.63, category: 'HSS Rect' },
+  'HSS14x6x3/16': { weight: 24.73, category: 'HSS Rect' },
+  'HSS14x4x5/8': { weight: 67.82, category: 'HSS Rect' },
+  'HSS14x4x1/2': { weight: 55.66, category: 'HSS Rect' },
+  'HSS14x4x3/8': { weight: 42.79, category: 'HSS Rect' },
+  'HSS14x4x5/16': { weight: 36.10, category: 'HSS Rect' },
+  'HSS14x4x1/4': { weight: 29.23, category: 'HSS Rect' },
+  'HSS14x4x3/16': { weight: 22.18, category: 'HSS Rect' },
+  'HSS12x10x5/8': { weight: 84.84, category: 'HSS Rect' },
+  'HSS12x10x1/2': { weight: 69.27, category: 'HSS Rect' },
+  'HSS12x10x3/8': { weight: 53.00, category: 'HSS Rect' },
+  'HSS12x10x5/16': { weight: 44.60, category: 'HSS Rect' },
+  'HSS12x10x1/4': { weight: 36.03, category: 'HSS Rect' },
+  'HSS12x10x3/16': { weight: 27.29, category: 'HSS Rect' },
+  'HSS12x8x5/8': { weight: 76.33, category: 'HSS Rect' },
+  'HSS12x8x1/2': { weight: 62.46, category: 'HSS Rect' },
+  'HSS12x8x3/8': { weight: 47.90, category: 'HSS Rect' },
+  'HSS12x8x5/16': { weight: 40.35, category: 'HSS Rect' },
+  'HSS12x8x1/4': { weight: 32.63, category: 'HSS Rect' },
+  'HSS12x8x3/16': { weight: 24.73, category: 'HSS Rect' },
+  'HSS12x6x5/8': { weight: 67.82, category: 'HSS Rect' },
+  'HSS12x6x1/2': { weight: 55.66, category: 'HSS Rect' },
+  'HSS12x6x3/8': { weight: 42.79, category: 'HSS Rect' },
+  'HSS12x6x5/16': { weight: 36.10, category: 'HSS Rect' },
+  'HSS12x6x1/4': { weight: 29.23, category: 'HSS Rect' },
+  'HSS12x6x3/16': { weight: 22.18, category: 'HSS Rect' },
+  'HSS12x4x5/8': { weight: 59.32, category: 'HSS Rect' },
+  'HSS12x4x1/2': { weight: 48.85, category: 'HSS Rect' },
+  'HSS12x4x3/8': { weight: 37.69, category: 'HSS Rect' },
+  'HSS12x4x5/16': { weight: 31.84, category: 'HSS Rect' },
+  'HSS12x4x1/4': { weight: 25.82, category: 'HSS Rect' },
+  'HSS12x4x3/16': { weight: 19.63, category: 'HSS Rect' },
+  'HSS12x3x5/16': { weight: 29.72, category: 'HSS Rect' },
+  'HSS12x3x1/4': { weight: 24.12, category: 'HSS Rect' },
+  'HSS12x3x3/16': { weight: 18.35, category: 'HSS Rect' },
+  'HSS12x2x5/16': { weight: 27.59, category: 'HSS Rect' },
+  'HSS12x2x1/4': { weight: 22.42, category: 'HSS Rect' },
+  'HSS12x2x3/16': { weight: 17.08, category: 'HSS Rect' },
+  'HSS10x8x5/8': { weight: 67.82, category: 'HSS Rect' },
+  'HSS10x8x1/2': { weight: 55.66, category: 'HSS Rect' },
+  'HSS10x8x3/8': { weight: 42.79, category: 'HSS Rect' },
+  'HSS10x8x5/16': { weight: 36.10, category: 'HSS Rect' },
+  'HSS10x8x1/4': { weight: 29.23, category: 'HSS Rect' },
+  'HSS10x8x3/16': { weight: 22.18, category: 'HSS Rect' },
+  'HSS10x6x5/8': { weight: 59.32, category: 'HSS Rect' },
+  'HSS10x6x1/2': { weight: 48.85, category: 'HSS Rect' },
+  'HSS10x6x3/8': { weight: 37.69, category: 'HSS Rect' },
+  'HSS10x6x5/16': { weight: 31.84, category: 'HSS Rect' },
+  'HSS10x6x1/4': { weight: 25.82, category: 'HSS Rect' },
+  'HSS10x6x3/16': { weight: 19.63, category: 'HSS Rect' },
+  'HSS10x5x3/8': { weight: 35.13, category: 'HSS Rect' },
+  'HSS10x5x5/16': { weight: 29.72, category: 'HSS Rect' },
+  'HSS10x5x1/4': { weight: 24.12, category: 'HSS Rect' },
+  'HSS10x4x5/8': { weight: 50.81, category: 'HSS Rect' },
+  'HSS10x4x1/2': { weight: 42.05, category: 'HSS Rect' },
+  'HSS10x4x3/8': { weight: 32.58, category: 'HSS Rect' },
+  'HSS10x4x5/16': { weight: 27.59, category: 'HSS Rect' },
+  'HSS10x4x1/4': { weight: 22.42, category: 'HSS Rect' },
+  'HSS10x4x3/16': { weight: 17.08, category: 'HSS Rect' },
+  'HSS10x4x1/8': { weight: 11.56, category: 'HSS Rect' },
+  'HSS10x3-1/2x3/8': { weight: 31.31, category: 'HSS Rect' },
+  'HSS10x3-1/2x5/16': { weight: 26.53, category: 'HSS Rect' },
+  'HSS10x3-1/2x1/4': { weight: 21.57, category: 'HSS Rect' },
+  'HSS10x3-1/2x3/16': { weight: 16.44, category: 'HSS Rect' },
+  'HSS10x3x3/8': { weight: 30.03, category: 'HSS Rect' },
+  'HSS10x3x5/16': { weight: 25.46, category: 'HSS Rect' },
+  'HSS10x3x1/4': { weight: 20.72, category: 'HSS Rect' },
+  'HSS10x3x3/16': { weight: 15.80, category: 'HSS Rect' },
+  'HSS10x3x1/8': { weight: 10.71, category: 'HSS Rect' },
+  'HSS10x2x3/8': { weight: 27.48, category: 'HSS Rect' },
+  'HSS10x2x5/16': { weight: 23.34, category: 'HSS Rect' },
+  'HSS10x2x1/4': { weight: 19.02, category: 'HSS Rect' },
+  'HSS10x2x3/16': { weight: 14.53, category: 'HSS Rect' },
+  'HSS10x2x1/8': { weight: 9.86, category: 'HSS Rect' },
+  'HSS9x7x5/8': { weight: 59.32, category: 'HSS Rect' },
+  'HSS9x7x1/2': { weight: 48.85, category: 'HSS Rect' },
+  'HSS9x7x3/8': { weight: 37.69, category: 'HSS Rect' },
+  'HSS9x7x5/16': { weight: 31.84, category: 'HSS Rect' },
+  'HSS9x7x1/4': { weight: 25.82, category: 'HSS Rect' },
+  'HSS9x7x3/16': { weight: 19.63, category: 'HSS Rect' },
+  'HSS9x5x5/8': { weight: 50.81, category: 'HSS Rect' },
+  'HSS9x5x1/2': { weight: 42.05, category: 'HSS Rect' },
+  'HSS9x5x3/8': { weight: 32.58, category: 'HSS Rect' },
+  'HSS9x5x5/16': { weight: 27.59, category: 'HSS Rect' },
+  'HSS9x5x1/4': { weight: 22.42, category: 'HSS Rect' },
+  'HSS9x5x3/16': { weight: 17.08, category: 'HSS Rect' },
+  'HSS9x3x1/2': { weight: 35.24, category: 'HSS Rect' },
+  'HSS9x3x3/8': { weight: 27.48, category: 'HSS Rect' },
+  'HSS9x3x5/16': { weight: 23.34, category: 'HSS Rect' },
+  'HSS9x3x1/4': { weight: 19.02, category: 'HSS Rect' },
+  'HSS9x3x3/16': { weight: 14.53, category: 'HSS Rect' },
+  'HSS8x6x5/8': { weight: 50.81, category: 'HSS Rect' },
+  'HSS8x6x1/2': { weight: 42.05, category: 'HSS Rect' },
+  'HSS8x6x3/8': { weight: 32.58, category: 'HSS Rect' },
+  'HSS8x6x5/16': { weight: 27.59, category: 'HSS Rect' },
+  'HSS8x6x1/4': { weight: 22.42, category: 'HSS Rect' },
+  'HSS8x6x3/16': { weight: 17.08, category: 'HSS Rect' },
+  'HSS8x4x5/8': { weight: 42.30, category: 'HSS Rect' },
+  'HSS8x4x1/2': { weight: 35.24, category: 'HSS Rect' },
+  'HSS8x4x3/8': { weight: 27.48, category: 'HSS Rect' },
+  'HSS8x4x5/16': { weight: 23.34, category: 'HSS Rect' },
+  'HSS8x4x1/4': { weight: 19.02, category: 'HSS Rect' },
+  'HSS8x4x3/16': { weight: 14.53, category: 'HSS Rect' },
+  'HSS8x4x1/8': { weight: 9.86, category: 'HSS Rect' },
+  'HSS8x3x1/2': { weight: 31.84, category: 'HSS Rect' },
+  'HSS8x3x3/8': { weight: 24.93, category: 'HSS Rect' },
+  'HSS8x3x5/16': { weight: 21.21, category: 'HSS Rect' },
+  'HSS8x3x1/4': { weight: 17.32, category: 'HSS Rect' },
+  'HSS8x3x3/16': { weight: 13.25, category: 'HSS Rect' },
+  'HSS8x3x1/8': { weight: 9.01, category: 'HSS Rect' },
+  'HSS8x2x1/2': { weight: 28.43, category: 'HSS Rect' },
   'HSS8x2x3/8': { weight: 22.37, category: 'HSS Rect' },
   'HSS8x2x5/16': { weight: 19.08, category: 'HSS Rect' },
   'HSS8x2x1/4': { weight: 15.62, category: 'HSS Rect' },
   'HSS8x2x3/16': { weight: 11.97, category: 'HSS Rect' },
   'HSS8x2x1/8': { weight: 8.16, category: 'HSS Rect' },
-  'HSS6x4x3/8': { weight: 18.93, category: 'HSS Rect' },
-  'HSS6x4x1/4': { weight: 13.29, category: 'HSS Rect' },
-  'HSS6x4x3/16': { weight: 10.24, category: 'HSS Rect' },
-  'HSS6x3x3/8': { weight: 16.89, category: 'HSS Rect' },
-  'HSS6x3x1/4': { weight: 11.85, category: 'HSS Rect' },
-  'HSS6x3x3/16': { weight: 9.12, category: 'HSS Rect' },
+  'HSS7x5x1/2': { weight: 35.24, category: 'HSS Rect' },
+  'HSS7x5x3/8': { weight: 27.48, category: 'HSS Rect' },
+  'HSS7x5x5/16': { weight: 23.34, category: 'HSS Rect' },
+  'HSS7x5x1/4': { weight: 19.02, category: 'HSS Rect' },
+  'HSS7x5x3/16': { weight: 14.53, category: 'HSS Rect' },
+  'HSS7x5x1/8': { weight: 9.86, category: 'HSS Rect' },
+  'HSS7x4x1/2': { weight: 31.84, category: 'HSS Rect' },
+  'HSS7x4x3/8': { weight: 24.93, category: 'HSS Rect' },
+  'HSS7x4x5/16': { weight: 21.21, category: 'HSS Rect' },
+  'HSS7x4x1/4': { weight: 17.32, category: 'HSS Rect' },
+  'HSS7x4x3/16': { weight: 13.25, category: 'HSS Rect' },
+  'HSS7x4x1/8': { weight: 9.01, category: 'HSS Rect' },
+  'HSS7x3x1/2': { weight: 28.43, category: 'HSS Rect' },
+  'HSS7x3x3/8': { weight: 22.37, category: 'HSS Rect' },
+  'HSS7x3x5/16': { weight: 19.08, category: 'HSS Rect' },
+  'HSS7x3x1/4': { weight: 15.62, category: 'HSS Rect' },
+  'HSS7x3x3/16': { weight: 11.97, category: 'HSS Rect' },
+  'HSS7x3x1/8': { weight: 8.16, category: 'HSS Rect' },
+  'HSS7x2x1/4': { weight: 13.91, category: 'HSS Rect' },
+  'HSS7x2x3/16': { weight: 10.70, category: 'HSS Rect' },
+  'HSS7x2x1/8': { weight: 7.31, category: 'HSS Rect' },
+  'HSS6x5x1/2': { weight: 31.84, category: 'HSS Rect' },
+  'HSS6x5x3/8': { weight: 24.93, category: 'HSS Rect' },
+  'HSS6x5x5/16': { weight: 21.21, category: 'HSS Rect' },
+  'HSS6x5x1/4': { weight: 17.32, category: 'HSS Rect' },
+  'HSS6x5x3/16': { weight: 13.25, category: 'HSS Rect' },
+  'HSS6x5x1/8': { weight: 9.01, category: 'HSS Rect' },
+  'HSS6x4x1/2': { weight: 28.43, category: 'HSS Rect' },
+  'HSS6x4x3/8': { weight: 22.37, category: 'HSS Rect' },
+  'HSS6x4x5/16': { weight: 19.08, category: 'HSS Rect' },
+  'HSS6x4x1/4': { weight: 15.62, category: 'HSS Rect' },
+  'HSS6x4x3/16': { weight: 11.97, category: 'HSS Rect' },
+  'HSS6x4x1/8': { weight: 8.16, category: 'HSS Rect' },
+  'HSS6x3x1/2': { weight: 25.03, category: 'HSS Rect' },
+  'HSS6x3x3/8': { weight: 19.82, category: 'HSS Rect' },
+  'HSS6x3x5/16': { weight: 16.96, category: 'HSS Rect' },
+  'HSS6x3x1/4': { weight: 13.91, category: 'HSS Rect' },
+  'HSS6x3x3/16': { weight: 10.70, category: 'HSS Rect' },
+  'HSS6x3x1/8': { weight: 7.31, category: 'HSS Rect' },
   'HSS6x2x3/8': { weight: 17.27, category: 'HSS Rect' },
   'HSS6x2x5/16': { weight: 14.83, category: 'HSS Rect' },
   'HSS6x2x1/4': { weight: 12.21, category: 'HSS Rect' },
   'HSS6x2x3/16': { weight: 9.42, category: 'HSS Rect' },
   'HSS6x2x1/8': { weight: 6.46, category: 'HSS Rect' },
-  'HSS5x4x3/8': { weight: 16.89, category: 'HSS Rect' },
-  'HSS5x4x1/4': { weight: 11.85, category: 'HSS Rect' },
-  'HSS5x4x3/16': { weight: 9.12, category: 'HSS Rect' },
-  'HSS5x3x3/8': { weight: 14.83, category: 'HSS Rect' },
-  'HSS5x3x1/4': { weight: 10.46, category: 'HSS Rect' },
-  'HSS5x3x3/16': { weight: 8.08, category: 'HSS Rect' },
-  'HSS5x2x1/4': { weight: 9.06, category: 'HSS Rect' },
-  'HSS5x2x3/16': { weight: 7.03, category: 'HSS Rect' },
-  'HSS4x3x3/8': { weight: 12.76, category: 'HSS Rect' },
-  'HSS4x3x1/4': { weight: 9.06, category: 'HSS Rect' },
-  'HSS4x3x3/16': { weight: 7.03, category: 'HSS Rect' },
-  'HSS4x2x1/4': { weight: 7.67, category: 'HSS Rect' },
-  'HSS4x2x3/16': { weight: 5.97, category: 'HSS Rect' },
-  'HSS3x2x1/4': { weight: 4.84, category: 'HSS Rect' },
-  'HSS3x2x3/16': { weight: 3.82, category: 'HSS Rect' },
+  'HSS5x4x1/2': { weight: 25.03, category: 'HSS Rect' },
+  'HSS5x4x3/8': { weight: 19.82, category: 'HSS Rect' },
+  'HSS5x4x5/16': { weight: 16.96, category: 'HSS Rect' },
+  'HSS5x4x1/4': { weight: 13.91, category: 'HSS Rect' },
+  'HSS5x4x3/16': { weight: 10.70, category: 'HSS Rect' },
+  'HSS5x4x1/8': { weight: 7.31, category: 'HSS Rect' },
+  'HSS5x3x1/2': { weight: 21.63, category: 'HSS Rect' },
+  'HSS5x3x3/8': { weight: 17.27, category: 'HSS Rect' },
+  'HSS5x3x5/16': { weight: 14.83, category: 'HSS Rect' },
+  'HSS5x3x1/4': { weight: 12.21, category: 'HSS Rect' },
+  'HSS5x3x3/16': { weight: 9.42, category: 'HSS Rect' },
+  'HSS5x3x1/8': { weight: 6.46, category: 'HSS Rect' },
+  'HSS5x2-1/2x1/4': { weight: 11.36, category: 'HSS Rect' },
+  'HSS5x2-1/2x3/16': { weight: 8.78, category: 'HSS Rect' },
+  'HSS5x2-1/2x1/8': { weight: 6.03, category: 'HSS Rect' },
+  'HSS5x2x3/8': { weight: 14.72, category: 'HSS Rect' },
+  'HSS5x2x5/16': { weight: 12.70, category: 'HSS Rect' },
+  'HSS5x2x1/4': { weight: 10.51, category: 'HSS Rect' },
+  'HSS5x2x3/16': { weight: 8.15, category: 'HSS Rect' },
+  'HSS5x2x1/8': { weight: 5.61, category: 'HSS Rect' },
+  'HSS4x3x3/8': { weight: 14.72, category: 'HSS Rect' },
+  'HSS4x3x5/16': { weight: 12.70, category: 'HSS Rect' },
+  'HSS4x3x1/4': { weight: 10.51, category: 'HSS Rect' },
+  'HSS4x3x3/16': { weight: 8.15, category: 'HSS Rect' },
+  'HSS4x3x1/8': { weight: 5.61, category: 'HSS Rect' },
+  'HSS4x2-1/2x1/4': { weight: 9.66, category: 'HSS Rect' },
+  'HSS4x2-1/2x3/16': { weight: 7.51, category: 'HSS Rect' },
+  'HSS4x2-1/2x1/8': { weight: 5.18, category: 'HSS Rect' },
+  'HSS4x2x3/8': { weight: 12.17, category: 'HSS Rect' },
+  'HSS4x2x5/16': { weight: 10.58, category: 'HSS Rect' },
+  'HSS4x2x1/4': { weight: 8.81, category: 'HSS Rect' },
+  'HSS4x2x3/16': { weight: 6.87, category: 'HSS Rect' },
+  'HSS4x2x1/8': { weight: 4.75, category: 'HSS Rect' },
+  'HSS4x1-1/2x1/4': { weight: 7.96, category: 'HSS Rect' },
+  'HSS4x1-1/2x3/16': { weight: 6.23, category: 'HSS Rect' },
+  'HSS4x1-1/2x1/8': { weight: 4.33, category: 'HSS Rect' },
+  'HSS3-1/2x2-1/2x3/8': { weight: 12.17, category: 'HSS Rect' },
+  'HSS3-1/2x2-1/2x5/16': { weight: 10.58, category: 'HSS Rect' },
+  'HSS3-1/2x2-1/2x1/4': { weight: 8.81, category: 'HSS Rect' },
+  'HSS3-1/2x2-1/2x3/16': { weight: 6.87, category: 'HSS Rect' },
+  'HSS3-1/2x2-1/2x1/8': { weight: 4.75, category: 'HSS Rect' },
+  'HSS3-1/2x2x1/4': { weight: 7.96, category: 'HSS Rect' },
+  'HSS3-1/2x2x3/16': { weight: 6.23, category: 'HSS Rect' },
+  'HSS3-1/2x2x1/8': { weight: 4.33, category: 'HSS Rect' },
+  'HSS3-1/2x1-1/2x1/4': { weight: 7.11, category: 'HSS Rect' },
+  'HSS3-1/2x1-1/2x3/16': { weight: 5.59, category: 'HSS Rect' },
+  'HSS3-1/2x1-1/2x1/8': { weight: 3.90, category: 'HSS Rect' },
+  'HSS3x2-1/2x5/16': { weight: 9.51, category: 'HSS Rect' },
+  'HSS3x2-1/2x1/4': { weight: 7.96, category: 'HSS Rect' },
+  'HSS3x2-1/2x3/16': { weight: 6.23, category: 'HSS Rect' },
+  'HSS3x2-1/2x1/8': { weight: 4.33, category: 'HSS Rect' },
+  'HSS3x2x5/16': { weight: 8.45, category: 'HSS Rect' },
+  'HSS3x2x1/4': { weight: 7.11, category: 'HSS Rect' },
+  'HSS3x2x3/16': { weight: 5.59, category: 'HSS Rect' },
+  'HSS3x2x1/8': { weight: 3.90, category: 'HSS Rect' },
+  'HSS3x1-1/2x1/4': { weight: 6.26, category: 'HSS Rect' },
+  'HSS3x1-1/2x3/16': { weight: 4.96, category: 'HSS Rect' },
+  'HSS3x1-1/2x1/8': { weight: 3.48, category: 'HSS Rect' },
+  'HSS3x1x3/16': { weight: 4.32, category: 'HSS Rect' },
+  'HSS3x1x1/8': { weight: 3.05, category: 'HSS Rect' },
+  'HSS2-1/2x2x1/4': { weight: 6.26, category: 'HSS Rect' },
+  'HSS2-1/2x2x3/16': { weight: 4.96, category: 'HSS Rect' },
+  'HSS2-1/2x2x1/8': { weight: 3.48, category: 'HSS Rect' },
+  'HSS2-1/2x1-1/2x1/4': { weight: 5.41, category: 'HSS Rect' },
+  'HSS2-1/2x1-1/2x3/16': { weight: 4.32, category: 'HSS Rect' },
+  'HSS2-1/2x1-1/2x1/8': { weight: 3.05, category: 'HSS Rect' },
+  'HSS2-1/2x1x3/16': { weight: 3.68, category: 'HSS Rect' },
+  'HSS2-1/2x1x1/8': { weight: 2.63, category: 'HSS Rect' },
+  'HSS2x1-1/2x3/16': { weight: 3.68, category: 'HSS Rect' },
+  'HSS2x1-1/2x1/8': { weight: 2.63, category: 'HSS Rect' },
+  'HSS2x1x3/16': { weight: 3.04, category: 'HSS Rect' },
+  'HSS2x1x1/8': { weight: 2.20, category: 'HSS Rect' },
   // Pipe
   'PIPE 12 STD': { weight: 49.56, category: 'Pipe' },
   'PIPE 10 STD': { weight: 40.48, category: 'Pipe' },
@@ -1144,9 +1533,11 @@ const standardQualifications = [
   'Payment terms: Net 30'
 ];
 
-// Stock lengths - Pipe only uses 21' and 42', all others use standard lengths
+// Stock lengths by category — mill standard lengths suppliers actually ship
 const standardStockLengths = [20, 25, 30, 35, 40, 45, 50, 55, 60];
 const pipeStockLengths = [21, 42];
+const angleStockLengths = [20, 40]; // Angle (L) mill lengths
+const hssStockLengths = [20, 24, 40, 48]; // HSS Square/Rect mill lengths
 const plateStockLengths = [4, 8, 10, 12, 20]; // Plate lengths in feet (from 48", 96", 120", 144" sheets; 20' for bar stock)
 const roundBarStockLengths = [12, 20]; // Round bar standard mill lengths
 
@@ -1189,6 +1580,12 @@ const calcPlateWeightPerFoot = (thicknessIn, widthIn) => {
 const getStockLengthsForCategory = (category) => {
   if (category === 'Pipe') {
     return pipeStockLengths;
+  }
+  if (category === 'Angle') {
+    return angleStockLengths;
+  }
+  if (category === 'HSS Square' || category === 'HSS Rect') {
+    return hssStockLengths;
   }
   if (category === 'Plate') {
     return plateStockLengths;
@@ -1270,9 +1667,9 @@ const calculateOptimalStock = (pieces, length, availableStockLengths) => {
     const totalWaste = totalStockLength - totalUsedLength;
     const efficiency = (totalUsedLength / totalStockLength) * 100;
     
-    // Better solution if less waste (or same waste but fewer stocks)
-    if (totalWaste < bestResult.waste || 
-        (totalWaste === bestResult.waste && stocksNeeded < bestResult.stocksRequired)) {
+    // Better solution if less waste (or same waste but shorter stock — easier to handle in the shop)
+    if (totalWaste < bestResult.waste ||
+        (totalWaste === bestResult.waste && stockLen < bestResult.optimalLength)) {
       bestResult = {
         optimalLength: stockLen,
         stocksRequired: stocksNeeded,
@@ -1646,6 +2043,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [projectStatus, setProjectStatus] = useState('DRAFT');
   const [statusChanging, setStatusChanging] = useState(false);
+  const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
+  const [stockListFilter, setStockListFilter] = useState('');
   
   // Project Info
   const [projectName, setProjectName] = useState('');
@@ -2232,7 +2631,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               stockLength: mat.stockLength || 0,
               stocksRequired: mat.stocksRequired || 0,
               waste: mat.waste || 0,
-              weightPerFt: mat.weightPerFt || 0,
+              weightPerFoot: mat.weightPerFt || (mat.shape && steelDatabase[mat.shape]?.weight) || 0,
               fabWeight: mat.fabWeight || 0,
               stockWeight: mat.stockWeight || 0,
               priceBy: mat.priceBy || 'LB',
@@ -2275,7 +2674,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 stockLength: child.stockLength || 0,
                 stocksRequired: child.stocksRequired || 0,
                 waste: child.waste || 0,
-                weightPerFt: child.weightPerFt || 0,
+                weightPerFoot: child.weightPerFt || (child.shape && steelDatabase[child.shape]?.weight) || 0,
                 fabWeight: child.fabWeight || 0,
                 stockWeight: child.stockWeight || 0,
                 priceBy: child.priceBy || 'LB',
@@ -2329,7 +2728,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             })),
           };
         });
-        setItems(loadedItems.map(item => ({ ...item, materials: resequenceMaterials(item.materials) })));
+        setItems(loadedItems.map(item => ({
+          ...item,
+          materials: resequenceMaterials(item.materials).map(mat => {
+            const calcMat = calculateMaterial(mat);
+            return {
+              ...calcMat,
+              children: (calcMat.children || []).map(c => calculateMaterial(c)),
+            };
+          }),
+        })));
         const expanded = {};
         loadedItems.forEach(item => { expanded[item.id] = true; });
         setExpandedItems(expanded);
@@ -4110,6 +4518,60 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Memoized stock list to avoid recalculating on every render
   const stockList = useMemo(() => getStockList(), [items]);
 
+  // Per-item stock breakdown (one row per item + size + stockLength) for the buy list display
+  const getDetailedStockList = () => {
+    const result = [];
+    items.forEach(item => {
+      const perItem = {};
+      item.materials.forEach(mat => {
+        if (mat.size && mat.stocksRequired > 0) {
+          const key = `${mat.size}-${mat.stockLength}`;
+          if (!perItem[key]) {
+            perItem[key] = {
+              itemNumber: item.itemNumber,
+              itemName: item.itemName,
+              size: mat.size,
+              stockLength: mat.stockLength,
+              weightPerFoot: mat.weightPerFoot || 0,
+              totalStocks: 0,
+              totalWeight: 0,
+            };
+          }
+          perItem[key].totalStocks += mat.stocksRequired;
+          perItem[key].totalWeight += mat.stocksRequired * mat.stockLength * (mat.weightPerFoot || 0);
+        }
+      });
+      result.push(...Object.values(perItem));
+    });
+    return result;
+  };
+
+  const detailedStockList = useMemo(() => getDetailedStockList(), [items]);
+
+  // Filter + sort applied to the detailed list for the buy list display
+  const displayedStockList = useMemo(() => {
+    const q = stockListFilter.trim().toLowerCase();
+    const filtered = q ? detailedStockList.filter(s => s.size.toLowerCase().includes(q)) : detailedStockList;
+    const { field, dir } = stockListSort;
+    const mul = dir === 'asc' ? 1 : -1;
+    const cmp = {
+      itemNumber: (a, b) => a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true }),
+      size:       (a, b) => a.size.localeCompare(b.size),
+      stockLength:(a, b) => a.stockLength - b.stockLength,
+      totalStocks:(a, b) => a.totalStocks - b.totalStocks,
+      totalWeight:(a, b) => a.totalWeight - b.totalWeight,
+    }[field] || ((a, b) => 0);
+    return [...filtered].sort((a, b) => mul * cmp(a, b));
+  }, [detailedStockList, stockListSort, stockListFilter]);
+
+  const toggleStockSort = (field) => {
+    setStockListSort(prev => prev.field === field
+      ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { field, dir: 'asc' });
+  };
+
+  const sortArrow = (field) => stockListSort.field === field ? (stockListSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+
   return (
     <div className="max-w-7xl mx-auto p-4 bg-gray-100 dark:bg-gray-700 min-h-screen">
       <div className="bg-white dark:bg-gray-900 rounded shadow">
@@ -5650,19 +6112,41 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
               )}
               
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={stockListFilter}
+                  onChange={e => setStockListFilter(e.target.value)}
+                  placeholder="Filter by size (e.g. L5x5, HSS6, W12)"
+                  className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                />
+                {stockListFilter && (
+                  <button
+                    onClick={() => setStockListFilter('')}
+                    className="px-3 py-2 text-sm border rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Clear
+                  </button>
+                )}
+                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {displayedStockList.length} of {detailedStockList.length} rows
+                </span>
+              </div>
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-200 dark:bg-gray-600">
-                    <th className="border p-2 text-left">Size</th>
-                    <th className="border p-2 text-right">Stock Length</th>
-                    <th className="border p-2 text-right">Qty Stocks</th>
+                    <th className="border p-2 text-left cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('itemNumber')}>Item #{sortArrow('itemNumber')}</th>
+                    <th className="border p-2 text-left cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('size')}>Size{sortArrow('size')}</th>
+                    <th className="border p-2 text-right cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('stockLength')}>Stock Length{sortArrow('stockLength')}</th>
+                    <th className="border p-2 text-right cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('totalStocks')}>Qty Stocks{sortArrow('totalStocks')}</th>
                     <th className="border p-2 text-right">Wt/ft</th>
-                    <th className="border p-2 text-right">Total Weight</th>
+                    <th className="border p-2 text-right cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('totalWeight')}>Total Weight{sortArrow('totalWeight')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockList.map((stock, i) => (
+                  {displayedStockList.map((stock, i) => (
                     <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <td className="border p-2">{stock.itemNumber}</td>
                       <td className="border p-2 font-semibold">{stock.size}</td>
                       <td className="border p-2 text-right">{stock.stockLength}'</td>
                       <td className="border p-2 text-right font-bold">{stock.totalStocks}</td>
@@ -5673,8 +6157,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
-                    <td className="border p-2" colSpan={4}>TOTAL</td>
-                    <td className="border p-2 text-right">{fmtWt(totals.totalStockWeight)} lbs</td>
+                    <td className="border p-2" colSpan={5}>TOTAL{stockListFilter ? ' (filtered)' : ''}</td>
+                    <td className="border p-2 text-right">{fmtWt(displayedStockList.reduce((s, r) => s + r.totalWeight, 0))} lbs</td>
                   </tr>
                 </tfoot>
               </table>
