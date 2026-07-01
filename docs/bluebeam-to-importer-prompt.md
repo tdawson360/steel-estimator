@@ -28,7 +28,7 @@ You are converting a Bluebeam CSV export into the 19-column format required by t
 18. `Galvanized`
 19. `Notes`
 
-**Required (importer rejects rows missing these):** `Item_Number`, `Shape_Size`, `Quantity`, `Length_Ft`. Everything else may be blank.
+**Required (importer rejects rows missing these):** `Item_Number`, `Shape_Size`, `Quantity`, `Length_Ft` (or `Measured Length`). Everything else may be blank.
 
 ## Field rules
 
@@ -64,6 +64,8 @@ Integer — number of pieces this row represents.
 
 ### Length_Ft
 Decimal feet, e.g. `57.17`, `0.83`. Convert inches → decimal feet if needed.
+
+> The importer also accepts Bluebeam's `Measured Length` column directly (it's already decimal feet), so profiles that export `Measured Length` instead of `Length_Ft` need no rename. `Length_Ft` takes precedence if both are present.
 
 ### End_1_Labor / End_2_Labor
 First/second end prep. Use ONLY these values (blank allowed):

@@ -116,9 +116,17 @@ function parseTakeoffCSV(text) {
     return '';
   };
 
-  // Validate required columns
-  const requiredCols = ['item_number', 'shape_size', 'quantity', 'length_ft'];
-  const missing = requiredCols.filter(c => !(c in colIndex));
+  // Validate required columns. Each entry is a group of acceptable header
+  // aliases (normalized to lower_snake) — the group is satisfied if any present.
+  const requiredCols = [
+    { label: 'Item_Number', aliases: ['item_number', 'item_#', 'item'] },
+    { label: 'Shape_Size', aliases: ['shape_size', '(non-flat)_mat_size', 'mat_size'] },
+    { label: 'Quantity', aliases: ['quantity'] },
+    { label: 'Length_Ft', aliases: ['length_ft', 'length', 'measured_length'] },
+  ];
+  const missing = requiredCols
+    .filter(g => !g.aliases.some(a => a in colIndex))
+    .map(g => g.label);
   if (missing.length > 0) {
     return {
       error: `Missing required columns: ${missing.join(', ')}. Found: ${headers.join(', ')}`,
@@ -132,7 +140,8 @@ function parseTakeoffCSV(text) {
     if (values.every(v => !v)) continue; // skip blank lines
 
     const qty = parseInt(col(values, 'Quantity') || '0') || 0;
-    const lengthFt = parseFloat(col(values, 'Length_Ft', 'Length') || '0') || 0;
+    // "Measured Length" is Bluebeam's decimal-feet output (some profiles omit Length_Ft)
+    const lengthFt = parseFloat(col(values, 'Length_Ft', 'Length', 'Measured Length') || '0') || 0;
 
     rawRows.push({
       lineNum:        i + 1,
