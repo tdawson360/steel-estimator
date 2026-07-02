@@ -65,6 +65,7 @@ export async function POST(request, { params }) {
           projectName:      `${original.projectName || 'Untitled'} (Copy)`,
           projectAddress:   original.projectAddress,
           customerName:     original.customerName,
+          customerId:       original.customerId,
           billingAddress:   original.billingAddress,
           customerContact:  original.customerContact,
           customerPhone:    original.customerPhone,
