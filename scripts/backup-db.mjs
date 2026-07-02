@@ -1,0 +1,97 @@
+// Nightly SQLite backup for the Steel Estimator database.
+//
+// - Copies prisma/dev.db to a timestamped file in BACKUP_DIR using VACUUM INTO
+//   (an online-consistent snapshot; read-only against the source).
+// - Verifies the copy: PRAGMA integrity_check must return "ok" and the Project
+//   row count must match the source exactly.
+// - Prunes backups older than RETENTION_DAYS.
+// - Appends one line per run to backup.log in BACKUP_DIR.
+// - Exits nonzero (and logs FAIL) on any error, so Task Scheduler records the
+//   run as failed.
+//
+// Intended to run via Windows Task Scheduler; see the schtasks registration
+// command in the repo docs / commit message. Paths are derived from this
+// script's own location so the scheduled task's working directory is irrelevant.
+
+import { PrismaClient } from '@prisma/client';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SOURCE_DB = path.resolve(SCRIPT_DIR, '..', 'prisma', 'dev.db');
+const BACKUP_DIR = 'C:\\Projects\\steel-estimator-db-backups';
+const LOG_FILE = path.join(BACKUP_DIR, 'backup.log');
+const RETENTION_DAYS = 60;
+
+function log(line) {
+  const entry = `${new Date().toISOString()} ${line}\n`;
+  fs.appendFileSync(LOG_FILE, entry);
+  process.stdout.write(entry);
+}
+
+// SQLite URL with forward slashes (Prisma requires them on Windows)
+const toSqliteUrl = (p) => 'file:' + p.replace(/\\/g, '/');
+
+async function main() {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+  if (!fs.existsSync(SOURCE_DB)) {
+    throw new Error(`source database not found: ${SOURCE_DB}`);
+  }
+
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19); // YYYY-MM-DD-HH-mm-ss
+  const backupPath = path.join(BACKUP_DIR, `dev.db.backup-${stamp}`);
+
+  // 1. Snapshot
+  const source = new PrismaClient({ datasources: { db: { url: toSqliteUrl(SOURCE_DB) } } });
+  let sourceCount;
+  try {
+    await source.$queryRawUnsafe(`VACUUM INTO '${backupPath.replace(/\\/g, '/')}'`);
+    sourceCount = await source.project.count();
+  } finally {
+    await source.$disconnect();
+  }
+
+  // 2. Verify the copy independently
+  const backup = new PrismaClient({ datasources: { db: { url: toSqliteUrl(backupPath) } } });
+  let integrity, backupCount;
+  try {
+    const rows = await backup.$queryRawUnsafe('PRAGMA integrity_check');
+    integrity = rows?.[0]?.integrity_check;
+    backupCount = await backup.project.count();
+  } finally {
+    await backup.$disconnect();
+  }
+
+  if (integrity !== 'ok') {
+    throw new Error(`integrity_check failed on ${backupPath}: ${JSON.stringify(integrity)}`);
+  }
+  if (backupCount !== sourceCount) {
+    throw new Error(`row count mismatch: source Project=${sourceCount}, backup Project=${backupCount} (${backupPath})`);
+  }
+
+  // 3. Prune old backups
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const pruned = [];
+  for (const name of fs.readdirSync(BACKUP_DIR)) {
+    if (!name.startsWith('dev.db.backup-')) continue;
+    const full = path.join(BACKUP_DIR, name);
+    if (fs.statSync(full).mtimeMs < cutoff) {
+      fs.unlinkSync(full);
+      pruned.push(name);
+    }
+  }
+
+  const size = fs.statSync(backupPath).size;
+  log(`OK backup=${path.basename(backupPath)} size=${size}B projects=${backupCount} integrity=ok pruned=[${pruned.join(', ')}]`);
+}
+
+main().catch((err) => {
+  try {
+    log(`FAIL ${err.message}`);
+  } catch {
+    console.error(err);
+  }
+  process.exit(1);
+});
