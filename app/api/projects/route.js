@@ -2,6 +2,7 @@ import prisma from '../../../lib/db';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
+import { caseInsensitiveContains } from '../../../lib/searchFilters';
 
 async function getUser(request) {
   const session = await getServerSession(authOptions);
@@ -27,9 +28,9 @@ export async function GET(request) {
 
     if (search) {
       where.OR = [
-        { projectName: { contains: search, mode: 'insensitive' } },
-        { customerName: { contains: search, mode: 'insensitive' } },
-        { architect: { contains: search, mode: 'insensitive' } },
+        { projectName: caseInsensitiveContains(search) },
+        { customerName: caseInsensitiveContains(search) },
+        { architect: caseInsensitiveContains(search) },
       ];
     }
 

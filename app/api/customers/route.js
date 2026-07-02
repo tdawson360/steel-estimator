@@ -2,6 +2,7 @@ import prisma from '../../../lib/db';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
+import { caseInsensitiveContains } from '../../../lib/searchFilters';
 
 async function getUser() {
   const session = await getServerSession(authOptions);
@@ -21,7 +22,7 @@ export async function GET(request) {
 
     const where = {};
     if (search) {
-      where.name = { contains: search, mode: 'insensitive' };
+      where.name = caseInsensitiveContains(search);
     }
 
     const customers = await prisma.customer.findMany({
