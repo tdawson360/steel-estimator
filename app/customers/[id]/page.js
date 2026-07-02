@@ -8,6 +8,7 @@ import {
   Phone, Mail, Star, Clock, Calendar,
 } from 'lucide-react';
 import AppHeader from '../../../components/AppHeader';
+import { apiFetch, SessionExpiredError } from '../../../lib/api-client';
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -105,9 +106,7 @@ export default function CustomerDetailPage() {
 
   const fetchCustomer = useCallback(async () => {
     try {
-      const res = await fetch(`/api/customers/${customerId}`);
-      if (!res.ok) throw new Error('Not found');
-      const data = await res.json();
+      const data = await apiFetch(`/api/customers/${customerId}`);
       setCustomer(data);
       setInfo({
         name: data.name || '',
@@ -137,17 +136,18 @@ export default function CustomerDetailPage() {
   const handleSaveInfo = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/customers/${customerId}`, {
+      const updated = await apiFetch(`/api/customers/${customerId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(info),
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setCustomer(prev => ({ ...prev, ...updated }));
-      }
+      setCustomer(prev => ({ ...prev, ...updated }));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     } finally {
       setSaving(false);
     }
@@ -162,48 +162,54 @@ export default function CustomerDetailPage() {
   const handleAddContact = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`/api/customers/${customerId}/contacts`, {
+      await apiFetch(`/api/customers/${customerId}/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(contactForm),
       });
-      if (res.ok) {
-        setShowAddContact(false);
-        resetContactForm();
-        // Refetch contacts to get correct isPrimary state
-        const cRes = await fetch(`/api/customers/${customerId}/contacts`);
-        if (cRes.ok) setContacts(await cRes.json());
-      }
+      setShowAddContact(false);
+      resetContactForm();
+      // Refetch contacts to get correct isPrimary state
+      setContacts(await apiFetch(`/api/customers/${customerId}/contacts`));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 
   const handleUpdateContact = async (contactId) => {
     try {
-      const res = await fetch(`/api/customers/${customerId}/contacts/${contactId}`, {
+      await apiFetch(`/api/customers/${customerId}/contacts/${contactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(contactForm),
       });
-      if (res.ok) {
-        setEditingContactId(null);
-        resetContactForm();
-        const cRes = await fetch(`/api/customers/${customerId}/contacts`);
-        if (cRes.ok) setContacts(await cRes.json());
-      }
+      setEditingContactId(null);
+      resetContactForm();
+      setContacts(await apiFetch(`/api/customers/${customerId}/contacts`));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 
   const handleDeleteContact = async (contactId) => {
     if (!confirm('Delete this contact?')) return;
     try {
-      await fetch(`/api/customers/${customerId}/contacts/${contactId}`, { method: 'DELETE' });
+      await apiFetch(`/api/customers/${customerId}/contacts/${contactId}`, { method: 'DELETE' });
       setContacts(prev => prev.filter(c => c.id !== contactId));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 
@@ -231,45 +237,51 @@ export default function CustomerDetailPage() {
         projectId: activityForm.projectId || null,
         followUpDate: activityForm.followUpDate || null,
       };
-      const res = await fetch(`/api/customers/${customerId}/activities`, {
+      const activity = await apiFetch(`/api/customers/${customerId}/activities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        const activity = await res.json();
-        setActivities(prev => [activity, ...prev]);
-        setShowAddActivity(false);
-        setActivityForm({ type: 'NOTE', description: '', projectId: '', followUpDate: '' });
-      }
+      setActivities(prev => [activity, ...prev]);
+      setShowAddActivity(false);
+      setActivityForm({ type: 'NOTE', description: '', projectId: '', followUpDate: '' });
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 
   const handleMarkComplete = async (activityId) => {
     try {
-      const res = await fetch(`/api/customers/${customerId}/activities/${activityId}`, {
+      const updated = await apiFetch(`/api/customers/${customerId}/activities/${activityId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markComplete: true }),
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setActivities(prev => prev.map(a => a.id === activityId ? updated : a));
-      }
+      setActivities(prev => prev.map(a => a.id === activityId ? updated : a));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 
   const handleDeleteActivity = async (activityId) => {
     if (!confirm('Delete this activity?')) return;
     try {
-      await fetch(`/api/customers/${customerId}/activities/${activityId}`, { method: 'DELETE' });
+      await apiFetch(`/api/customers/${customerId}/activities/${activityId}`, { method: 'DELETE' });
       setActivities(prev => prev.filter(a => a.id !== activityId));
     } catch (err) {
-      console.error(err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error(err);
+      }
     }
   };
 

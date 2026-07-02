@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Plus, Loader2 } from 'lucide-react';
+import { apiFetch, SessionExpiredError } from '../lib/api-client';
 
 export default function CustomerSearchInput({ value, customerId, onChange }) {
   const [inputValue, setInputValue] = useState(value || '');
@@ -33,8 +34,7 @@ export default function CustomerSearchInput({ value, customerId, onChange }) {
   const fetchSuggestions = useCallback(async (q) => {
     if (!q || q.length < 1) { setSuggestions([]); return; }
     try {
-      const res = await fetch(`/api/customers?search=${encodeURIComponent(q)}`);
-      if (res.ok) setSuggestions(await res.json());
+      setSuggestions(await apiFetch(`/api/customers?search=${encodeURIComponent(q)}`));
     } catch {
       // ignore
     }
@@ -69,21 +69,20 @@ export default function CustomerSearchInput({ value, customerId, onChange }) {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/customers', {
+      const customer = await apiFetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim() }),
       });
-      if (res.ok) {
-        const customer = await res.json();
-        setInputValue(customer.name);
-        onChange(customer.name, customer.id);
-        setShowNewForm(false);
-        setShowDropdown(false);
-        setNewName('');
+      setInputValue(customer.name);
+      onChange(customer.name, customer.id);
+      setShowNewForm(false);
+      setShowDropdown(false);
+      setNewName('');
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
       }
-    } catch {
-      // ignore
     } finally {
       setCreating(false);
     }

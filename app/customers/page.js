@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Plus, Search, X, Loader2 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
+import { apiFetch, SessionExpiredError } from '../../lib/api-client';
 
 function formatCurrency(value) {
   if (value == null || value === 0) return '$0';
@@ -33,8 +34,7 @@ export default function CustomersPage() {
   const fetchCustomers = useCallback(async (q = '') => {
     try {
       const qs = q ? `?search=${encodeURIComponent(q)}` : '';
-      const res = await fetch(`/api/customers${qs}`);
-      if (res.ok) setCustomers(await res.json());
+      setCustomers(await apiFetch(`/api/customers${qs}`));
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     } finally {
@@ -60,19 +60,20 @@ export default function CustomersPage() {
     if (!form.name.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/customers', {
+      const customer = await apiFetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (res.ok) {
-        const customer = await res.json();
-        setShowNewForm(false);
-        setForm({ name: '', shortName: '', address: '', city: '', state: '', zip: '', phone: '', website: '' });
-        router.push(`/customers/${customer.id}`);
-      }
+      setShowNewForm(false);
+      setForm({ name: '', shortName: '', address: '', city: '', state: '', zip: '', phone: '', website: '' });
+      router.push(`/customers/${customer.id}`);
     } catch (err) {
-      console.error('Failed to create customer:', err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error('Failed to create customer:', err);
+      }
     } finally {
       setCreating(false);
     }

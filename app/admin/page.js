@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { Plus, X, Shield, UserCheck, Eye, Wrench, Pencil, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 import AppHeader from '../../components/AppHeader';
+import { apiFetch, SessionExpiredError } from '../../lib/api-client';
 
 const ROLE_OPTIONS = [
   { value: 'ADMIN', label: 'Admin', icon: Shield, color: 'bg-red-100 text-red-700' },
@@ -37,10 +38,7 @@ export default function AdminPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users');
-      if (res.ok) {
-        setUsers(await res.json());
-      }
+      setUsers(await apiFetch('/api/admin/users'));
     } catch (err) {
       console.error('Failed to load users:', err);
     } finally {
@@ -57,21 +55,20 @@ export default function AdminPage() {
     setError('');
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/users', {
+      await apiFetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to create user');
-        return;
-      }
       setShowAddForm(false);
       setFormData({ firstName: '', lastName: '', email: '', password: '', role: 'ESTIMATOR' });
       fetchUsers();
     } catch (err) {
-      setError('Failed to create user');
+      if (err instanceof SessionExpiredError) {
+        setError('Your session has expired — log back in.');
+      } else {
+        setError(err.message || 'Failed to create user');
+      }
     } finally {
       setSaving(false);
     }
@@ -81,14 +78,18 @@ export default function AdminPage() {
     const action = user.active ? 'deactivate' : 'reactivate';
     if (!confirm(`Are you sure you want to ${action} ${user.firstName} ${user.lastName}?`)) return;
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      await apiFetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: !user.active }),
       });
-      if (res.ok) fetchUsers();
+      fetchUsers();
     } catch (err) {
-      console.error('Failed to update user:', err);
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        console.error('Failed to update user:', err);
+      }
     }
   };
 
@@ -116,20 +117,19 @@ export default function AdminPage() {
       };
       if (editForm.password) payload.password = editForm.password;
 
-      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      await apiFetch(`/api/admin/users/${editingUser.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setEditError(data.error || 'Failed to update user');
-        return;
-      }
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
-      setEditError('Failed to update user');
+      if (err instanceof SessionExpiredError) {
+        setEditError('Your session has expired — log back in.');
+      } else {
+        setEditError(err.message || 'Failed to update user');
+      }
     } finally {
       setEditSaving(false);
     }

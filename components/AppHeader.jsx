@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { Bell, ChevronDown, LogOut, User, Settings, Shield, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import COMPANY_LOGO from '../lib/logo.js';
+import { apiFetch } from '../lib/api-client';
 
 const ROLE_LABELS = {
   ADMIN: 'Admin',
@@ -64,8 +65,7 @@ export default function AppHeader() {
 
   const fetchNotifs = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications');
-      if (res.ok) setNotifications(await res.json());
+      setNotifications(await apiFetch('/api/notifications'));
     } catch {
       // silently ignore network errors
     }
@@ -94,13 +94,13 @@ export default function AppHeader() {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const handleMarkAllRead = async () => {
-    await fetch('/api/notifications', { method: 'PATCH' });
+    await apiFetch('/api/notifications', { method: 'PATCH' }).catch(() => {});
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
   const handleNotifClick = async (notif) => {
     if (!notif.isRead) {
-      await fetch(`/api/notifications/${notif.id}`, { method: 'PATCH' });
+      await apiFetch(`/api/notifications/${notif.id}`, { method: 'PATCH' }).catch(() => {});
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
     }
     setShowNotifs(false);

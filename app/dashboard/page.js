@@ -8,6 +8,7 @@ import {
   Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus, Clock,
 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
+import { apiFetch, SessionExpiredError } from '../../lib/api-client';
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 
@@ -109,8 +110,7 @@ function FollowUpWidget() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch('/api/customers/follow-ups')
-      .then(r => r.ok ? r.json() : [])
+    apiFetch('/api/customers/follow-ups')
       .then(data => { setFollowUps(data); setLoaded(true); })
       .catch(() => setLoaded(true));
   }, []);
@@ -170,15 +170,18 @@ function DashboardContent() {
 
   const fetchProjects = useCallback(async (includeArchived) => {
     const qs = includeArchived ? '?includeArchived=1' : '';
-    const res = await fetch(`/api/dashboard/projects${qs}`);
-    if (res.ok) setProjects(await res.json());
+    try {
+      setProjects(await apiFetch(`/api/dashboard/projects${qs}`));
+    } catch {
+      // silently ignore
+    }
   }, []);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       fetchProjects(showArchived),
-      fetch('/api/dashboard/users').then(r => r.ok ? r.json() : []).then(setUsers),
+      apiFetch('/api/dashboard/users').catch(() => []).then(setUsers),
     ]).finally(() => setLoading(false));
   }, [showArchived, fetchProjects]);
 
@@ -254,12 +257,14 @@ function DashboardContent() {
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const res = await fetch('/api/projects', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to create project');
-      const project = await res.json();
+      const project = await apiFetch('/api/projects', { method: 'POST' });
       window.location.href = `/?projectId=${project.id}`;
-    } catch {
-      alert('Failed to create project. Please try again.');
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to create project. Please try again.');
+      }
       setCreating(false);
     }
   };
@@ -272,12 +277,14 @@ function DashboardContent() {
     if (!confirm(`Duplicate "${project.projectName || 'this project'}"? A full copy of all estimate data will be created.`)) return;
     setActionInProgress(project.id);
     try {
-      const res = await fetch(`/api/dashboard/projects/${project.id}/duplicate`, { method: 'POST' });
-      if (!res.ok) throw new Error('Duplicate failed');
-      const { id } = await res.json();
+      const { id } = await apiFetch(`/api/dashboard/projects/${project.id}/duplicate`, { method: 'POST' });
       window.location.href = `/?projectId=${id}`;
     } catch (err) {
-      alert('Failed to duplicate project. Please try again.');
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to duplicate project. Please try again.');
+      }
       setActionInProgress(null);
     }
   };
@@ -286,16 +293,19 @@ function DashboardContent() {
     // Optimistic update
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, dashboardStatus: newStatus || null } : p));
     try {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      await apiFetch(`/api/projects/${projectId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dashboardStatus: newStatus }),
       });
-      if (!res.ok) throw new Error('Failed to update status');
-    } catch {
+    } catch (err) {
       // Revert on failure
       fetchProjects(showArchived);
-      alert('Failed to update status. Please try again.');
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to update status. Please try again.');
+      }
     }
   };
 
@@ -303,15 +313,18 @@ function DashboardContent() {
     if (!confirm(`Archive "${project.projectName || 'this project'}"? It will be hidden from the dashboard. You can view it with "Show Archived".`)) return;
     setActionInProgress(project.id);
     try {
-      const res = await fetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
-      if (!res.ok) throw new Error('Archive failed');
+      await apiFetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
       if (!showArchived) {
         setProjects(prev => prev.filter(p => p.id !== project.id));
       } else {
         setProjects(prev => prev.map(p => p.id === project.id ? { ...p, isArchived: true } : p));
       }
-    } catch {
-      alert('Failed to archive project. Please try again.');
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to archive project. Please try again.');
+      }
     } finally {
       setActionInProgress(null);
     }
@@ -321,11 +334,14 @@ function DashboardContent() {
     if (!confirm(`Restore "${project.projectName || 'this project'}" to the active bid board?`)) return;
     setActionInProgress(project.id);
     try {
-      const res = await fetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
-      if (!res.ok) throw new Error('Unarchive failed');
+      await apiFetch(`/api/dashboard/projects/${project.id}/archive`, { method: 'PATCH' });
       setProjects(prev => prev.map(p => p.id === project.id ? { ...p, isArchived: false } : p));
-    } catch {
-      alert('Failed to restore project. Please try again.');
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to restore project. Please try again.');
+      }
     } finally {
       setActionInProgress(null);
     }

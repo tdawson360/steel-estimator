@@ -1,10 +1,42 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
+import { apiFetch, ApiError, SessionExpiredError } from '../lib/api-client';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical } from 'lucide-react';
 import CustomerSearchInput from './CustomerSearchInput';
 
 // Company Logo (Base64 encoded)
 import COMPANY_LOGO from '../lib/logo.js';
+
+// ── Session-expiry stash ──────────────────────────────────────────────────────
+// When a save fails because the session died, the full save payload is kept in
+// localStorage so the work survives a re-login or even a closed tab. The stash
+// is only cleared by a successful save or an explicit decline on restore.
+const stashKey = (projectId) => `steel-estimator:stash:${projectId}`;
+
+function writeStash(projectId, payload) {
+  try {
+    localStorage.setItem(
+      stashKey(projectId),
+      JSON.stringify({ savedAt: new Date().toISOString(), payload })
+    );
+  } catch (e) {
+    // Quota exceeded on a huge estimate — the dirty flag still protects the work.
+    console.warn('Could not stash unsaved changes locally:', e);
+  }
+}
+
+function readStash(projectId) {
+  try {
+    const raw = localStorage.getItem(stashKey(projectId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStash(projectId) {
+  try { localStorage.removeItem(stashKey(projectId)); } catch {}
+}
 
 // Complete AISC Steel Database organized by category
 const steelDatabase = {
@@ -2536,14 +2568,67 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const autoSaveTimerRef = useRef(null);  // debounce timer handle
   const saveRef = useRef(null);           // always points to latest handleSave
   const [isDirty, setIsDirty] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const sessionExpiredRef = useRef(false); // read by autosave timers at fire time
+  useEffect(() => { sessionExpiredRef.current = sessionExpired; }, [sessionExpired]);
+
+  // Rehydrate all editable state from a stashed save payload. The payload is
+  // client-shape data (exactly what handleSave sends), so no server-shape
+  // mapping is needed — this runs on top of a normal load, overlaying the
+  // stashed edits while server-owned fields (status, permissions) stay put.
+  const applyStashPayload = useCallback((p) => {
+    setProjectName(p.projectName || '');
+    setProjectAddress(p.projectAddress || '');
+    setCustomerName(p.customerName || '');
+    setCustomerId(p.customerId || null);
+    setBillingAddress(p.billingAddress || '');
+    setCustomerContact(p.customerContact || '');
+    setCustomerPhone(p.customerPhone || '');
+    setCustomerEmail(p.customerEmail || '');
+    setEstimateDate(p.estimateDate || '');
+    setBidTime(p.bidTime || '');
+    setEstimatedBy(p.estimatedBy || '');
+    setDrawingDate(p.drawingDate || '');
+    setDrawingRevision(p.drawingRevision || '');
+    setArchitect(p.architect || '');
+    setEstimatorId(p.estimatorId || null);
+    setDashboardStatus(p.dashboardStatus || '');
+    setNewOrCo(p.newOrCo || '');
+    setNotes(p.notes || '');
+    setProjectTypes({
+      structural: p.typeStructural || false,
+      miscellaneous: p.typeMiscellaneous || false,
+      ornamental: p.typeOrnamental || false,
+    });
+    setDeliveryOptions({
+      installed: p.deliveryInstalled || false,
+      fobJobsite: p.deliveryFobJobsite || false,
+      willCall: p.deliveryWillCall || false,
+    });
+    setTaxCategory(p.taxCategory || null);
+    setBreakoutGroups(p.breakoutGroups || []);
+    setAdjustments(p.adjustments || []);
+    setSelectedExclusions(p.selectedExclusions || []);
+    setCustomExclusions(p.customExclusions || []);
+    setSelectedQualifications(p.selectedQualifications || []);
+    setCustomQualifications(p.customQualifications || []);
+    setCustomRecapColumns(p.customRecapColumns || []);
+    setCustomProjectTypes(p.customProjectTypes || []);
+    setCustomDeliveryOptions((p.customDeliveryOptions || []).map(o => o.text));
+    setSelectedCustomDelivery((p.customDeliveryOptions || []).find(o => o.isSelected)?.text || null);
+    if (p.items) {
+      setItems(p.items);
+      const expanded = {};
+      p.items.forEach(item => { expanded[item.id] = true; });
+      setExpandedItems(expanded);
+    }
+  }, []);
 
   // ── LOAD PROJECT FROM DATABASE ──────────────────────────────────────────────
   const handleLoad = useCallback(async (id) => {
     isLoadedRef.current = false;
     try {
-      const res = await fetch(`/api/projects/${id}`);
-      if (!res.ok) throw new Error('Failed to load project');
-      const data = await res.json();
+      const data = await apiFetch(`/api/projects/${id}`);
 
       setProjectStatus(data.status || 'DRAFT');
       setProjectName(data.projectName || '');
@@ -2749,20 +2834,42 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         setExpandedItems(expanded);
       }
 
+      // ── Offer to restore locally-stashed work newer than the server copy ──
+      // A stash exists when a previous session died mid-save. If the server
+      // copy has been saved since, the stash is stale and gets dropped.
+      const stash = readStash(id);
+      if (stash?.payload) {
+        const stashTime = new Date(stash.savedAt).getTime();
+        const serverTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+        if (stashTime > serverTime) {
+          const restore = confirm(
+            `Unsaved changes for this estimate were recovered from ${new Date(stash.savedAt).toLocaleString()} ` +
+            `(newer than the last saved copy). Restore them?\n\n` +
+            `Choosing Cancel discards the recovered changes.`
+          );
+          if (restore) {
+            applyStashPayload(stash.payload);
+            setIsDirty(true);
+          } else {
+            clearStash(id);
+          }
+        } else {
+          clearStash(id);
+        }
+      }
+
       setCurrentProjectId(data.id);
       setTimeout(() => { isLoadedRef.current = true; }, 50);
     } catch (err) {
       console.error('Load error:', err);
       alert('Failed to load project. ' + err.message);
     }
-  }, []);
+  }, [applyStashPayload]);
 
   // ── SAVE PROJECT TO DATABASE ────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!currentProjectId) return;
-    try {
-      setSaveStatus('saving');
-      const payload = {
+    const payload = {
         projectName,
         projectAddress,
         customerName,
@@ -2805,21 +2912,37 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         })),
       };
 
-      const res = await fetch(`/api/projects/${currentProjectId}`, {
+    // Session known-dead: skip the network round-trip but keep the local stash
+    // fresh, so edits made while logged out remain recoverable. Network saves
+    // resume when the user logs back in and hits Retry.
+    if (sessionExpiredRef.current) {
+      writeStash(currentProjectId, payload);
+      return;
+    }
+
+    try {
+      setSaveStatus('saving');
+      await apiFetch(`/api/projects/${currentProjectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Save failed');
-      }
-
+      clearStash(currentProjectId);
+      setSessionExpired(false);
       setSaveStatus('saved');
       setIsDirty(false);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
+      if (err instanceof SessionExpiredError || (err instanceof ApiError && err.nonJson)) {
+        // The save did not happen and retrying on a dead session won't help:
+        // stash the work locally, keep the dirty flag, and pause autosave
+        // until the user logs back in and retries.
+        writeStash(currentProjectId, payload);
+        setSessionExpired(true);
+        setSaveStatus(null);
+        return;
+      }
       console.error('Save error:', err);
       setSaveStatus('error');
       alert('Failed to save project. ' + err.message);
@@ -2830,7 +2953,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
   useEffect(() => { saveRef.current = handleSave; });
 
-  // Dirty-tracking autosave: fires 3 s after any data change; skips during load hydration
+  // Dirty-tracking autosave: fires 3 s after any data change; skips during load
+  // hydration. While the session is expired, handleSave short-circuits to a
+  // local stash write instead of a network request, so this keeps running.
   useEffect(() => {
     if (!isLoadedRef.current) return;
     setIsDirty(true);
@@ -2866,20 +2991,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     await saveRef.current?.();   // save any pending edits before changing status
     setStatusChanging(true);
     try {
-      const res = await fetch(`/api/projects/${currentProjectId}/status`, {
+      const result = await apiFetch(`/api/projects/${currentProjectId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        const result = await res.json();
-        setProjectStatus(result.status);
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to update status');
-      }
+      setProjectStatus(result.status);
     } catch (err) {
-      alert('Failed to update status');
+      if (err instanceof SessionExpiredError) {
+        setSessionExpired(true);
+        alert('Your session has expired. Your changes are kept on this computer — log back in, then retry.');
+      } else {
+        alert(err.message || 'Failed to update status');
+      }
     } finally {
       setStatusChanging(false);
     }
@@ -3409,14 +3533,23 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/import-csv', {
-        method: 'POST',
-        body: formData,
-      });
+      let data;
+      try {
+        data = await apiFetch('/api/import-csv', {
+          method: 'POST',
+          body: formData,
+        });
+      } catch (err) {
+        if (err instanceof SessionExpiredError) setSessionExpired(true);
+        setTakeoffError(err instanceof SessionExpiredError
+          ? 'Your session has expired — log back in, then re-upload the file.'
+          : (err.message || 'Failed to process CSV file'));
+        setTakeoffPreview(null);
+        setTakeoffImporting(false);
+        return;
+      }
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         setTakeoffError(data.error || 'Failed to process CSV file');
         setTakeoffPreview(null);
       } else {
@@ -4630,7 +4763,35 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
-            {isDirty && saveStatus !== 'saving' && saveStatus !== 'saved' && (
+            {sessionExpired && (
+              <span className="text-red-600 text-sm flex items-center gap-2" data-testid="session-expired-banner">
+                <AlertCircle size={14} />
+                Session expired — changes kept on this computer
+                <a
+                  href="/login?callbackUrl=%2F"
+                  target="_blank"
+                  rel="noopener"
+                  className="underline font-medium"
+                >
+                  Log back in
+                </a>
+                <button
+                  onClick={() => {
+                    // Write the ref directly: saveRef fires before React runs
+                    // the effect that syncs it, and a stale true would send the
+                    // retry back into the stash-only path.
+                    sessionExpiredRef.current = false;
+                    setSessionExpired(false);
+                    saveRef.current?.();
+                  }}
+                  className="px-2 py-0.5 border border-red-300 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
+                  data-testid="button-retry-save"
+                >
+                  Retry save
+                </button>
+              </span>
+            )}
+            {isDirty && !sessionExpired && saveStatus !== 'saving' && saveStatus !== 'saved' && (
               <span className="text-amber-500 text-sm flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
                 Unsaved
