@@ -1953,8 +1953,10 @@ const findColumnIndex = (headers, possibleNames) => {
 // Aggregate parsed rows into items structure
 const aggregateImportData = (rows) => {
   const itemsMap = new Map();
-  const unmatchedSizes = new Set();
-  
+  // original size string -> { size, rowCount, locations[] } so unmatched sizes
+  // can be traced back to the rows they came from in the preview
+  const unmatchedSizes = new Map();
+
   for (const row of rows) {
     const itemKey = row.itemNumber;
     if (!itemKey) continue;
@@ -1984,7 +1986,11 @@ const aggregateImportData = (rows) => {
     // Translate size
     const sizeResult = translateSizeToAISC(row.matSize);
     if (!sizeResult.matched) {
-      unmatchedSizes.add(row.matSize);
+      const entry = unmatchedSizes.get(row.matSize) || { size: row.matSize, rowCount: 0, locations: [] };
+      entry.rowCount += 1;
+      const loc = `Item ${row.itemNumber}${row.partLabel ? ` (${row.partLabel})` : ''}`;
+      if (!entry.locations.includes(loc)) entry.locations.push(loc);
+      unmatchedSizes.set(row.matSize, entry);
     }
     
     // Create material key for aggregation
@@ -2021,7 +2027,7 @@ const aggregateImportData = (rows) => {
   // Sort by item number
   result.sort((a, b) => a.itemNumber.localeCompare(b.itemNumber, undefined, { numeric: true }));
   
-  return { items: result, unmatchedSizes: Array.from(unmatchedSizes) };
+  return { items: result, unmatchedSizes: Array.from(unmatchedSizes.values()) };
 };
 
 // Get unique categories
@@ -3414,7 +3420,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         setTakeoffError(data.error || 'Failed to process CSV file');
         setTakeoffPreview(null);
       } else {
-        setTakeoffPreview(data);
+        // Run the same size translation the import will perform, so sizes that
+        // would silently become Custom (zero weight, zero cost) are surfaced
+        // in the preview instead of hiding in the imported estimate.
+        const unmatched = new Map(); // size string -> { size, rowCount, locations[] }
+        const walkMembers = (members, itemNumber) => {
+          for (const m of members) {
+            if (m.size && !translateSizeToAISC(m.size).matched) {
+              const entry = unmatched.get(m.size) || { size: m.size, rowCount: 0, locations: [] };
+              entry.rowCount += 1;
+              const loc = `Item ${itemNumber} / Mark ${m.mark}`;
+              if (!entry.locations.includes(loc)) entry.locations.push(loc);
+              unmatched.set(m.size, entry);
+            }
+            if (m.children?.length) walkMembers(m.children, itemNumber);
+          }
+        };
+        for (const it of data.items || []) walkMembers(it.members || [], it.itemNumber);
+        setTakeoffPreview({ ...data, unmatchedSizes: Array.from(unmatched.values()) });
         setTakeoffError(null);
       }
     } catch (err) {
@@ -4548,6 +4571,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
   const detailedStockList = useMemo(() => getDetailedStockList(), [items]);
 
+  // Zero-weight guard: a material with pieces but no weight per foot is almost
+  // always an unmatched import size or a Custom line missing its weight — it
+  // contributes $0 and 0 lbs, which is easy to miss in a long estimate.
+  const isZeroWeight = (m) => (m.weightPerFoot || 0) === 0 && (m.pieces || 0) > 0;
+  const zeroWeightCount = useMemo(
+    () => items.reduce((n, item) => n + item.materials.filter(isZeroWeight).length, 0),
+    [items]
+  );
+
   // Filter + sort applied to the detailed list for the buy list display
   const displayedStockList = useMemo(() => {
     const q = stockListFilter.trim().toLowerCase();
@@ -5046,6 +5078,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </button>
               </div>
 
+              {zeroWeightCount > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 rounded p-3 text-sm flex items-start gap-2" data-testid="banner-zero-weight">
+                  <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
+                  <span className="text-amber-800 dark:text-amber-300">
+                    <strong>{zeroWeightCount} material line{zeroWeightCount === 1 ? '' : 's'}</strong> {zeroWeightCount === 1 ? 'has' : 'have'} quantity but zero weight
+                    (highlighted below) — weight and cost are $0 until the size or custom weight is corrected.
+                  </span>
+                </div>
+              )}
+
               {items.map(item => (
                 <div key={item.id} className="border rounded">
                   <div className="bg-gray-200 dark:bg-gray-600 p-3 flex items-center justify-between">
@@ -5102,7 +5144,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                   <React.Fragment key={mat.id}>
                                     {/* Parent row */}
                                     <tr
-                                      className="bg-white dark:bg-gray-900"
+                                      className={isZeroWeight(mat)
+                                        ? 'bg-amber-50 dark:bg-amber-950 shadow-[inset_3px_0_0_0_#d97706]'
+                                        : 'bg-white dark:bg-gray-900'}
+                                      title={isZeroWeight(mat) ? 'Zero weight with nonzero quantity — check size / custom weight' : undefined}
                                       draggable
                                       onDragStart={e => handleDragStart(e, item.id, mat.id, true)}
                                       onDragOver={e => handleDragOver(e, item.id, mat.id, true, null)}
@@ -5464,7 +5509,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                     {getChildMaterials(item.materials, mat.id).map(child => (
                                       <React.Fragment key={child.id}>
                                       <tr
-                                        className="bg-gray-50 dark:bg-gray-800"
+                                        className={isZeroWeight(child)
+                                          ? 'bg-amber-50 dark:bg-amber-950 shadow-[inset_3px_0_0_0_#d97706]'
+                                          : 'bg-gray-50 dark:bg-gray-800'}
+                                        title={isZeroWeight(child) ? 'Zero weight with nonzero quantity — check size / custom weight' : undefined}
                                         draggable
                                         onDragStart={e => handleDragStart(e, item.id, child.id, false)}
                                         onDragOver={e => handleDragOver(e, item.id, child.id, false, child.parentMaterialId)}
@@ -7290,13 +7338,18 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       <div className="flex items-start gap-3">
                         <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
                         <div>
-                          <p className="font-semibold text-yellow-800">Unmatched Sizes</p>
-                          <p className="text-yellow-700 text-sm mb-2">The following sizes could not be matched to the AISC database and will be imported as Custom:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {importPreview.unmatchedSizes.map((size, i) => (
-                              <span key={i} className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">{size}</span>
+                          <p className="font-semibold text-yellow-800">
+                            Unmatched Sizes — {importPreview.unmatchedSizes.reduce((n, u) => n + u.rowCount, 0)} row(s) will import with ZERO weight
+                          </p>
+                          <p className="text-yellow-700 text-sm mb-2">These sizes could not be matched to the AISC database and will be imported as Custom with 0 lbs/ft — weight and cost will be zero until corrected:</p>
+                          <ul className="space-y-1">
+                            {importPreview.unmatchedSizes.map((u, i) => (
+                              <li key={i} className="text-xs text-yellow-800">
+                                <span className="bg-yellow-100 px-2 py-0.5 rounded font-mono">{u.size}</span>
+                                <span className="text-yellow-700"> — {u.rowCount} row(s): {u.locations.join(', ')}</span>
+                              </li>
                             ))}
-                          </div>
+                          </ul>
                         </div>
                       </div>
                     </div>
@@ -7391,6 +7444,23 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       <div><span className="text-gray-600 dark:text-gray-400">Fab Operations:</span> <span className="font-bold text-blue-800">{takeoffPreview.stats.totalFabOps}</span></div>
                     </div>
                   </div>
+
+                  {(takeoffPreview.unmatchedSizes || []).length > 0 && (
+                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-300 rounded p-4 text-sm">
+                      <p className="font-semibold text-yellow-800 mb-1">
+                        Unmatched Sizes — {takeoffPreview.unmatchedSizes.reduce((n, u) => n + u.rowCount, 0)} member(s) will import with ZERO weight
+                      </p>
+                      <p className="text-yellow-700 mb-2">These sizes could not be matched to the AISC database and will import as Custom with 0 lbs/ft — weight and cost will be zero until corrected:</p>
+                      <ul className="space-y-1">
+                        {takeoffPreview.unmatchedSizes.map((u, i) => (
+                          <li key={i} className="text-xs text-yellow-800">
+                            <span className="bg-yellow-100 px-2 py-0.5 rounded font-mono">{u.size}</span>
+                            <span className="text-yellow-700"> — {u.rowCount} member(s): {u.locations.join(', ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {takeoffPreview.items.some(i => i.coatingMixed) && (
                     <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-300 rounded p-4 text-sm">
