@@ -16,6 +16,13 @@ export const fmtRate = (num) => {
   return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Supplier rates converted from CWT carry 4 decimals ($47.85/cwt → $0.4785/lb).
+// Shows 2 places minimum, up to 4 when the rate needs them.
+export const fmtRate4 = (num) => {
+  if (num === null || num === undefined || isNaN(num)) return '$0.00';
+  return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+};
+
 export const fmtQuotePrice = (num) => {
   const rounded = roundCustom(num);
   return '$' + rounded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
