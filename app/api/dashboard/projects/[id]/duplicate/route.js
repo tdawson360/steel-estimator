@@ -82,6 +82,10 @@ export async function POST(request, { params }) {
           deliveryFobJobsite: original.deliveryFobJobsite,
           deliveryWillCall:   original.deliveryWillCall,
           taxCategory:      original.taxCategory,
+          nestingEnabled:   original.nestingEnabled,
+          nestKerfIn:       original.nestKerfIn,
+          nestEndCropIn:    original.nestEndCropIn,
+          stockLengthOverrides: original.stockLengthOverrides,
           description:      original.description,
           notes:            original.notes,
           bidDate:          original.bidDate,
@@ -169,6 +173,7 @@ export async function POST(request, { params }) {
             sortOrder:      item.sortOrder,
             materialMarkup: item.materialMarkup,
             fabMarkup:      item.fabMarkup,
+            priceStandalone: item.priceStandalone,
             projectId:      proj.id,
             breakoutGroupId: item.breakoutGroupId
               ? (bgIdMap.get(item.breakoutGroupId) ?? null)

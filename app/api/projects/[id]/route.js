@@ -212,6 +212,12 @@ export async function PUT(request, { params }) {
           deliveryFobJobsite: data.deliveryFobJobsite ?? false,
           deliveryWillCall: data.deliveryWillCall ?? false,
           taxCategory: data.taxCategory ?? null,
+          nestingEnabled: data.nestingEnabled ?? false,
+          nestKerfIn: (typeof data.nestKerfIn === 'number' && isFinite(data.nestKerfIn)) ? data.nestKerfIn : 0.25,
+          nestEndCropIn: (typeof data.nestEndCropIn === 'number' && isFinite(data.nestEndCropIn)) ? data.nestEndCropIn : 0,
+          stockLengthOverrides: typeof data.stockLengthOverrides === 'object' && data.stockLengthOverrides !== null
+            ? JSON.stringify(data.stockLengthOverrides)
+            : (typeof data.stockLengthOverrides === 'string' ? data.stockLengthOverrides : '{}'),
         }
       });
 
@@ -284,6 +290,7 @@ export async function PUT(request, { params }) {
           sortOrder: i,
           materialMarkup: item.materialMarkup || 0,
           fabMarkup: item.fabMarkup || 0,
+          priceStandalone: item.priceStandalone || false,
           breakoutGroupId: resolvedBgId,
         };
 

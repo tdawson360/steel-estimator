@@ -1715,6 +1715,230 @@ const calculateOptimalStock = (pieces, length, availableStockLengths) => {
   return bestResult;
 };
 
+// ── CROSS-ITEM STOCK NESTING ──────────────────────────────────────────────────
+// Pools cut lengths from every non-standalone item by size and nests them onto
+// shared sticks (first-fit-decreasing), so one item's drop absorbs another
+// item's short piece. Purchased cost flows back to each material line pro-rata
+// via a per-group yield factor (purchased length ÷ net cut length), so items
+// keep individual prices and still sum exactly to the buy list.
+//
+// Plate is 2D sheet stock and Custom lines have no reliable size key — both
+// keep the per-line stock logic and never pool.
+const NEST_EXCLUDED_CATEGORIES = new Set(['Plate', 'Custom']);
+
+const isNestableMaterial = (mat) =>
+  !!mat.size &&
+  !NEST_EXCLUDED_CATEGORIES.has(mat.category) &&
+  (mat.pieces || 0) > 0 &&
+  (mat.length || 0) > 0 &&
+  (mat.weightPerFoot || 0) > 0;
+
+// First-fit-decreasing with per-length supply caps (capacitated cutting stock).
+// Packs cuts onto sticks of the longest length that still has supply, assigns
+// each stick the shortest in-supply length that covers it, and re-nests
+// whatever couldn't be placed against the remaining supply. A stick with n
+// cuts consumes n−1 kerfs (the last piece needs no trailing cut); endCropFt is
+// reserved once per stick.
+// Returns { sticks, overLength, shortfall }:
+//   overLength — cuts longer than the longest catalog length (splice / mill order)
+//   shortfall  — cuts that fit the catalog but exceed the supplier's stick counts
+const nestCutsFFD = (cuts, stockLengths, kerfFt, endCropFt, caps = {}) => {
+  const catalogMaxUsable = Math.max(...stockLengths) - endCropFt;
+  const remainingCap = new Map(stockLengths.map(l => {
+    const c = caps[l];
+    return [l, (typeof c === 'number' && c > 0) ? c : Infinity];
+  }));
+
+  const sticksOut = [];
+  const overLength = [];
+  const shortfall = [];
+  let pending = [...cuts].sort((a, b) => b.length - a.length);
+
+  while (pending.length > 0) {
+    const usable = stockLengths.filter(l => remainingCap.get(l) > 0);
+    if (usable.length === 0) {
+      shortfall.push(...pending);
+      break;
+    }
+    const maxStock = Math.max(...usable);
+    const maxUsable = maxStock - endCropFt;
+
+    const fitting = [];
+    for (const cut of pending) {
+      if (cut.length > maxUsable) {
+        (cut.length > catalogMaxUsable ? overLength : shortfall).push(cut);
+      } else {
+        fitting.push(cut);
+      }
+    }
+    if (fitting.length === 0) break;
+
+    // FFD pack onto virtual sticks of the longest in-supply length
+    const sticks = [];
+    for (const cut of fitting) {
+      let placed = false;
+      for (const stick of sticks) {
+        const need = cut.length + kerfFt; // joining an occupied stick adds one kerf
+        if (stick.remaining >= need) {
+          stick.cuts.push(cut);
+          stick.remaining -= need;
+          stick.used += need;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        sticks.push({ cuts: [cut], used: cut.length, remaining: maxUsable - cut.length });
+      }
+    }
+
+    // Fullest sticks claim supply first; anything unplaced re-nests against
+    // whatever supply is left. Each pass either consumes supply or shrinks the
+    // usable length set, so the loop terminates.
+    sticks.sort((a, b) => b.used - a.used);
+    const unplaced = [];
+    let placedCount = 0;
+    for (const stick of sticks) {
+      const required = stick.used + endCropFt;
+      const fit = usable.filter(l => l >= required && remainingCap.get(l) > 0).sort((a, b) => a - b);
+      if (fit.length > 0) {
+        stick.stockLength = fit[0];
+        remainingCap.set(fit[0], remainingCap.get(fit[0]) - 1);
+        sticksOut.push(stick);
+        placedCount++;
+      } else {
+        unplaced.push(...stick.cuts);
+      }
+    }
+    if (placedCount === 0) {
+      // Safety net — should be unreachable since the longest in-supply length
+      // always fits a freshly packed stick.
+      shortfall.push(...unplaced);
+      break;
+    }
+    pending = unplaced.sort((a, b) => b.length - a.length);
+  }
+
+  return { sticks: sticksOut, overLength, shortfall };
+};
+
+// Nest all pooled materials across items.
+// getLengths(category, size) supplies the purchasable lengths per size, so
+// supplier-availability overrides flow into the nest.
+// Returns null-safe structure:
+//   groups: [{ key, category, size, weightPerFoot, sticks, purchase, buyLengthFt,
+//              netLengthFt, yield, overLengthCuts }]
+//   byMaterial: Map(materialId -> { groupKey, yield, allocStockLengthFt, overLength })
+const computeProjectNest = (items, kerfFt, endCropFt, getLengths = getStockLengthsForCategory, getCaps = () => ({})) => {
+  const groups = new Map();
+
+  items.forEach(item => {
+    if (item.priceStandalone) return;
+    (item.materials || []).forEach(mat => {
+      if (!isNestableMaterial(mat)) return;
+      const key = `${mat.category}|${mat.size}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          category: mat.category,
+          size: mat.size,
+          weightPerFoot: mat.weightPerFoot || 0,
+          cuts: [],
+          materialIds: [],
+        });
+      }
+      const g = groups.get(key);
+      if (!g.weightPerFoot && mat.weightPerFoot) g.weightPerFoot = mat.weightPerFoot;
+      g.materialIds.push(mat.id);
+      for (let p = 0; p < (mat.pieces || 0); p++) {
+        g.cuts.push({ materialId: mat.id, itemNumber: item.itemNumber, length: mat.length });
+      }
+    });
+  });
+
+  const byMaterial = new Map();
+  const resultGroups = [];
+
+  for (const g of groups.values()) {
+    const stockLengths = getLengths(g.category, g.size);
+    const caps = getCaps(g.category, g.size) || {};
+    const { sticks, overLength, shortfall } = nestCutsFFD(g.cuts, stockLengths, kerfFt, endCropFt, caps);
+
+    // Purchased length: nested sticks at mill length; over-length and
+    // shortfall cuts are flagged and carried at their exact length so the
+    // group yield stays sane.
+    const nestedBuyFt = sticks.reduce((s, st) => s + st.stockLength, 0);
+    const carriedFt = [...overLength, ...shortfall].reduce((s, c) => s + c.length, 0);
+    const buyLengthFt = nestedBuyFt + carriedFt;
+    const netLengthFt = g.cuts.reduce((s, c) => s + c.length, 0);
+    const yieldFactor = netLengthFt > 0 ? buyLengthFt / netLengthFt : 1;
+
+    // Purchase summary: stockLength -> stick count
+    const purchaseMap = new Map();
+    sticks.forEach(st => purchaseMap.set(st.stockLength, (purchaseMap.get(st.stockLength) || 0) + 1));
+    const purchase = [...purchaseMap.entries()]
+      .map(([stockLength, count]) => ({ stockLength, count }))
+      .sort((a, b) => a.stockLength - b.stockLength);
+
+    const overLengthMatIds = new Set(overLength.map(c => c.materialId));
+    const shortfallMatIds = new Set(shortfall.map(c => c.materialId));
+
+    for (const matId of new Set(g.materialIds)) {
+      const matNetFt = g.cuts.filter(c => c.materialId === matId).reduce((s, c) => s + c.length, 0);
+      byMaterial.set(matId, {
+        groupKey: g.key,
+        yield: yieldFactor,
+        allocStockLengthFt: matNetFt * yieldFactor,
+        overLength: overLengthMatIds.has(matId),
+        shortfall: shortfallMatIds.has(matId),
+      });
+    }
+
+    resultGroups.push({
+      key: g.key,
+      category: g.category,
+      size: g.size,
+      weightPerFoot: g.weightPerFoot,
+      sticks,
+      purchase,
+      buyLengthFt,
+      netLengthFt,
+      yield: yieldFactor,
+      overLengthCuts: overLength,
+      shortfallCuts: shortfall,
+    });
+  }
+
+  resultGroups.sort((a, b) => a.size.localeCompare(b.size));
+  return { groups: resultGroups, byMaterial };
+};
+
+// Compress a nest group's sticks for display/print: identical sticks (same
+// stock length + same cut mix) collapse into one row × N.
+const compressGroupSticks = (g) => {
+  const bySig = new Map();
+  g.sticks.forEach(st => {
+    const cutCounts = new Map();
+    st.cuts.forEach(c => {
+      const k = `${c.length}|${c.itemNumber}`;
+      cutCounts.set(k, (cutCounts.get(k) || 0) + 1);
+    });
+    const parts = [...cutCounts.entries()]
+      .map(([k, n]) => {
+        const [len, itemNo] = k.split('|');
+        return { len: parseFloat(len), itemNo, n };
+      })
+      .sort((a, b) => b.len - a.len);
+    const sig = `${st.stockLength}::` + parts.map(p => `${p.n}x${p.len}@${p.itemNo}`).join(',');
+    if (!bySig.has(sig)) {
+      const usedFt = st.cuts.reduce((s, c) => s + c.length, 0);
+      bySig.set(sig, { stockLength: st.stockLength, parts, usedFt, count: 0 });
+    }
+    bySig.get(sig).count += 1;
+  });
+  return [...bySig.values()];
+};
+
 // Translate Revu size format to AISC database format
 // Examples: "HSS  3 x 2 x 1/4" -> "HSS3x2x1/4", "L 4 x 4 x 1/4" -> "L4x4x1/4"
 const translateSizeToAISC = (revuSize) => {
@@ -1800,16 +2024,14 @@ const translateSizeToAISC = (revuSize) => {
     }
   }
   
-  // Pattern 8: Handle Pipe sizes "PIPE 4" -> "PIPE4 STD" or similar
-  const pipeMatch = normalized.match(/^PIPE\s*(\d+)/i);
+  // Pattern 8: Handle Pipe sizes "PIPE 4" -> "PIPE 4 STD", "PIPE 1-1/2 XS" etc.
+  // Database keys keep the space ("PIPE 4 STD") and sizes can be fractional.
+  const pipeMatch = normalized.match(/^PIPE\s*([\d\-/]+)\s*(STD|XS|XXS)?/i);
   if (pipeMatch) {
-    // Try different pipe variations
-    const pipeVariations = [
-      `PIPE${pipeMatch[1]} STD`,
-      `PIPE${pipeMatch[1]} XS`,
-      `PIPE${pipeMatch[1]} XXS`
-    ];
-    for (const pv of pipeVariations) {
+    const dia = pipeMatch[1];
+    const grades = pipeMatch[2] ? [pipeMatch[2].toUpperCase()] : ['STD', 'XS', 'XXS'];
+    for (const grade of grades) {
+      const pv = `PIPE ${dia} ${grade}`;
       if (steelDatabase[pv]) {
         return { size: pv, category: 'Pipe', matched: true };
       }
@@ -1831,6 +2053,17 @@ const translateSizeToAISC = (revuSize) => {
     const width = parseFloat(widthStr);
     if (thickness > 0 && width > 0) {
       return { size: normalized, category: 'Plate', plateThickness: thickness, plateWidth: width, matched: true };
+    }
+  }
+
+  // Pattern 10: retry with trailing annotations stripped — takeoffs sometimes
+  // append grade or finish notes ("MC 12 x 10.6 (A36)", "C8x11.5 GALV",
+  // "W12x26#"). Take the leading shape token and try the database again.
+  const tokenMatch = normalized.match(/^([A-Za-z]{1,4}\s?[\d./x-]+)/);
+  if (tokenMatch) {
+    const token = tokenMatch[1].replace(/\s/g, '').replace(/[x.\-]+$/, '');
+    if (token !== noSpaces && steelDatabase[token]) {
+      return { size: token, category: steelDatabase[token].category, matched: true };
     }
   }
 
@@ -1926,8 +2159,14 @@ const parseRevuCSV = (csvContent) => {
       matSize = values[colMap.matSizeFlats];
     }
     
-    const fabLength = parseFloat(values[colMap.fabLength]) || 0;
-    
+    let fabLength = parseFloat(values[colMap.fabLength]) || 0;
+    // Estimating tolerance is 1" — round Bluebeam's noisy decimal lengths to
+    // the nearest inch so identical pieces aggregate instead of splitting.
+    // Stored at 2 decimals — how estimators read decimal feet (28'-1" → 28.08).
+    if (fabLength > 0) {
+      fabLength = +(Math.max(Math.round(fabLength * 12), 1) / 12).toFixed(2);
+    }
+
     // Skip rows without mat size or fab length (scope rectangles)
     if (!matSize || fabLength <= 0) continue;
     
@@ -2083,6 +2322,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
+  const [showCutDetail, setShowCutDetail] = useState(false);
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [customLenInputs, setCustomLenInputs] = useState({});
   
   // Project Info
   const [projectName, setProjectName] = useState('');
@@ -2133,6 +2375,98 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Tax Category
   const TAX_RATE = 0.0825;
   const [taxCategory, setTaxCategory] = useState(null);
+
+  // Cross-item stock nesting (persisted per project)
+  const [nestingEnabled, setNestingEnabled] = useState(false);
+  const [nestKerfIn, setNestKerfIn] = useState(0.25);   // saw kerf per cut, inches
+  const [nestEndCropIn, setNestEndCropIn] = useState(0); // end crop per stick, inches
+
+  // Supplier stock-length availability, per size (persisted per project).
+  // Map: size string → { lengths: [purchasable lengths], caps: { len: maxSticks } }.
+  // Legacy saves may hold a plain array (lengths only). Absent size = category
+  // standards, unlimited supply. Lets the estimator drop lengths the supplier
+  // can't ship, add custom / mill-order lengths, and cap stick counts.
+  const [stockLengthOverrides, setStockLengthOverrides] = useState({});
+
+  const normalizeLengthOverride = (o) => {
+    if (Array.isArray(o)) return { lengths: o, caps: {} };
+    if (o && typeof o === 'object') {
+      return {
+        lengths: Array.isArray(o.lengths) ? o.lengths : [],
+        caps: (o.caps && typeof o.caps === 'object') ? o.caps : {},
+      };
+    }
+    return null;
+  };
+
+  const availableLengthsFor = (category, size) => {
+    const o = size ? normalizeLengthOverride(stockLengthOverrides[size]) : null;
+    if (o && o.lengths.length > 0) return [...o.lengths].sort((a, b) => a - b);
+    return getStockLengthsForCategory(category);
+  };
+
+  // Max sticks the supplier can supply, per length (absent = unlimited)
+  const lengthCapsFor = (category, size) => {
+    const o = size ? normalizeLengthOverride(stockLengthOverrides[size]) : null;
+    return o ? o.caps : {};
+  };
+
+  const isDefaultOverride = (category, lengths, caps) => {
+    const defaults = getStockLengthsForCategory(category);
+    return Object.keys(caps).length === 0 &&
+      lengths.length === defaults.length &&
+      defaults.every(d => lengths.includes(d));
+  };
+
+  const updateSizeOverride = (category, size, mutate) => {
+    setStockLengthOverrides(prev => {
+      const defaults = getStockLengthsForCategory(category);
+      const cur = normalizeLengthOverride(prev[size]) || { lengths: [], caps: {} };
+      const lengths = cur.lengths.length > 0 ? [...cur.lengths] : [...defaults];
+      const caps = { ...cur.caps };
+      const next = mutate({ lengths, caps });
+      if (!next) return prev;
+      const { [size]: _removed, ...rest } = prev;
+      return isDefaultOverride(category, next.lengths, next.caps)
+        ? rest
+        : { ...rest, [size]: next };
+    });
+  };
+
+  const toggleSizeLength = (category, size, len) => {
+    updateSizeOverride(category, size, ({ lengths, caps }) => {
+      let next = lengths.includes(len)
+        ? lengths.filter(l => l !== len)
+        : [...lengths, len].sort((a, b) => a - b);
+      if (next.length === 0) next = [len]; // never leave a size unbuyable
+      if (!next.includes(len)) delete caps[len]; // removed length drops its cap
+      return { lengths: next, caps };
+    });
+  };
+
+  const addCustomSizeLength = (category, size, len) => {
+    const n = parseFloat(len);
+    if (!n || n <= 0) return;
+    updateSizeOverride(category, size, ({ lengths, caps }) => {
+      if (lengths.includes(n)) return null;
+      return { lengths: [...lengths, n].sort((a, b) => a - b), caps };
+    });
+  };
+
+  const setSizeLengthCap = (category, size, len, raw) => {
+    const n = parseInt(raw);
+    updateSizeOverride(category, size, ({ lengths, caps }) => {
+      if (n > 0) caps[len] = n; else delete caps[len];
+      return { lengths, caps };
+    });
+  };
+
+  const resetSizeLengths = (size) => {
+    setStockLengthOverrides(prev => {
+      const { [size]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
   
   const taxCategoryDescriptions = {
     newConstruction: {
@@ -2342,7 +2676,138 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     finally { setPdfExporting(false); }
   };
 
-  
+  // Build priced rows for the Stock List exports (respects the on-screen
+  // filter and sort so what you print is what you see)
+  const buildStockListExport = () => {
+    const rows = displayedStockList.map(r => {
+      const sp = sizePricing.get(r.size);
+      const hasRate = !!sp && !sp.mixed && (sp.unitPrice || 0) > 0;
+      const estCost = !hasRate ? null
+        : sp.priceBy === 'LB' ? r.totalWeight * sp.unitPrice
+        : sp.priceBy === 'CWT' ? (r.totalWeight / 100) * sp.unitPrice
+        : sp.priceBy === 'LF' ? r.stockLength * r.totalStocks * sp.unitPrice
+        : null;
+      return {
+        itemNumber: r.pooled ? 'Pooled' : r.itemNumber,
+        size: r.size,
+        stockLength: r.stockLength,
+        totalStocks: r.totalStocks,
+        weightPerFoot: r.weightPerFoot || 0,
+        totalWeight: r.totalWeight,
+        priceBy: hasRate ? sp.priceBy : (sp?.mixed ? 'mixed' : ''),
+        rate: hasRate ? sp.unitPrice : null,
+        estCost,
+      };
+    });
+    const totalWeight = rows.reduce((s, r) => s + r.totalWeight, 0);
+    const totalCost = rows.reduce((s, r) => s + (r.estCost || 0), 0);
+    const shortfalls = (projectNest?.groups || [])
+      .filter(g => g.shortfallCuts.length > 0)
+      .map(g => {
+        const ft = g.shortfallCuts.reduce((s, c) => s + c.length, 0);
+        return {
+          size: g.size,
+          cuts: g.shortfallCuts.length,
+          totalFt: +ft.toFixed(2),
+          lbs: ft * (g.weightPerFoot || 0),
+          detail: g.shortfallCuts.map(c => `${+c.length.toFixed(2)}' (Item ${c.itemNumber})`).join(', '),
+        };
+      });
+    return {
+      rows,
+      totalWeight,
+      totalCost,
+      shortfalls,
+      filterNote: stockListFilter ? ` (filtered: "${stockListFilter}")` : '',
+    };
+  };
+
+  const handleExportStockListPdf = async () => {
+    setShowExportMenu(false); setPdfExporting(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { StockListPdf } = await import('./pdf/StockListPdf');
+      const data = buildStockListExport();
+      const blob = await pdf(<StockListPdf logo={COMPANY_LOGO} projectName={projectName}
+        projectAddress={projectAddress} estimatedBy={estimatedBy}
+        generatedDate={new Date().toLocaleDateString()} {...data} />).toBlob();
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `${projectName || 'Project'}_StockBuyList_${new Date().toISOString().slice(0,10)}.pdf`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch(e) { alert('PDF export failed: ' + e.message); }
+    finally { setPdfExporting(false); }
+  };
+
+  const handleExportCutDetailPdf = async () => {
+    setShowExportMenu(false);
+    if (!projectNest || projectNest.groups.length === 0) {
+      alert('Cut detail requires cross-item nesting — enable "Nest stock across items" on the Project Info tab.');
+      return;
+    }
+    setPdfExporting(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { CutDetailPdf } = await import('./pdf/CutDetailPdf');
+      const groups = projectNest.groups.map(g => ({
+        size: g.size,
+        stickCount: g.sticks.length,
+        yieldPct: (100 / g.yield).toFixed(1),
+        buyLengthFt: +g.buyLengthFt.toFixed(2),
+        netLengthFt: +g.netLengthFt.toFixed(2),
+        weightPerFoot: g.weightPerFoot || 0,
+        rows: compressGroupSticks(g).map(r => ({
+          count: r.count,
+          stockLength: r.stockLength,
+          partsText: r.parts.map(p => `${p.n} × ${+p.len.toFixed(2)}'  [Item ${p.itemNo}]`).join('   +   '),
+          dropFt: (r.stockLength - r.usedFt).toFixed(2),
+        })),
+        overLengthText: g.overLengthCuts.length > 0
+          ? g.overLengthCuts.map(c => `${+c.length.toFixed(2)}' (Item ${c.itemNumber})`).join(', ')
+          : null,
+        shortfallText: g.shortfallCuts.length > 0
+          ? g.shortfallCuts.map(c => `${+c.length.toFixed(2)}' (Item ${c.itemNumber})`).join(', ')
+          : null,
+      }));
+      const blob = await pdf(<CutDetailPdf logo={COMPANY_LOGO} projectName={projectName}
+        projectAddress={projectAddress} estimatedBy={estimatedBy}
+        generatedDate={new Date().toLocaleDateString()}
+        kerfIn={parseFloat(nestKerfIn) || 0} endCropIn={parseFloat(nestEndCropIn) || 0}
+        groups={groups} />).toBlob();
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob),
+        download: `${projectName || 'Project'}_CutDetail_${new Date().toISOString().slice(0,10)}.pdf`
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch(e) { alert('PDF export failed: ' + e.message); }
+    finally { setPdfExporting(false); }
+  };
+
+  const handleExportStockListCsv = () => {
+    const { rows, totalWeight, totalCost, shortfalls, filterNote } = buildStockListExport();
+    let csv = `Stock Material Buy List - ${projectName || 'Project'}${filterNote}\n`;
+    csv += `Generated ${new Date().toLocaleDateString()}\n\n`;
+    csv += 'Item #,Size,Stock Length (ft),Qty Sticks,Wt/Ft,Total Weight (lbs),Units,Rate,Est Cost\n';
+    rows.forEach(r => {
+      csv += `${r.itemNumber},${normalizeShapeSize(r.size)},${r.stockLength},${r.totalStocks},${r.weightPerFoot.toFixed(2)},${roundCustom(r.totalWeight)},${r.rate != null ? r.priceBy : ''},${r.rate != null ? r.rate : ''},${r.estCost != null ? roundCustom(r.estCost) : ''}\n`;
+    });
+    csv += `TOTAL,,,,,${roundCustom(totalWeight)},,,${roundCustom(totalCost)}\n`;
+    if (shortfalls.length > 0) {
+      csv += '\nSUPPLIER SHORTFALL (not included in buy list above)\n';
+      csv += 'Size,Cuts,Total Ft,Est Lbs,Detail\n';
+      shortfalls.forEach(s => {
+        csv += `${normalizeShapeSize(s.size)},${s.cuts},${s.totalFt},${roundCustom(s.lbs)},"${s.detail}"\n`;
+      });
+    }
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `${projectName || 'Project'}_StockBuyList_${new Date().toISOString().slice(0,10)}.csv`
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
   // Copy RFQ to clipboard
   const copyRfqToClipboard = () => {
     const text = generateRfqText();
@@ -2360,10 +2825,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     if (rfqResponseDate) csv += `Quote Needed By,${new Date(rfqResponseDate).toLocaleDateString()}\n`;
     if (rfqDeliveryDate) csv += `Delivery Required,${new Date(rfqDeliveryDate).toLocaleDateString()}\n`;
     csv += '\n';
-    csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/LB,Your $/LF,Your $/EA,Your Total,Lead Time,Notes\n';
+    csv += 'Size,Stock Length,Quantity,Weight/Ft,Est Total Weight,Your $/CWT,Your $/LB,Your $/LF,Your $/EA,Your Total,Lead Time,Notes\n';
 
     stockList.forEach(stock => {
-      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${(stock.weightPerFoot || 0).toFixed(2)},${roundCustom(stock.totalWeight)},,,,,\n`;
+      csv += `${normalizeShapeSize(stock.size)},${stock.stockLength},${stock.totalStocks},${(stock.weightPerFoot || 0).toFixed(2)},${roundCustom(stock.totalWeight)},,,,,,\n`;
     });
     
     csv += '\n';
@@ -2412,42 +2877,80 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       const headers = lines[headerIdx].split(',').map(h => h.trim().toLowerCase());
       const sizeIdx      = headers.indexOf('size');
       const stockLenIdx  = headers.indexOf('stock length');
+      const perCwtIdx    = headers.findIndex(h => h.includes('$/cwt'));
       const perLbIdx     = headers.findIndex(h => h.includes('$/lb'));
       const perLfIdx     = headers.findIndex(h => h.includes('$/lf'));
       const perEaIdx     = headers.findIndex(h => h.includes('$/ea'));
 
-      // Build pricing map: "normalizedSize-stockLength" -> { priceBy, unitPrice }
+      const qtyIdx  = headers.indexOf('quantity');
+      const wtFtIdx = headers.findIndex(h => h.includes('weight/ft'));
+
+      // Build pricing maps:
+      //  - exact:    "normalizedSize-stockLength" -> { priceBy, unitPrice }
+      //  - bySize:   normalizedSize -> weight-weighted average across that
+      //              size's rows. Nested lines carry their own standalone
+      //              stock length while the buy list shows pooled stick
+      //              lengths, so size-level pricing is the fallback that makes
+      //              vendor uploads land on pooled lines.
       const pricingMap = new Map();
+      const sizeAgg = new Map();
       for (let i = headerIdx + 1; i < lines.length; i++) {
         const cols = lines[i].split(',').map(c => c.trim());
         const size = cols[sizeIdx];
         if (!size || size.toLowerCase().startsWith('total')) break;
 
         const stockLen = parseFloat(cols[stockLenIdx]) || 0;
+        const perCwt   = perCwtIdx !== -1 ? parseFloat(cols[perCwtIdx]) : NaN;
         const perLb    = parseFloat(cols[perLbIdx]);
         const perLf    = parseFloat(cols[perLfIdx]);
         const perEa    = parseFloat(cols[perEaIdx]);
 
-        if (!isNaN(perLb) && perLb > 0) {
-          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'LB', unitPrice: perLb });
-        } else if (!isNaN(perLf) && perLf > 0) {
-          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'LF', unitPrice: perLf });
-        } else if (!isNaN(perEa) && perEa > 0) {
-          pricingMap.set(`${normalizeShapeSize(size)}-${stockLen}`, { priceBy: 'EA', unitPrice: perEa });
+        let rowPricing = null;
+        if (!isNaN(perCwt) && perCwt > 0)    rowPricing = { priceBy: 'CWT', unitPrice: perCwt };
+        else if (!isNaN(perLb) && perLb > 0) rowPricing = { priceBy: 'LB', unitPrice: perLb };
+        else if (!isNaN(perLf) && perLf > 0) rowPricing = { priceBy: 'LF', unitPrice: perLf };
+        else if (!isNaN(perEa) && perEa > 0) rowPricing = { priceBy: 'EA', unitPrice: perEa };
+        if (!rowPricing) continue;
+
+        const normSize = normalizeShapeSize(size);
+        pricingMap.set(`${normSize}-${stockLen}`, rowPricing);
+
+        const rowWeight = (parseFloat(cols[qtyIdx]) || 1) * (stockLen || 1) * (parseFloat(cols[wtFtIdx]) || 1);
+        const agg = sizeAgg.get(normSize);
+        if (!agg) {
+          sizeAgg.set(normSize, { priceBy: rowPricing.priceBy, num: rowPricing.unitPrice * rowWeight, den: rowWeight });
+        } else if (agg.priceBy === rowPricing.priceBy) {
+          agg.num += rowPricing.unitPrice * rowWeight;
+          agg.den += rowWeight;
         }
       }
+      const bySize = new Map();
+      sizeAgg.forEach((agg, s) => bySize.set(s, { priceBy: agg.priceBy, unitPrice: agg.num / (agg.den || 1) }));
 
       if (pricingMap.size === 0) {
         setRfqUploadResult({ error: 'No pricing found. Make sure the vendor filled in the $/LB or $/LF columns.' });
         return;
       }
 
-      // Determine which keys actually match materials in the current estimate
+      const pricingFor = (mat) => {
+        const normSize = normalizeShapeSize(mat.size);
+        return pricingMap.get(`${normSize}-${mat.stockLength}`) || bySize.get(normSize) || null;
+      };
+
+      // Determine which vendor rows actually match materials in the estimate
       const matchedKeys = new Set();
       items.forEach(item => {
         item.materials.forEach(mat => {
-          const key = `${normalizeShapeSize(mat.size)}-${mat.stockLength}`;
-          if (pricingMap.has(key)) matchedKeys.add(key);
+          const normSize = normalizeShapeSize(mat.size);
+          const exactKey = `${normSize}-${mat.stockLength}`;
+          if (pricingMap.has(exactKey)) {
+            matchedKeys.add(exactKey);
+          } else if (bySize.has(normSize)) {
+            // size-only fallback: mark every vendor row of this size as used
+            pricingMap.forEach((_, key) => {
+              if (key.startsWith(`${normSize}-`)) matchedKeys.add(key);
+            });
+          }
         });
       });
 
@@ -2460,8 +2963,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       setItems(prevItems => prevItems.map(item => ({
         ...item,
         materials: item.materials.map(mat => {
-          const key = `${normalizeShapeSize(mat.size)}-${mat.stockLength}`;
-          const pricing = pricingMap.get(key);
+          const pricing = pricingFor(mat);
           if (!pricing) return mat;
           return calculateMaterial({ ...mat, priceBy: pricing.priceBy, unitPrice: pricing.unitPrice });
         }),
@@ -2606,6 +3108,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       willCall: p.deliveryWillCall || false,
     });
     setTaxCategory(p.taxCategory || null);
+    setNestingEnabled(p.nestingEnabled || false);
+    setNestKerfIn(typeof p.nestKerfIn === 'number' ? p.nestKerfIn : 0.25);
+    setNestEndCropIn(typeof p.nestEndCropIn === 'number' ? p.nestEndCropIn : 0);
+    setStockLengthOverrides(p.stockLengthOverrides && typeof p.stockLengthOverrides === 'object' ? p.stockLengthOverrides : {});
     setBreakoutGroups(p.breakoutGroups || []);
     setAdjustments(p.adjustments || []);
     setSelectedExclusions(p.selectedExclusions || []);
@@ -2664,6 +3170,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
       setTaxCategory(data.taxCategory || null);
 
+      setNestingEnabled(data.nestingEnabled || false);
+      setNestKerfIn(typeof data.nestKerfIn === 'number' ? data.nestKerfIn : 0.25);
+      setNestEndCropIn(typeof data.nestEndCropIn === 'number' ? data.nestEndCropIn : 0);
+      try {
+        const parsed = JSON.parse(data.stockLengthOverrides || '{}');
+        setStockLengthOverrides(parsed && typeof parsed === 'object' ? parsed : {});
+      } catch { setStockLengthOverrides({}); }
+
       const stdExc = (data.exclusions || []).filter(e => !e.isCustom).map(e => e.text);
       const custExc = (data.exclusions || []).filter(e => e.isCustom).map(e => e.text);
       setSelectedExclusions(stdExc);
@@ -2709,6 +3223,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             drawingRef: item.drawingRef || '',
             materialMarkup: item.materialMarkup || 0,
             fabMarkup: item.fabMarkup || 0,
+            priceStandalone: item.priceStandalone || false,
             breakoutGroupId: item.breakoutGroupId || null,
             recapCosts: recapObj,
             materials: (item.materials || []).map(mat => ({
@@ -2897,6 +3412,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         deliveryFobJobsite: deliveryOptions.fobJobsite,
         deliveryWillCall: deliveryOptions.willCall,
         taxCategory,
+        nestingEnabled,
+        nestKerfIn: parseFloat(nestKerfIn) || 0,
+        nestEndCropIn: parseFloat(nestEndCropIn) || 0,
+        stockLengthOverrides,
         breakoutGroups,
         items,
         adjustments,
@@ -2948,7 +3467,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, customerId, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
+  }, [currentProjectId, projectName, projectAddress, customerName, customerId, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
 
   // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
   useEffect(() => { saveRef.current = handleSave; });
@@ -2970,6 +3489,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     bidTime, estimatedBy, drawingDate, drawingRevision, architect,
     estimatorId, dashboardStatus, newOrCo, notes,
     projectTypes, deliveryOptions, taxCategory,
+    nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides,
     breakoutGroups, items, adjustments,
     selectedExclusions, customExclusions,
     selectedQualifications, customQualifications,
@@ -3265,8 +3785,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     const totalLength = (material.pieces || 0) * (material.length || 0);
     const fabWeight = totalLength * weightPerFoot;
     
-    // Get available stock lengths for this category
-    const availableStockLengths = getStockLengthsForCategory(material.category);
+    // Get available stock lengths for this size (supplier overrides) / category
+    const availableStockLengths = availableLengthsFor(material.category, material.size);
     
     // Calculate optimal nesting
     const optimization = calculateOptimalStock(material.pieces, material.length, availableStockLengths);
@@ -3302,6 +3822,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     const unitPrice = material.unitPrice || 0;
     if (material.priceBy === 'LB') {
       totalCost = stockWeight * unitPrice;
+    } else if (material.priceBy === 'CWT') {
+      totalCost = (stockWeight / 100) * unitPrice; // supplier price per hundredweight
     } else if (material.priceBy === 'LF') {
       totalCost = (stocksRequired * stockLen) * unitPrice;
     } else if (material.priceBy === 'EA') {
@@ -4591,6 +5113,83 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     ));
   };
 
+  // ── CROSS-ITEM NESTING ──────────────────────────────────────────────────────
+  // Pool cuts from all non-standalone items and nest them onto shared sticks.
+  const projectNest = useMemo(() => {
+    if (!nestingEnabled) return null;
+    const kerfFt = (parseFloat(nestKerfIn) || 0) / 12;
+    const endCropFt = (parseFloat(nestEndCropIn) || 0) / 12;
+    return computeProjectNest(items, kerfFt, endCropFt, availableLengthsFor, lengthCapsFor);
+  }, [items, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides]);
+
+  // Write pooled allocations back onto material lines so every consumer of
+  // stockWeight / totalCost (totals, tax, save payload, exports) sees pooled
+  // numbers without changes. Every line is re-derived (so supplier length
+  // overrides also revalidate standalone lines), but a value-equality guard
+  // preserves object references — the items → projectNest → effect cycle
+  // settles after one pass.
+  useEffect(() => {
+    const NUMERIC_GUARD_KEYS = [
+      'stockLength', 'optimalStockLength', 'stocksRequired', 'stockWeight',
+      'piecesPerStock', 'wasteLength', 'efficiency', 'totalCost',
+      'fabWeight', 'totalLength', 'weightPerFoot', 'nestYield', 'standaloneStockWeight',
+    ];
+    const sameCalc = (a, b) => {
+      if (!!a.pooled !== !!b.pooled || !!a.overLength !== !!b.overLength ||
+          !!a.shortfall !== !!b.shortfall ||
+          !!a.isManualOverride !== !!b.isManualOverride) return false;
+      return NUMERIC_GUARD_KEYS.every(k => {
+        const av = a[k], bv = b[k];
+        if (typeof av === 'number' || typeof bv === 'number') {
+          return Math.abs((av || 0) - (bv || 0)) < 0.005;
+        }
+        return (av ?? null) === (bv ?? null);
+      });
+    };
+    setItems(prev => {
+      let anyChanged = false;
+      const next = prev.map(item => {
+        let itemChanged = false;
+        const materials = item.materials.map(mat => {
+          // Rebuild standalone numbers from scratch (honoring current supplier
+          // lengths), then overlay the pooled share if this line is in the nest.
+          const { pooled, nestYield, overLength, shortfall, standaloneStockWeight, ...rest } = mat;
+          const base = calculateMaterial(rest);
+          const alloc = projectNest && !item.priceStandalone ? projectNest.byMaterial.get(mat.id) : null;
+          let candidate;
+          if (alloc) {
+            const stockWeight = (base.fabWeight || 0) * alloc.yield;
+            const unitPrice = base.unitPrice || 0;
+            let totalCost = base.totalCost;
+            if (base.priceBy === 'LB') totalCost = stockWeight * unitPrice;
+            else if (base.priceBy === 'CWT') totalCost = (stockWeight / 100) * unitPrice;
+            else if (base.priceBy === 'LF') totalCost = alloc.allocStockLengthFt * unitPrice;
+            else if (base.priceBy === 'EA') totalCost = (base.pieces || 0) * unitPrice;
+            candidate = {
+              ...base,
+              pooled: true,
+              nestYield: alloc.yield,
+              overLength: alloc.overLength,
+              shortfall: alloc.shortfall,
+              standaloneStockWeight: base.stockWeight,
+              stockWeight,
+              totalCost,
+            };
+          } else {
+            candidate = base;
+          }
+          if (sameCalc(mat, candidate)) return mat;
+          itemChanged = true;
+          return candidate;
+        });
+        if (!itemChanged) return item;
+        anyChanged = true;
+        return { ...item, materials };
+      });
+      return anyChanged ? next : prev;
+    });
+  }, [projectNest, stockLengthOverrides]);
+
   // Calculate totals
   const calculateTotals = () => {
     let totalMaterialCost = 0;
@@ -4653,26 +5252,37 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
   const totals = useMemo(() => calculateTotals(), [items, adjustments, taxCategory]);
 
-  // Get stock list
+  // Get stock list. Pooled materials are covered by the nest's purchase
+  // summary; everything else (plates, custom, standalone items, nesting off)
+  // contributes its per-line stocks as before.
   const getStockList = () => {
     const stockSummary = {};
+    const addStocks = (size, stockLength, weightPerFoot, count) => {
+      const key = `${size}-${stockLength}`;
+      if (!stockSummary[key]) {
+        stockSummary[key] = { size, stockLength, weightPerFoot: weightPerFoot || 0, totalStocks: 0, totalWeight: 0 };
+      }
+      stockSummary[key].totalStocks += count;
+      stockSummary[key].totalWeight += count * stockLength * (weightPerFoot || 0);
+    };
     items.forEach(item => {
       item.materials.forEach(mat => {
+        if (projectNest && mat.pooled) return; // covered by the nest below
         if (mat.size && mat.stocksRequired > 0) {
-          const key = `${mat.size}-${mat.stockLength}`;
-          if (!stockSummary[key]) {
-            stockSummary[key] = { size: mat.size, stockLength: mat.stockLength, weightPerFoot: mat.weightPerFoot || 0, totalStocks: 0, totalWeight: 0 };
-          }
-          stockSummary[key].totalStocks += mat.stocksRequired;
-          stockSummary[key].totalWeight += mat.stocksRequired * mat.stockLength * (mat.weightPerFoot || 0);
+          addStocks(mat.size, mat.stockLength, mat.weightPerFoot, mat.stocksRequired);
         }
       });
     });
+    if (projectNest) {
+      projectNest.groups.forEach(g => {
+        g.purchase.forEach(p => addStocks(g.size, p.stockLength, g.weightPerFoot, p.count));
+      });
+    }
     return Object.values(stockSummary).sort((a, b) => a.size.localeCompare(b.size));
   };
 
   // Memoized stock list to avoid recalculating on every render
-  const stockList = useMemo(() => getStockList(), [items]);
+  const stockList = useMemo(() => getStockList(), [items, projectNest]);
 
   // Per-item stock breakdown (one row per item + size + stockLength) for the buy list display
   const getDetailedStockList = () => {
@@ -4680,6 +5290,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     items.forEach(item => {
       const perItem = {};
       item.materials.forEach(mat => {
+        if (projectNest && mat.pooled) return; // shown as pooled rows below
         if (mat.size && mat.stocksRequired > 0) {
           const key = `${mat.size}-${mat.stockLength}`;
           if (!perItem[key]) {
@@ -4699,10 +5310,106 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       });
       result.push(...Object.values(perItem));
     });
+    if (projectNest) {
+      projectNest.groups.forEach(g => {
+        const itemNumbers = [...new Set(g.sticks.flatMap(st => st.cuts.map(c => c.itemNumber)))]
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+        g.purchase.forEach(p => {
+          result.push({
+            itemNumber: 'Pooled',
+            itemName: `Items ${itemNumbers.join(', ')}`,
+            size: g.size,
+            stockLength: p.stockLength,
+            weightPerFoot: g.weightPerFoot,
+            totalStocks: p.count,
+            totalWeight: p.count * p.stockLength * (g.weightPerFoot || 0),
+            pooled: true,
+          });
+        });
+      });
+    }
     return result;
   };
 
-  const detailedStockList = useMemo(() => getDetailedStockList(), [items]);
+  const detailedStockList = useMemo(() => getDetailedStockList(), [items, projectNest]);
+
+  // Distinct sizes on the estimate, for the supplier-availability editor and
+  // size-group pricing.
+  const sizesInUse = useMemo(() => {
+    const map = new Map();
+    items.forEach(item => {
+      item.materials.forEach(mat => {
+        if (mat.size && !map.has(mat.size)) map.set(mat.size, { size: mat.size, category: mat.category });
+      });
+    });
+    return [...map.values()].sort((a, b) => a.size.localeCompare(b.size));
+  }, [items]);
+
+  // Current per-size pricing derived from material lines: one entry per size,
+  // flagged mixed when lines disagree.
+  const sizePricing = useMemo(() => {
+    const map = new Map();
+    items.forEach(item => {
+      item.materials.forEach(mat => {
+        if (!mat.size) return;
+        const cur = map.get(mat.size);
+        if (!cur) {
+          map.set(mat.size, { priceBy: mat.priceBy || 'LB', unitPrice: mat.unitPrice || 0, mixed: false });
+        } else if (cur.priceBy !== (mat.priceBy || 'LB') || Math.abs(cur.unitPrice - (mat.unitPrice || 0)) > 1e-9) {
+          cur.mixed = true;
+        }
+      });
+    });
+    return map;
+  }, [items]);
+
+  // Round every material length in the estimate to the nearest 1" (estimating
+  // tolerance). Recalculates weights/costs and keeps auto-galv quantities in
+  // sync. Imports already round on the way in; this covers manual entries and
+  // estimates imported before rounding existed.
+  const roundAllLengthsToInch = () => {
+    let changed = 0;
+    items.forEach(item => item.materials.forEach(mat => {
+      const len = parseFloat(mat.length) || 0;
+      if (len > 0 && Math.abs(+(Math.max(Math.round(len * 12), 1) / 12).toFixed(2) - len) > 1e-9) changed++;
+    }));
+    if (changed === 0) {
+      alert('All material lengths are already on even inches.');
+      return;
+    }
+    if (!confirm(`Round ${changed} material length${changed === 1 ? '' : 's'} to the nearest 1"?\n\nWeights and costs recalculate to match. Lengths entered to finer precision will be changed.`)) return;
+    setItems(prev => prev.map(item => ({
+      ...item,
+      materials: item.materials.map(mat => {
+        const len = parseFloat(mat.length) || 0;
+        if (len <= 0) return mat;
+        const rounded = +(Math.max(Math.round(len * 12), 1) / 12).toFixed(2);
+        if (Math.abs(rounded - len) < 1e-9) return mat;
+        const updated = calculateMaterial({ ...mat, length: rounded });
+        if (updated.galvanized) {
+          updated.fabrication = (updated.fabrication || []).map(f => f.isAutoGalv
+            ? {
+                ...f,
+                quantity: updated.fabWeight || 0,
+                description: `Galv - ${updated.description || updated.size}`,
+                totalCost: (updated.fabWeight || 0) * (f.unitPrice || 0),
+              }
+            : f);
+        }
+        return updated;
+      }),
+    })));
+  };
+
+  // Apply a supplier rate to every material line of a size, project-wide.
+  // The nest write-back effect then re-derives pooled totals.
+  const applySizePrice = (size, priceBy, unitPrice) => {
+    setItems(prev => prev.map(item => ({
+      ...item,
+      materials: item.materials.map(mat =>
+        mat.size === size ? calculateMaterial({ ...mat, priceBy, unitPrice }) : mat),
+    })));
+  };
 
   // Zero-weight guard: a material with pieces but no weight per foot is almost
   // always an unmatched import size or a Custom line missing its weight — it
@@ -4826,6 +5533,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <button onClick={handleExportJobFolder}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
                     <Download size={14} /> Job Folder (Full)
+                  </button>
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  <button onClick={handleExportStockListPdf}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileText size={14} /> Stock Buy List (Priced)
+                  </button>
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  <button onClick={handleExportCutDetailPdf}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileText size={14} /> Cut Detail (Nest Record)
                   </button>
                 </div>
               )}
@@ -5146,6 +5863,49 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
               </div>
 
+              {/* Material Nesting */}
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
+                <h2 className="text-lg font-semibold mb-3">Material Nesting</h2>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={nestingEnabled}
+                    onChange={e => setNestingEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded" />
+                  <span className="text-sm font-medium">Nest stock across items</span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Pools cut lengths from all items by size and nests them onto shared sticks, so one item's drop
+                  absorbs another item's short piece. Each item is charged its pro-rata share of the purchased
+                  steel, so per-item pricing still sums exactly to the buy list. Items flagged
+                  "Price standalone" on the Estimate tab are excluded (use for alternates). Plate and Custom
+                  lines always price per line.
+                </p>
+                <div className="flex flex-wrap gap-6">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className={nestingEnabled ? '' : 'text-gray-400'}>Saw kerf per cut (in):</span>
+                    <input type="number" step="0.0625" min="0" value={nestKerfIn}
+                      onChange={e => setNestKerfIn(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      disabled={!nestingEnabled}
+                      className="w-20 p-1 border rounded text-sm text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 disabled:opacity-50" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className={nestingEnabled ? '' : 'text-gray-400'}>End crop per stick (in):</span>
+                    <input type="number" step="0.5" min="0" value={nestEndCropIn}
+                      onChange={e => setNestEndCropIn(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      disabled={!nestingEnabled}
+                      className="w-20 p-1 border rounded text-sm text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 disabled:opacity-50" />
+                  </label>
+                </div>
+                {projectNest && projectNest.groups.length > 0 && (
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-3">
+                    Nesting {projectNest.groups.length} size group{projectNest.groups.length === 1 ? '' : 's'} across items —
+                    {' '}{projectNest.groups.reduce((s, g) => s + g.sticks.length, 0)} sticks,
+                    {' '}{(projectNest.groups.reduce((s, g) => s + g.netLengthFt, 0) /
+                          Math.max(projectNest.groups.reduce((s, g) => s + g.buyLengthFt, 0), 0.001) * 100).toFixed(1)}% overall yield.
+                    See the Stock List tab for the buy list and cut detail.
+                  </p>
+                )}
+              </div>
+
               {/* Exclusions */}
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Exclusions</h2>
@@ -5233,6 +5993,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <Upload size={16} />
                     {takeoffImporting ? 'Processing...' : 'Import Takeoff CSV'}
                   </button>
+                  <button
+                    onClick={roundAllLengthsToInch}
+                    title={'Round every material length to the nearest 1" (estimating tolerance). Imports already round on the way in.'}
+                    className="flex items-center gap-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Round to 1″
+                  </button>
                 </div>
                 <button onClick={addItem} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700">
                   <Plus size={16} /> Add Item
@@ -5264,6 +6031,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         <input type="text" value={item.drawingRef} onChange={e => updateItem(item.id, 'drawingRef', e.target.value)}
                           className="w-full p-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Dwg Ref" title={item.drawingRef || 'Drawing Reference'} />
                       </div>
+                      {nestingEnabled && (
+                        <label className="flex items-center gap-1 text-xs cursor-pointer flex-shrink-0"
+                          title="Exclude this item from cross-item nesting — its material prices at its own dedicated stock lengths (use for alternates or scope that may be awarded separately)">
+                          <input type="checkbox" checked={!!item.priceStandalone}
+                            onChange={e => updateItem(item.id, 'priceStandalone', e.target.checked)}
+                            className="rounded" />
+                          <span className={item.priceStandalone ? 'font-semibold text-purple-700 dark:text-purple-300' : 'text-gray-600 dark:text-gray-300'}>Standalone</span>
+                        </label>
+                      )}
                     </div>
                     <button onClick={() => deleteItem(item.id)} className="text-red-600 hover:text-red-800 ml-2"><Trash2 size={16} /></button>
                   </div>
@@ -5399,30 +6175,59 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           className="w-4 h-4 rounded" title="Add Galvanizing" />
                                       </td>
                                       <td className="border p-1">
-                                        <select 
-                                          value={mat.stockLength} 
-                                          onChange={e => updateMaterial(item.id, mat.id, 'stockLength', parseInt(e.target.value))} 
-                                          className={`w-full p-1 border rounded text-xs dark:border-gray-600 dark:text-gray-100 ${mat.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : 'dark:bg-gray-800'}`}
-                                          title={mat.isManualOverride ? `Optimal: ${mat.optimalStockLength}'` : `Optimal stock length`}
-                                        >
-                                          {getStockLengthsForCategory(mat.category).map(sl => (
-                                            <option key={sl} value={sl}>
-                                              {sl}'{sl === mat.optimalStockLength ? '*' : ''}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        {mat.piecesPerStock > 0 && (
-                                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{mat.piecesPerStock}/stk</div>
+                                        {mat.pooled ? (
+                                          <div
+                                            className={`text-center text-xs font-semibold rounded px-1 py-0.5 ${mat.overLength
+                                              ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
+                                              : mat.shortfall
+                                                ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                                                : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'}`}
+                                            title={mat.overLength
+                                              ? 'Piece exceeds the longest available stock — review for splice or special order'
+                                              : mat.shortfall
+                                                ? "Supplier stick counts can't cover all of this size's cuts — see the Stock List shortfall warning"
+                                                : `Nested across items — this line carries ${((mat.nestYield - 1) * 100).toFixed(1)}% of its net weight as its share of group waste (standalone stock wt: ${fmtWt(mat.standaloneStockWeight || 0)})`}
+                                          >
+                                            {mat.overLength ? 'OVER LEN' : mat.shortfall ? 'SHORT SUP' : `NESTED ${(100 / (mat.nestYield || 1)).toFixed(0)}%`}
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <select
+                                              value={mat.stockLength}
+                                              onChange={e => updateMaterial(item.id, mat.id, 'stockLength', parseFloat(e.target.value))}
+                                              className={`w-full p-1 border rounded text-xs dark:border-gray-600 dark:text-gray-100 ${mat.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : 'dark:bg-gray-800'}`}
+                                              title={mat.isManualOverride ? `Optimal: ${mat.optimalStockLength}'` : `Optimal stock length`}
+                                            >
+                                              {availableLengthsFor(mat.category, mat.size).map(sl => (
+                                                <option key={sl} value={sl}>
+                                                  {sl}'{sl === mat.optimalStockLength ? '*' : ''}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            {mat.piecesPerStock > 0 && (
+                                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{mat.piecesPerStock}/stk</div>
+                                            )}
+                                          </>
                                         )}
                                       </td>
-                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.stocksRequired || 0}</td>
+                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.pooled ? '—' : (mat.stocksRequired || 0)}</td>
                                       <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{fmtWt(mat.stockWeight || 0)}</td>
                                       <td className="border p-1">
-                                        <select value={mat.priceBy} onChange={e => updateMaterial(item.id, mat.id, 'priceBy', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
-                                          <option value="LB">LB</option><option value="LF">LF</option><option value="EA">EA</option>
+                                        <select value={mat.priceBy}
+                                          onChange={e => mat.pooled
+                                            ? applySizePrice(mat.size, e.target.value, mat.unitPrice || 0)
+                                            : updateMaterial(item.id, mat.id, 'priceBy', e.target.value)}
+                                          title={mat.pooled ? `Nested — applies to every ${mat.size} line` : undefined}
+                                          className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
+                                          <option value="LB">LB</option><option value="CWT">CWT</option><option value="LF">LF</option><option value="EA">EA</option>
                                         </select>
                                       </td>
-                                      <td className="border p-1"><input type="number" step="0.01" value={mat.unitPrice || ''} onChange={e => updateMaterial(item.id, mat.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                                      <td className="border p-1"><input type="number" step="0.0001" value={mat.unitPrice || ''}
+                                        onChange={e => mat.pooled
+                                          ? applySizePrice(mat.size, mat.priceBy || 'LB', parseFloat(e.target.value) || 0)
+                                          : updateMaterial(item.id, mat.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                        title={mat.pooled ? `Nested — rate applies to every ${mat.size} line` : undefined}
+                                        className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
                                       <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(mat.totalCost || 0)}</td>
                                       <td className="border p-1">
                                         <div className="flex gap-1">
@@ -5765,26 +6570,53 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             className="w-4 h-4 rounded" title="Add Galvanizing" />
                                         </td>
                                         <td className="border p-1">
-                                          <select 
-                                            value={child.stockLength} 
-                                            onChange={e => updateMaterial(item.id, child.id, 'stockLength', parseInt(e.target.value))} 
-                                            className={`w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 ${child.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : ''}`}
-                                          >
-                                            {getStockLengthsForCategory(child.category).map(sl => (
-                                              <option key={sl} value={sl}>
-                                                {sl}'{sl === child.optimalStockLength ? '*' : ''}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          {child.pooled ? (
+                                            <div
+                                              className={`text-center text-xs font-semibold rounded px-1 py-0.5 ${child.overLength
+                                                ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
+                                                : child.shortfall
+                                                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                                                  : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'}`}
+                                              title={child.overLength
+                                                ? 'Piece exceeds the longest available stock — review for splice or special order'
+                                                : child.shortfall
+                                                  ? "Supplier stick counts can't cover all of this size's cuts — see the Stock List shortfall warning"
+                                                  : `Nested across items (standalone stock wt: ${fmtWt(child.standaloneStockWeight || 0)})`}
+                                            >
+                                              {child.overLength ? 'OVER LEN' : child.shortfall ? 'SHORT SUP' : `NESTED ${(100 / (child.nestYield || 1)).toFixed(0)}%`}
+                                            </div>
+                                          ) : (
+                                            <select
+                                              value={child.stockLength}
+                                              onChange={e => updateMaterial(item.id, child.id, 'stockLength', parseFloat(e.target.value))}
+                                              className={`w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 ${child.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : ''}`}
+                                            >
+                                              {availableLengthsFor(child.category, child.size).map(sl => (
+                                                <option key={sl} value={sl}>
+                                                  {sl}'{sl === child.optimalStockLength ? '*' : ''}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          )}
                                         </td>
-                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.stocksRequired || 0}</td>
+                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.pooled ? '—' : (child.stocksRequired || 0)}</td>
                                         <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{fmtWt(child.stockWeight || 0)}</td>
                                         <td className="border p-1">
-                                          <select value={child.priceBy} onChange={e => updateMaterial(item.id, child.id, 'priceBy', e.target.value)} className="w-14 p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
-                                            <option value="LB">LB</option><option value="LF">LF</option><option value="EA">EA</option>
+                                          <select value={child.priceBy}
+                                            onChange={e => child.pooled
+                                              ? applySizePrice(child.size, e.target.value, child.unitPrice || 0)
+                                              : updateMaterial(item.id, child.id, 'priceBy', e.target.value)}
+                                            title={child.pooled ? `Nested — applies to every ${child.size} line` : undefined}
+                                            className="w-14 p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
+                                            <option value="LB">LB</option><option value="CWT">CWT</option><option value="LF">LF</option><option value="EA">EA</option>
                                           </select>
                                         </td>
-                                        <td className="border p-1"><input type="number" step="0.01" value={child.unitPrice || ''} onChange={e => updateMaterial(item.id, child.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
+                                        <td className="border p-1"><input type="number" step="0.0001" value={child.unitPrice || ''}
+                                          onChange={e => child.pooled
+                                            ? applySizePrice(child.size, child.priceBy || 'LB', parseFloat(e.target.value) || 0)
+                                            : updateMaterial(item.id, child.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                          title={child.pooled ? `Nested — rate applies to every ${child.size} line` : undefined}
+                                          className="w-16 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
                                         <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(child.totalCost || 0)}</td>
                                         <td className="border p-1">
                                           <div className="flex gap-1">
@@ -6298,6 +7130,21 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   <p className="text-sm text-gray-300">{projectName || 'Project'}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportStockListCsv}
+                    title="Download the priced buy list as CSV"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/40 text-white rounded font-semibold hover:bg-white/20 text-sm"
+                  >
+                    <Download size={16} /> CSV
+                  </button>
+                  <button
+                    onClick={handleExportStockListPdf}
+                    disabled={pdfExporting}
+                    title="Download the priced buy list as a printable PDF"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/40 text-white rounded font-semibold hover:bg-white/20 text-sm disabled:opacity-50"
+                  >
+                    <Download size={16} /> {pdfExporting ? 'Generating…' : 'PDF'}
+                  </button>
                   <label className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded font-semibold hover:bg-green-700 cursor-pointer text-sm">
                     <Upload size={16} />
                     Upload Vendor CSV
@@ -6350,27 +7197,256 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <th className="border p-2 text-right cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('totalStocks')}>Qty Stocks{sortArrow('totalStocks')}</th>
                     <th className="border p-2 text-right">Wt/ft</th>
                     <th className="border p-2 text-right cursor-pointer select-none hover:bg-gray-300 dark:hover:bg-gray-500" onClick={() => toggleStockSort('totalWeight')}>Total Weight{sortArrow('totalWeight')}</th>
+                    <th className="border p-2 text-center" title="Supplier price basis — applies to every line of this size">Units</th>
+                    <th className="border p-2 text-right" title="Supplier rate — applies to every line of this size">Rate $</th>
+                    <th className="border p-2 text-right">Est Cost</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedStockList.map((stock, i) => (
-                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="border p-2">{stock.itemNumber}</td>
+                  {displayedStockList.map((stock, i) => {
+                    const sp = sizePricing.get(stock.size);
+                    const rowEstCost = (!sp || sp.mixed || !sp.unitPrice) ? null
+                      : sp.priceBy === 'LB' ? stock.totalWeight * sp.unitPrice
+                      : sp.priceBy === 'CWT' ? (stock.totalWeight / 100) * sp.unitPrice
+                      : sp.priceBy === 'LF' ? stock.stockLength * stock.totalStocks * sp.unitPrice
+                      : null;
+                    return (
+                    <tr key={i} className={stock.pooled ? 'bg-indigo-50 dark:bg-indigo-950 hover:bg-indigo-100 dark:hover:bg-indigo-900' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}>
+                      <td className="border p-2">
+                        {stock.pooled
+                          ? <span className="font-semibold text-indigo-700 dark:text-indigo-300" title={stock.itemName}>Pooled</span>
+                          : stock.itemNumber}
+                      </td>
                       <td className="border p-2 font-semibold">{stock.size}</td>
                       <td className="border p-2 text-right">{stock.stockLength}'</td>
                       <td className="border p-2 text-right font-bold">{stock.totalStocks}</td>
                       <td className="border p-2 text-right">{(stock.weightPerFoot || 0).toFixed(2)}</td>
                       <td className="border p-2 text-right font-semibold">{fmtWt(stock.totalWeight)} lbs</td>
+                      <td className="border p-1 text-center">
+                        <select
+                          value={sp?.mixed ? '' : (sp?.priceBy || 'LB')}
+                          onChange={e => applySizePrice(stock.size, e.target.value, sp?.mixed ? 0 : (sp?.unitPrice || 0))}
+                          className="p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                        >
+                          {sp?.mixed && <option value="">—</option>}
+                          <option value="LB">LB</option>
+                          <option value="CWT">CWT</option>
+                          <option value="LF">LF</option>
+                          {sp?.priceBy === 'EA' && !sp?.mixed && <option value="EA">EA</option>}
+                        </select>
+                      </td>
+                      <td className="border p-1 text-right">
+                        <input
+                          type="number" step="0.0001" min="0"
+                          value={sp?.mixed ? '' : (sp?.unitPrice || '')}
+                          placeholder={sp?.mixed ? 'mixed' : ''}
+                          onChange={e => applySizePrice(stock.size, (sp && !sp.mixed && sp.priceBy) || 'LB', parseFloat(e.target.value) || 0)}
+                          title="Applies to every material line of this size"
+                          className="w-20 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                        />
+                      </td>
+                      <td className="border p-2 text-right font-semibold">{rowEstCost == null ? '—' : fmtPrice(rowEstCost)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
                     <td className="border p-2" colSpan={5}>TOTAL{stockListFilter ? ' (filtered)' : ''}</td>
                     <td className="border p-2 text-right">{fmtWt(displayedStockList.reduce((s, r) => s + r.totalWeight, 0))} lbs</td>
+                    <td className="border p-2" colSpan={2}></td>
+                    <td className="border p-2 text-right">
+                      {fmtPrice(displayedStockList.reduce((s, r) => {
+                        const sp = sizePricing.get(r.size);
+                        if (!sp || sp.mixed || !sp.unitPrice) return s;
+                        if (sp.priceBy === 'LB') return s + r.totalWeight * sp.unitPrice;
+                        if (sp.priceBy === 'CWT') return s + (r.totalWeight / 100) * sp.unitPrice;
+                        if (sp.priceBy === 'LF') return s + r.stockLength * r.totalStocks * sp.unitPrice;
+                        return s;
+                      }, 0))}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
+
+              {/* Over-length warnings from the nest */}
+              {projectNest && projectNest.groups.some(g => g.overLengthCuts.length > 0) && (
+                <div className="bg-red-50 dark:bg-red-950 border border-red-300 rounded p-3 text-sm">
+                  <p className="font-semibold text-red-700 dark:text-red-300 mb-1 flex items-center gap-1">
+                    <AlertCircle size={16} /> Pieces longer than available stock — review for splice or special-order length:
+                  </p>
+                  <ul className="text-red-700 dark:text-red-300 ml-5 list-disc">
+                    {projectNest.groups.filter(g => g.overLengthCuts.length > 0).map(g => (
+                      <li key={g.key}>
+                        {g.size}: {g.overLengthCuts.map(c => `${+c.length.toFixed(2)}' (Item ${c.itemNumber})`).join(', ')}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Supplier quantity shortfalls from the nest */}
+              {projectNest && projectNest.groups.some(g => g.shortfallCuts.length > 0) && (
+                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 rounded p-3 text-sm">
+                  <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1 flex items-center gap-1">
+                    <AlertCircle size={16} /> Supplier quantities short — these cuts fit available lengths but exceed the stick counts:
+                  </p>
+                  <ul className="text-amber-800 dark:text-amber-300 ml-5 list-disc">
+                    {projectNest.groups.filter(g => g.shortfallCuts.length > 0).map(g => {
+                      const ft = g.shortfallCuts.reduce((s, c) => s + c.length, 0);
+                      const lbs = ft * (g.weightPerFoot || 0);
+                      return (
+                        <li key={g.key}>
+                          {g.size}: {g.shortfallCuts.length} cut{g.shortfallCuts.length === 1 ? '' : 's'} / {+ft.toFixed(2)}' (~{fmtWt(lbs)} lbs) uncovered —
+                          {' '}{g.shortfallCuts.map(c => `${+c.length.toFixed(2)}' (Item ${c.itemNumber})`).join(', ')}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                    Raise the stick limits, enable more lengths, or source the remainder from another supplier. Shortfall cuts are carried at exact length in the totals so the estimate stays whole.
+                  </p>
+                </div>
+              )}
+
+              {/* Cut detail (cut tickets) for nested groups */}
+              {projectNest && projectNest.groups.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-800 border rounded">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => setShowCutDetail(v => !v)}
+                      className="flex-1 p-3 flex items-center justify-between text-left font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                    >
+                      <span className="flex items-center gap-2">
+                        {showCutDetail ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        Cut Detail — nested sticks ({projectNest.groups.reduce((s, g) => s + g.sticks.length, 0)} sticks across {projectNest.groups.length} size group{projectNest.groups.length === 1 ? '' : 's'})
+                      </span>
+                      <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                        Overall yield {(projectNest.groups.reduce((s, g) => s + g.netLengthFt, 0) /
+                          Math.max(projectNest.groups.reduce((s, g) => s + g.buyLengthFt, 0), 0.001) * 100).toFixed(1)}%
+                      </span>
+                    </button>
+                    <button
+                      onClick={handleExportCutDetailPdf}
+                      disabled={pdfExporting}
+                      title="Download the cut detail as a printable PDF (nest record / cut ticket)"
+                      className="flex items-center gap-1 mx-3 px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      <Download size={14} /> {pdfExporting ? 'Generating…' : 'PDF'}
+                    </button>
+                  </div>
+                  {showCutDetail && (
+                    <div className="p-3 pt-0 space-y-3">
+                      {projectNest.groups.map(g => {
+                        const compressed = compressGroupSticks(g);
+                        return (
+                          <div key={g.key}>
+                            <p className="font-semibold text-sm mb-1">
+                              {g.size}
+                              <span className="font-normal text-xs text-gray-500 dark:text-gray-400 ml-2">
+                                {g.sticks.length} stick{g.sticks.length === 1 ? '' : 's'}, yield {(100 / g.yield).toFixed(1)}%
+                              </span>
+                            </p>
+                            <div className="space-y-0.5">
+                              {compressed.map((row, ri) => (
+                                <div key={ri} className="text-xs font-mono bg-white dark:bg-gray-900 border rounded px-2 py-1 flex justify-between gap-3">
+                                  <span>
+                                    {row.count > 1 ? `${row.count} × ` : ''}{row.stockLength}' stick:
+                                    {' '}{row.parts.map(p => `${p.n} × ${+p.len.toFixed(2)}' [Item ${p.itemNo}]`).join('  +  ')}
+                                  </span>
+                                  <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                    drop {(row.stockLength - row.usedFt).toFixed(2)}'
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Supplier stock-length availability */}
+              {sizesInUse.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-800 border rounded">
+                  <button
+                    onClick={() => setShowAvailability(v => !v)}
+                    className="w-full p-3 flex items-center justify-between text-left font-semibold hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <span className="flex items-center gap-2">
+                      {showAvailability ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      Supplier Stock Lengths
+                      {Object.keys(stockLengthOverrides).length > 0 && (
+                        <span className="text-xs font-normal px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">
+                          {Object.keys(stockLengthOverrides).length} size{Object.keys(stockLengthOverrides).length === 1 ? '' : 's'} amended
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                      Toggle lengths the supplier can ship — nesting and stock picks follow
+                    </span>
+                  </button>
+                  {showAvailability && (
+                    <div className="p-3 pt-0 space-y-2">
+                      {sizesInUse.map(({ size, category }) => {
+                        const defaults = getStockLengthsForCategory(category);
+                        const active = availableLengthsFor(category, size);
+                        const caps = lengthCapsFor(category, size);
+                        const all = [...new Set([...defaults, ...active])].sort((a, b) => a - b);
+                        const amended = !!stockLengthOverrides[size];
+                        return (
+                          <div key={size} className="flex items-center gap-1.5 flex-wrap text-sm">
+                            <span className="font-semibold w-32 flex-shrink-0">{size}</span>
+                            {all.map(len => {
+                              const on = active.includes(len);
+                              return (
+                                <span key={len} className="inline-flex items-center">
+                                  <button
+                                    onClick={() => toggleSizeLength(category, size, len)}
+                                    className={`px-2 py-0.5 border text-xs ${on ? 'rounded-l' : 'rounded'} ${on
+                                      ? 'bg-blue-600 text-white border-blue-600'
+                                      : 'bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600 line-through'}`}
+                                    title={on ? 'Available — click to mark unavailable' : 'Unavailable — click to restore'}
+                                  >
+                                    {len}'
+                                  </button>
+                                  {on && (
+                                    <input
+                                      type="number" min="1" placeholder="∞"
+                                      value={caps[len] ?? ''}
+                                      onChange={e => setSizeLengthCap(category, size, len, e.target.value)}
+                                      title={`Max ${len}' sticks this supplier can supply (blank = unlimited)`}
+                                      className={`w-9 px-0.5 py-0.5 border border-l-0 rounded-r text-[11px] text-center dark:bg-gray-800 dark:text-gray-100 ${caps[len] > 0 ? 'border-amber-400 bg-amber-50 dark:bg-amber-950 font-semibold' : 'border-blue-600 dark:border-gray-600'}`}
+                                    />
+                                  )}
+                                </span>
+                              );
+                            })}
+                            <input
+                              type="number" min="1" step="0.5" placeholder="+ len"
+                              value={customLenInputs[size] || ''}
+                              onChange={e => setCustomLenInputs(p => ({ ...p, [size]: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  addCustomSizeLength(category, size, customLenInputs[size]);
+                                  setCustomLenInputs(p => ({ ...p, [size]: '' }));
+                                }
+                              }}
+                              title="Add a custom length (e.g. mill order) — press Enter"
+                              className="w-16 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                            />
+                            {amended && (
+                              <button onClick={() => resetSizeLengths(size)} className="text-xs text-blue-600 hover:underline">reset</button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* RFQ Modal */}
               {showRfqModal && (

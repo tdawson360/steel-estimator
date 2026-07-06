@@ -83,6 +83,15 @@ model Project {
   // Tax category: null, "newConstruction", "resale", "fob", "noTax"
   taxCategory      String?
 
+  // Cross-item stock nesting: pool cut lengths across items onto shared sticks
+  nestingEnabled   Boolean   @default(false)
+  nestKerfIn       Float     @default(0.25)  // saw kerf per cut, inches
+  nestEndCropIn    Float     @default(0)     // end crop per stick, inches
+
+  // Supplier stock-length availability per size, JSON: { "W12x26": [40,60], ... }
+  // Absent size = category standard lengths.
+  stockLengthOverrides String @default("{}")
+
   // ── DASHBOARD / BID BOARD FIELDS ─────────────────────────────────────────
   // dashboardStatus tracks where this project sits in the bid pipeline.
   // Valid values: "Bidding" | "Quoted - Pending Award from GC" |
@@ -179,6 +188,7 @@ model Item {
   sortOrder       Int     @default(0)        // Controls display order
   materialMarkup  Float   @default(0)        // Percentage
   fabMarkup       Float   @default(0)        // Percentage
+  priceStandalone Boolean @default(false)    // Exclude from cross-item nesting (alternates)
   
   projectId       Int
   project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
