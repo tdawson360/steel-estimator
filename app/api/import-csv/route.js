@@ -62,6 +62,18 @@ const PREP_MAP = {
 
 // ── CSV PARSING ──────────────────────────────────────────────────────────────
 
+// Parse a feet-inches dimension string like 28'-1", 23'-0", 17'-8 1/2" into
+// decimal feet. Returns null when the string isn't a plain dimension.
+function parseFeetInches(s) {
+  if (!s) return null;
+  const m = s.trim().match(/^(\d+)'\s*(?:-\s*(\d+)(?:\s+(\d+)\/(\d+))?\s*"?)?$/);
+  if (!m) return null;
+  const feet = parseInt(m[1]);
+  let inches = m[2] ? parseInt(m[2]) : 0;
+  if (m[3] && m[4]) inches += parseInt(m[3]) / parseInt(m[4]);
+  return feet + inches / 12;
+}
+
 // Parse a single CSV line handling quoted fields (mirrors client-side parseCSVLine)
 function parseCSVLine(line) {
   const result = [];
@@ -141,7 +153,23 @@ function parseTakeoffCSV(text) {
 
     const qty = parseInt(col(values, 'Quantity') || '0') || 0;
     // "Measured Length" is Bluebeam's decimal-feet output (some profiles omit Length_Ft)
-    const lengthFt = parseFloat(col(values, 'Length_Ft', 'Length', 'Measured Length') || '0') || 0;
+    let lengthFt = parseFloat(col(values, 'Length_Ft', 'Length', 'Measured Length') || '0') || 0;
+
+    // Estimating tolerance is 1", but Bluebeam's measured length carries
+    // snap/scale noise (the same 28'-1" piece exports as 28.07 and 28.05).
+    // Prefer the drawn dimension string (Comments column, e.g. 28'-1") when it
+    // agrees with the measurement within 2"; otherwise round the measurement
+    // to the nearest inch. Identical pieces then merge instead of splitting.
+    if (lengthFt > 0) {
+      const drawnFt = parseFeetInches(col(values, 'Comments'));
+      if (drawnFt != null && drawnFt > 0 && Math.abs(drawnFt - lengthFt) <= 2 / 12) {
+        lengthFt = drawnFt;
+      } else {
+        lengthFt = Math.max(Math.round(lengthFt * 12), 1) / 12;
+      }
+      // Estimators read decimal feet at 2 places (28'-1" → 28.08)
+      lengthFt = +lengthFt.toFixed(2);
+    }
 
     rawRows.push({
       lineNum:        i + 1,
@@ -381,8 +409,14 @@ function aggregateTakeoffData(rawRows) {
     const isParent = parseMarkIsParent(mark);
     const base = getMarkBase(mark);
 
-    if (!item.membersMap.has(mark)) {
-      item.membersMap.set(mark, {
+    // Takeoffs often reuse a descriptive mark ("OUTRIGGER", "ROLLED") across
+    // physically different pieces. A mark only identifies the same member when
+    // its size and length agree — otherwise key the row separately so its size
+    // and length aren't silently absorbed into the first row with that mark.
+    const memberKey = `${mark}||${row.shapeSize}||${row.lengthFt}`;
+
+    if (!item.membersMap.has(memberKey)) {
+      item.membersMap.set(memberKey, {
         mark,
         isParent,
         base,
@@ -396,8 +430,8 @@ function aggregateTakeoffData(rawRows) {
       });
     }
 
-    const member = item.membersMap.get(mark);
-    // Accumulate pieces (works for first row and subsequent rows with same mark)
+    const member = item.membersMap.get(memberKey);
+    // Accumulate pieces (works for first row and subsequent rows with same key)
     member.pieces += row.quantity;
     // Merge fab ops
     member.fabrication = mergeFabOps(member.fabrication, rowFabOps);
