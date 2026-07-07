@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { apiFetch, ApiError, SessionExpiredError } from '../lib/api-client';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical } from 'lucide-react';
@@ -5263,12 +5263,16 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
   // ── CROSS-ITEM NESTING ──────────────────────────────────────────────────────
   // Pool cuts from all non-standalone items and nest them onto shared sticks.
+  // The nest (and the write-back effect it feeds) keys off a DEFERRED copy of
+  // items, so keystrokes paint immediately and the re-nest runs at idle
+  // priority instead of blocking every character typed.
+  const deferredItems = useDeferredValue(items);
   const projectNest = useMemo(() => {
     if (!nestingEnabled) return null;
     const kerfFt = (parseFloat(nestKerfIn) || 0) / 12;
     const endCropFt = (parseFloat(nestEndCropIn) || 0) / 12;
-    return computeProjectNest(items, kerfFt, endCropFt, availableLengthsFor, lengthCapsFor);
-  }, [items, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides]);
+    return computeProjectNest(deferredItems, kerfFt, endCropFt, availableLengthsFor, lengthCapsFor);
+  }, [deferredItems, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides]);
 
   // Write pooled allocations back onto material lines so every consumer of
   // stockWeight / totalCost (totals, tax, save payload, exports) sees pooled
