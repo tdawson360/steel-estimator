@@ -2332,7 +2332,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
-  const [estimateSizeFilter, setEstimateSizeFilter] = useState('');
   const [showCutDetail, setShowCutDetail] = useState(false);
   const [showAvailability, setShowAvailability] = useState(false);
   const [customLenInputs, setCustomLenInputs] = useState({});
@@ -4307,7 +4306,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
   // Item functions
   const addItem = () => {
-    if (estimateSizeFilter) setEstimateSizeFilter(''); // new item must be visible
     const newId = Date.now();
     const newItem = {
       id: newId,
@@ -4503,7 +4501,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   };
 
   const addMaterial = (itemId) => {
-    if (estimateSizeFilter) setEstimateSizeFilter(''); // new line must be visible
     setItems(items.map(item => {
       if (item.id !== itemId) return item;
       const nextSeq = getNextParentSequence(item.materials);
@@ -5464,36 +5461,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     return [...map.values()].sort((a, b) => a.size.localeCompare(b.size));
   }, [items]);
 
-  // ── Estimate tab size filter (view-only — totals always use every line) ────
-  const materialMatchesFilter = (mat) => {
-    const q = estimateSizeFilter.trim().toLowerCase();
-    if (!q) return true;
-    return (mat.size || '').toLowerCase().includes(q) ||
-           (mat.description || '').toLowerCase().includes(q);
-  };
-
-  // Assemblies stay whole: a parent group shows when the parent or any
-  // attachment matches, and a matching group renders complete for context.
-  const visibleParentsFor = (item) => {
-    const parents = getParentMaterials(item.materials);
-    if (!estimateSizeFilter.trim()) return parents;
-    return parents.filter(p =>
-      materialMatchesFilter(p) ||
-      getChildMaterials(item.materials, p.id).some(materialMatchesFilter));
-  };
-
-  const estimateFilterStats = useMemo(() => {
-    if (!estimateSizeFilter.trim()) return null;
-    let shownLines = 0, totalLines = 0, shownItems = 0;
-    items.forEach(item => {
-      totalLines += item.materials.length;
-      const vis = visibleParentsFor(item);
-      if (vis.length > 0) shownItems++;
-      vis.forEach(p => { shownLines += 1 + getChildMaterials(item.materials, p.id).length; });
-    });
-    return { shownLines, totalLines, shownItems, totalItems: items.length };
-  }, [items, estimateSizeFilter]);
-
   // Current per-size pricing derived from material lines: one entry per size,
   // flagged mixed when lines disagree.
   const sizePricing = useMemo(() => {
@@ -6155,34 +6122,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </button>
               </div>
 
-              {/* Size filter — view-only; totals always reflect the full estimate */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  list="estimate-size-options"
-                  value={estimateSizeFilter}
-                  onChange={e => setEstimateSizeFilter(e.target.value)}
-                  placeholder="Filter materials by size or description (e.g. W12, HSS6, L3x3, MC18)"
-                  className="flex-1 p-2 border rounded text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-                />
-                <datalist id="estimate-size-options">
-                  {sizesInUse.map(s => <option key={s.size} value={s.size} />)}
-                </datalist>
-                {estimateSizeFilter && (
-                  <button
-                    onClick={() => setEstimateSizeFilter('')}
-                    className="px-3 py-2 text-sm border rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    Clear
-                  </button>
-                )}
-                {estimateFilterStats && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {estimateFilterStats.shownLines} of {estimateFilterStats.totalLines} lines · {estimateFilterStats.shownItems} of {estimateFilterStats.totalItems} items · totals reflect full estimate
-                  </span>
-                )}
-              </div>
-
               {zeroWeightCount > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 rounded p-3 text-sm flex items-start gap-2" data-testid="banner-zero-weight">
                   <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
@@ -6193,7 +6132,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
               )}
 
-              {items.filter(item => !estimateFilterStats || visibleParentsFor(item).length > 0).map(item => (
+              {items.map(item => (
                 <div key={item.id} className="border rounded">
                   <div className="bg-gray-200 dark:bg-gray-600 p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
@@ -6274,7 +6213,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                               </thead>
                               <tbody>
                                 {/* Render parent materials with their children */}
-                                {visibleParentsFor(item).map(mat => (
+                                {getParentMaterials(item.materials).map(mat => (
                                   <React.Fragment key={mat.id}>
                                     {/* Parent row */}
                                     <tr
@@ -7087,8 +7026,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                         )}
                       </div>
 
-                      {/* Item-Level Fabrication (General) — hidden while size-filtering for a cleaner read */}
-                      {!estimateFilterStats && (
+                      {/* Item-Level Fabrication (General) */}
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <h3 className="font-semibold text-gray-800 dark:text-gray-200">Item Fabrication (General)</h3>
@@ -7170,7 +7108,6 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           </div>
                         )}
                       </div>
-                      )}
 
                       {/* Item Summary + Snapshots */}
                       <div className="bg-gray-200 dark:bg-gray-600 rounded p-3 mt-2 flex gap-4 items-start">
