@@ -1773,23 +1773,36 @@ const nestCutsFFD = (cuts, stockLengths, kerfFt, endCropFt, caps = {}) => {
     }
     if (fitting.length === 0) break;
 
-    // FFD pack onto virtual sticks of the longest in-supply length
+    // FFD pack onto virtual sticks of the longest in-supply length.
+    // Cuts place in runs of equal length with batch math, so cost is
+    // O(runs × sticks) instead of O(cuts × sticks) — a huge piece count
+    // (or a quantity typo mid-keystroke) can no longer lock the UI thread.
     const sticks = [];
-    for (const cut of fitting) {
-      let placed = false;
+    let ri = 0;
+    while (ri < fitting.length) {
+      let rj = ri;
+      while (rj < fitting.length && fitting[rj].length === fitting[ri].length) rj++;
+      const L = fitting[ri].length;
+      const per = L + kerfFt; // joining an occupied stick adds one kerf
+      let qi = ri;
       for (const stick of sticks) {
-        const need = cut.length + kerfFt; // joining an occupied stick adds one kerf
-        if (stick.remaining >= need) {
-          stick.cuts.push(cut);
-          stick.remaining -= need;
-          stick.used += need;
-          placed = true;
-          break;
+        if (qi >= rj) break;
+        if (stick.remaining + 1e-9 >= per) {
+          const k = Math.min(rj - qi, Math.floor((stick.remaining + 1e-9) / per));
+          for (let c = 0; c < k; c++) stick.cuts.push(fitting[qi++]);
+          stick.remaining -= k * per;
+          stick.used += k * per;
         }
       }
-      if (!placed) {
-        sticks.push({ cuts: [cut], used: cut.length, remaining: maxUsable - cut.length });
+      while (qi < rj) {
+        const stick = { cuts: [fitting[qi++]], used: L, remaining: maxUsable - L };
+        const k = Math.min(rj - qi, Math.floor((stick.remaining + 1e-9) / per));
+        for (let c = 0; c < k; c++) stick.cuts.push(fitting[qi++]);
+        stick.remaining -= k * per;
+        stick.used += k * per;
+        sticks.push(stick);
       }
+      ri = rj;
     }
 
     // Fullest sticks claim supply first; anything unplaced re-nests against
@@ -1829,7 +1842,26 @@ const nestCutsFFD = (cuts, stockLengths, kerfFt, endCropFt, caps = {}) => {
 //   groups: [{ key, category, size, weightPerFoot, sticks, purchase, buyLengthFt,
 //              netLengthFt, yield, overLengthCuts }]
 //   byMaterial: Map(materialId -> { groupKey, yield, allocStockLengthFt, overLength })
+// Above this many total pieces, live nesting suspends (lines price standalone
+// and the Material Nesting card explains). Real estimates sit far below this —
+// hitting it almost always means a quantity typo, and nesting an absurd count
+// on every keystroke would lock the UI thread.
+const MAX_NEST_PIECES = 50000;
+
 const computeProjectNest = (items, kerfFt, endCropFt, getLengths = getStockLengthsForCategory, getCaps = () => ({})) => {
+  // Guard before expanding cuts so a runaway piece count can't allocate
+  // millions of objects.
+  let totalPieces = 0;
+  items.forEach(item => {
+    if (item.priceStandalone) return;
+    (item.materials || []).forEach(mat => {
+      if (isNestableMaterial(mat)) totalPieces += mat.pieces || 0;
+    });
+  });
+  if (totalPieces > MAX_NEST_PIECES) {
+    return { groups: [], byMaterial: new Map(), tooManyPieces: totalPieces };
+  }
+
   const groups = new Map();
 
   items.forEach(item => {
@@ -6011,6 +6043,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       className="w-20 p-1 border rounded text-sm text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 disabled:opacity-50" />
                   </label>
                 </div>
+                {projectNest?.tooManyPieces && (
+                  <p className="text-xs font-semibold text-red-600 dark:text-red-400 mt-3">
+                    Nesting suspended: {projectNest.tooManyPieces.toLocaleString()} total pieces exceeds the {MAX_NEST_PIECES.toLocaleString()}-piece
+                    live-nesting limit — check for a quantity typo. Lines price standalone until the count drops.
+                  </p>
+                )}
                 {projectNest && projectNest.groups.length > 0 && (
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-3">
                     Nesting {projectNest.groups.length} size group{projectNest.groups.length === 1 ? '' : 's'} across items —
