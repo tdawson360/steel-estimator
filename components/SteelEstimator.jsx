@@ -1913,6 +1913,16 @@ const computeProjectNest = (items, kerfFt, endCropFt, getLengths = getStockLengt
   return { groups: resultGroups, byMaterial };
 };
 
+// Material sort presets for the per-item "Sort" control. Keys compare in
+// order; ties break longest-length-first (how cut lists read).
+const MATERIAL_SORT_PRESETS = {
+  'category-size':             { label: 'Category → Size',               keys: ['category', 'size'] },
+  'size':                      { label: 'Size',                          keys: ['size'] },
+  'description':               { label: 'Description',                   keys: ['description'] },
+  'description-size':          { label: 'Description → Size',            keys: ['description', 'size'] },
+  'category-size-description': { label: 'Category → Size → Description', keys: ['category', 'size', 'description'] },
+};
+
 // Compress a nest group's sticks for display/print: identical sticks (same
 // stock length + same cut mix) collapse into one row × N.
 const compressGroupSticks = (g) => {
@@ -4386,6 +4396,112 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     return result;
   };
 
+  // ── Per-item material organization ──────────────────────────────────────────
+  // One-time reorder of an item's material lines by the chosen preset.
+  // Attachments travel with their parent; resequencing reassigns A, B, C…
+  const sortItemMaterials = (itemId, presetKey) => {
+    const preset = MATERIAL_SORT_PRESETS[presetKey];
+    if (!preset) return;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const parents = getParentMaterials(item.materials);
+      const sorted = [...parents].sort((a, b) => {
+        for (const k of preset.keys) {
+          const cmp = String(a[k] || '').localeCompare(String(b[k] || ''), undefined, { numeric: true, sensitivity: 'base' });
+          if (cmp !== 0) return cmp;
+        }
+        return (b.length || 0) - (a.length || 0); // longest first within a group
+      });
+      const rebuilt = sorted.flatMap(p => [p, ...getChildMaterials(item.materials, p.id)]);
+      return { ...item, materials: resequenceMaterials(rebuilt) };
+    }));
+  };
+
+  // Merge an item's duplicate parent lines: same category, size, length,
+  // description, galv, pricing, and fab-op signature (operation/unit/rate).
+  // Pieces and fab-op quantities sum; attachments move to the surviving line.
+  // Complements the importer, which only consolidates within a single import.
+  const mergeDuplicateItemMaterials = (itemId) => {
+    const fabSig = (mat) => (mat.fabrication || [])
+      .filter(f => !f.isAutoGalv && !f.isConnGalv) // auto rows regenerate from weight
+      .map(f => `${f.operation}|${f.unit}|${f.unitPrice || 0}`)
+      .sort().join('~~');
+    const keyOf = (m) => JSON.stringify([
+      m.category, m.size, +(m.length || 0).toFixed(4),
+      (m.description || '').trim().toLowerCase(), !!m.galvanized,
+      m.priceBy, m.unitPrice || 0, fabSig(m),
+    ]);
+
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    const groups = new Map();
+    getParentMaterials(item.materials).forEach(p => {
+      const k = keyOf(p);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    });
+    const dupGroups = [...groups.values()].filter(g => g.length > 1);
+    if (dupGroups.length === 0) {
+      alert('No duplicate material lines on this item.\n\nLines merge only when category, size, length, description, galv, pricing, and fab operations all match.');
+      return;
+    }
+    const removedCount = dupGroups.reduce((s, g) => s + g.length - 1, 0);
+    if (!confirm(`Merge ${removedCount} duplicate line${removedCount === 1 ? '' : 's'} into ${dupGroups.length} surviving line${dupGroups.length === 1 ? '' : 's'}?\n\nQuantities and fab-op quantities are summed; attachments move to the surviving line.`)) return;
+
+    setItems(prev => prev.map(it => {
+      if (it.id !== itemId) return it;
+      const groupsNow = new Map();
+      getParentMaterials(it.materials).forEach(p => {
+        const k = keyOf(p);
+        if (!groupsNow.has(k)) groupsNow.set(k, []);
+        groupsNow.get(k).push(p);
+      });
+
+      const removeIds = new Set();
+      const reparent = new Map();   // duplicate parent id -> survivor id
+      const mergedById = new Map(); // survivor id -> recalculated merged line
+      for (const g of groupsNow.values()) {
+        if (g.length < 2) continue;
+        const [survivor, ...rest] = g;
+        let pieces = survivor.pieces || 0;
+        let fab = (survivor.fabrication || []).map(f => ({ ...f }));
+        for (const dup of rest) {
+          pieces += dup.pieces || 0;
+          (dup.fabrication || []).forEach(df => {
+            if (df.isAutoGalv || df.isConnGalv) return;
+            const idx = fab.findIndex(f => !f.isAutoGalv && !f.isConnGalv &&
+              f.operation === df.operation && f.unit === df.unit &&
+              (f.unitPrice || 0) === (df.unitPrice || 0));
+            if (idx !== -1) {
+              const qty = (fab[idx].quantity || 0) + (df.quantity || 0);
+              fab[idx] = { ...fab[idx], quantity: qty, totalCost: qty * (fab[idx].unitPrice || 0) };
+            }
+          });
+          removeIds.add(dup.id);
+          reparent.set(dup.id, survivor.id);
+        }
+        const merged = calculateMaterial({ ...survivor, pieces, fabrication: fab });
+        if (merged.galvanized) {
+          merged.fabrication = (merged.fabrication || []).map(f => f.isAutoGalv
+            ? { ...f, quantity: merged.fabWeight || 0, totalCost: (merged.fabWeight || 0) * (f.unitPrice || 0) }
+            : f);
+        }
+        mergedById.set(survivor.id, merged);
+      }
+
+      const newMaterials = it.materials
+        .filter(m => !removeIds.has(m.id))
+        .map(m => {
+          if (mergedById.has(m.id)) return mergedById.get(m.id);
+          if (m.parentMaterialId && reparent.has(m.parentMaterialId)) {
+            return { ...m, parentMaterialId: reparent.get(m.parentMaterialId) };
+          }
+          return m;
+        });
+      return { ...it, materials: resequenceMaterials(newMaterials) };
+    }));
+  };
+
   const addMaterial = (itemId) => {
     if (estimateSizeFilter) setEstimateSizeFilter(''); // new line must be visible
     setItems(items.map(item => {
@@ -6111,7 +6227,27 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <h3 className="font-semibold text-gray-800 dark:text-gray-200">Materials</h3>
-                          <button onClick={() => addMaterial(item.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs"><Plus size={14} /> Add Material</button>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value=""
+                              onChange={e => { if (e.target.value) sortItemMaterials(item.id, e.target.value); }}
+                              title="Reorder this item's material lines (seq letters reassign; attachments follow their parent). One-time — you can still drag rows afterward."
+                              className="p-1 border rounded text-xs text-gray-700 dark:text-gray-300 dark:bg-gray-800 dark:border-gray-600"
+                            >
+                              <option value="" disabled>Sort by…</option>
+                              {Object.entries(MATERIAL_SORT_PRESETS).map(([k, p]) => (
+                                <option key={k} value={k}>{p.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => mergeDuplicateItemMaterials(item.id)}
+                              title="Combine identical lines (same category, size, length, description, galv, pricing, and fab ops) into one, summing quantities"
+                              className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
+                            >
+                              Merge Dups
+                            </button>
+                            <button onClick={() => addMaterial(item.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs"><Plus size={14} /> Add Material</button>
+                          </div>
                         </div>
                         {item.materials.length > 0 && (
                           <div style={{ overflowX: 'clip' }}>
