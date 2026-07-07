@@ -1945,6 +1945,34 @@ const computeProjectNest = (items, kerfFt, endCropFt, getLengths = getStockLengt
   return { groups: resultGroups, byMaterial };
 };
 
+// ── SEQUENCE LETTERS ─────────────────────────────────────────────────────────
+// Bijective base-26, letters only (the old single-char scheme overflowed past
+// Z into symbols: '[', '\', …). Parents count A…Z, AA, AB…; attachments take
+// the parent seq plus a lowercase suffix (Aa, Ab, … Az, Aaa) so the 27th
+// parent "AA" can never collide with parent A's first attachment "Aa".
+const toAlphaSeq = (n) => {
+  let s = '';
+  while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+  return s;
+};
+const toChildAlphaSuffix = (n) => {
+  let s = '';
+  while (n > 0) { n--; s = String.fromCharCode(97 + (n % 26)) + s; n = Math.floor(n / 26); }
+  return s;
+};
+const parseAlphaSeq = (s) => {
+  if (!s || !/^[A-Z]+$/.test(s)) return 0;
+  let n = 0;
+  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+};
+const parseChildAlphaSuffix = (s) => {
+  if (!s || !/^[a-z]+$/.test(s)) return 0;
+  let n = 0;
+  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 96);
+  return n;
+};
+
 // Material sort presets for the per-item "Sort" control. Keys compare in
 // order; ties break longest-length-first (how cut lists read).
 const MATERIAL_SORT_PRESETS = {
@@ -4021,7 +4049,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         const newId = Date.now() + Math.random();
         let seqIndex = 0;
         const newMaterials = importItem.materials.map(mat => {
-          const seq = String.fromCharCode(65 + seqIndex); // A, B, C...
+          const seq = toAlphaSeq(seqIndex + 1); // A, B, … Z, AA, AB…
           seqIndex++;
           const newMat = {
             id: Date.now() + Math.random(),
@@ -4166,7 +4194,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
       const processMember = (member, parentMaterialId) => {
         const translated = translateSizeToAISC(member.size);
-        const seq = String.fromCharCode(65 + seqIndex);
+        const seq = toAlphaSeq(seqIndex + 1); // interim — resequenceMaterials normalizes after import
         seqIndex++;
 
         const matId = Date.now() + Math.random();
@@ -4266,15 +4294,28 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         const existingItem = updatedItems[existingIndex];
         let updatedMaterials = [...existingItem.materials];
 
-        // Add only non-duplicate materials
+        // Merge: matching lines (size + length + description) take the
+        // imported quantity — the takeoff is the source of truth for counts —
+        // while pricing and fab ops on the existing line are preserved.
+        // New lines are added. Lines only in the estimate are left alone
+        // (they may be manual), so delete the item first for a clean
+        // revision re-import.
         for (const mat of flatMaterials) {
-          const exists = updatedMaterials.some(
+          const matchIdx = updatedMaterials.findIndex(
             m => m.size === mat.size &&
                  m.length === mat.length &&
                  m.description === mat.description
           );
-          if (!exists) {
+          if (matchIdx === -1) {
             updatedMaterials.push({ ...mat, fabrication: (mat.fabrication || []).map(f => ({ ...f })) });
+          } else if ((updatedMaterials[matchIdx].pieces || 0) !== (mat.pieces || 0)) {
+            const updated = calculateMaterial({ ...updatedMaterials[matchIdx], pieces: mat.pieces || 0 });
+            if (updated.galvanized) {
+              updated.fabrication = (updated.fabrication || []).map(f => f.isAutoGalv
+                ? { ...f, quantity: updated.fabWeight || 0, totalCost: (updated.fabWeight || 0) * (f.unitPrice || 0) }
+                : f);
+            }
+            updatedMaterials[matchIdx] = updated;
           }
         }
 
@@ -4379,25 +4420,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   const getNextParentSequence = (materials) => {
     const parentSeqs = materials
       .filter(m => !m.parentMaterialId)
-      .map(m => m.sequence)
-      .filter(s => s && /^[A-Z]$/.test(s));
+      .map(m => parseAlphaSeq(m.sequence))
+      .filter(n => n > 0);
     if (parentSeqs.length === 0) return 'A';
-    const maxChar = parentSeqs.sort().pop();
-    return String.fromCharCode(maxChar.charCodeAt(0) + 1);
+    return toAlphaSeq(Math.max(...parentSeqs) + 1);
   };
 
-  // Get next child sequence (A1, A2, ...)
+  // Get next child sequence (Aa, Ab, ...)
   const getNextChildSequence = (materials, parentId) => {
     const parent = materials.find(m => m.id === parentId);
-    if (!parent) return 'A1';
+    if (!parent) return 'Aa';
     const parentSeq = parent.sequence || 'A';
     const childSeqs = materials
       .filter(m => m.parentMaterialId === parentId)
       .map(m => m.sequence)
       .filter(s => s && s.startsWith(parentSeq))
-      .map(s => parseInt(s.slice(1)) || 0);
+      .map(s => parseChildAlphaSuffix(s.slice(parentSeq.length)));
     const nextNum = childSeqs.length === 0 ? 1 : Math.max(...childSeqs) + 1;
-    return `${parentSeq}${nextNum}`;
+    return `${parentSeq}${toChildAlphaSuffix(nextNum)}`;
   };
 
   // Get children of a parent material
@@ -4410,17 +4450,19 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     return materials.filter(m => !m.parentMaterialId);
   };
 
-  // Re-sequence materials: assigns A,B,C to parents and A1,A2,B1,B2 to children
-  // Also rebuilds array in normalized order (parent → children → parent → children)
+  // Re-sequence materials: parents get A…Z, AA, AB…; children get the parent
+  // seq plus a lowercase suffix (Aa, Ab…). Letters only — never overflows
+  // into symbols. Also rebuilds array in normalized order
+  // (parent → children → parent → children).
   const resequenceMaterials = (materials) => {
     const parents = materials.filter(m => !m.parentMaterialId);
     const result = [];
     parents.forEach((parent, idx) => {
-      const letter = String.fromCharCode(65 + idx); // A=65
+      const letter = toAlphaSeq(idx + 1);
       result.push({ ...parent, sequence: letter });
       const children = materials.filter(m => m.parentMaterialId === parent.id);
       children.forEach((child, childIdx) => {
-        result.push({ ...child, sequence: `${letter}${childIdx + 1}` });
+        result.push({ ...child, sequence: `${letter}${toChildAlphaSuffix(childIdx + 1)}` });
       });
     });
     return result;

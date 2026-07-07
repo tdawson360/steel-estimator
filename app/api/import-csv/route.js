@@ -151,7 +151,10 @@ function parseTakeoffCSV(text) {
     const values = parseCSVLine(lines[i]);
     if (values.every(v => !v)) continue; // skip blank lines
 
-    const qty = parseInt(col(values, 'Quantity') || '0') || 0;
+    // One row = one drawn piece: Bluebeam profiles often leave Quantity blank
+    // for single pieces, so blank/0 counts as 1 (blank-qty rows previously
+    // collapsed to a single piece no matter how many rows matched).
+    const qty = parseInt(col(values, 'Quantity') || '1') || 1;
     // "Measured Length" is Bluebeam's decimal-feet output (some profiles omit Length_Ft)
     let lengthFt = parseFloat(col(values, 'Length_Ft', 'Length', 'Measured Length') || '0') || 0;
 
