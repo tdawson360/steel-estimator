@@ -1,0 +1,42 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`getConnxCost copy A (route) vs copy B (lib) over the row matrix > golden values across the matrix (both copies) 1`] = `
+{
+  "beam: explicit costs": {
+    "connx": 120,
+    "moment": 310,
+  },
+  "beam: fractional laborHours rounding to cents": {
+    "connx": 86.64,
+    "moment": 86.64,
+  },
+  "beam: null costs, falls to category laborHours": {
+    "connx": 162.5,
+    "moment": 162.5,
+  },
+  "beam: provide-T/O both": {
+    "connx": null,
+    "moment": null,
+  },
+  "beam: zero-dollar explicit cost": {
+    "connx": 0,
+    "moment": 0,
+  },
+  "category: explicit costs (C/MC style)": {
+    "connx": 95,
+    "moment": 240,
+  },
+  "category: laborHours drives cost (WF style)": {
+    "connx": 113.75,
+    "moment": 113.75,
+  },
+  "category: nothing usable": {
+    "connx": null,
+    "moment": null,
+  },
+  "category: provide-T/O": {
+    "connx": null,
+    "moment": null,
+  },
+}
+`;

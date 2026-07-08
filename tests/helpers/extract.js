@@ -1,0 +1,256 @@
+// Characterization-test source harness.
+//
+// Most calculation functions live INSIDE the SteelEstimator React component
+// closure and can't be imported. This harness slices their exact source text
+// out of the production files and re-evaluates it with injected stand-ins for
+// the closure variables (state, memos, sibling functions). Production code is
+// never modified — if a slice marker breaks, the suite fails loudly rather
+// than silently testing something else.
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+export const readSource = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+
+export const componentSrc = readSource('components/SteelEstimator.jsx');
+export const routeSrc = readSource('app/api/import-csv/route.js');
+export const fabPricingSrc = readSource('lib/fab-pricing.js');
+export const pdfUtilsPath = path.join(root, 'components', 'pdf', 'pdfUtils.js');
+
+export function sliceBetween(src, start, end) {
+  const a = src.indexOf(start);
+  if (a === -1) throw new Error(`slice start marker not found: ${start}`);
+  const b = src.indexOf(end, a);
+  if (b === -1) throw new Error(`slice end marker not found: ${end}`);
+  return src.slice(a, b);
+}
+
+// Extract a full `const NAME = …;` declaration with a string/template-aware
+// balanced scanner. Suitable for the component functions we slice (none of
+// them contain regex literals, which this scanner does not parse).
+export function declSource(src, name) {
+  const marker = `const ${name} = `;
+  const start = src.indexOf(marker);
+  if (start === -1) throw new Error(`declaration not found: ${name}`);
+  let depth = 0;
+  let quote = null;            // "'", '"', '`' when inside a string
+  const templateDepths = [];   // depths at which `${` opened inside a template
+  for (let i = start + marker.length; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (quote === '`' && c === '$' && src[i + 1] === '{') {
+        depth++;
+        templateDepths.push(depth);
+        quote = null;
+        i++;
+        continue;
+      }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i) + 1; continue; }
+    if (c === "'" || c === '"' || c === '`') { quote = c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      if (c === '}' && templateDepths.length && templateDepths[templateDepths.length - 1] === depth) {
+        templateDepths.pop();
+        quote = '`';
+      }
+      depth--;
+      continue;
+    }
+    if (c === ';' && depth === 0) {
+      return src.slice(start, i + 1);
+    }
+  }
+  throw new Error(`declaration end not found: ${name}`);
+}
+
+// Evaluate source with named injections; returns the requested bindings.
+export function evalWith(code, returns, injections = {}) {
+  const names = Object.keys(injections);
+  const fn = new Function(...names, `${code}\nreturn { ${returns.join(', ')} };`);
+  return fn(...names.map((n) => injections[n]));
+}
+
+// ── Component module scope (everything before the React component) ──────────
+const COMPONENT_MODULE_EXPORTS = [
+  'roundCustom', 'fmtWt', 'fmtPrice', 'fmtRate', 'fmtQuotePrice',
+  'calcPlateWeightPerFoot', 'plateThicknesses', 'steelDatabase',
+  'standardStockLengths', 'pipeStockLengths', 'angleStockLengths',
+  'hssStockLengths', 'plateStockLengths', 'roundBarStockLengths',
+  'getStockLengthsForCategory', 'calculateOptimalStock',
+  'isNestableMaterial', 'nestCutsFFD', 'computeProjectNest', 'MAX_NEST_PIECES',
+  'compressGroupSticks',
+  'toAlphaSeq', 'toChildAlphaSuffix', 'parseAlphaSeq', 'parseChildAlphaSuffix',
+  'MATERIAL_SORT_PRESETS',
+  'normalizeShapeSize', 'translateSizeToAISC',
+  'parseCSVLine', 'findColumnIndex', 'parseRevuCSV', 'aggregateImportData',
+  'getConnectionWeight', 'wfConnectionWeights', 'cConnectionWeights',
+  'CONNECTION_WEIGHT_OPS', 'OP_PRICING_FIELD', 'OP_WEIGHT_FIELD', 'OP_DEFAULT_UNIT',
+];
+
+let moduleEnvCache = null;
+export function componentModuleEnv() {
+  if (!moduleEnvCache) {
+    const code = sliceBetween(componentSrc, 'const steelDatabase = {', '\nconst SteelEstimator = ');
+    moduleEnvCache = evalWith(code, COMPONENT_MODULE_EXPORTS);
+  }
+  return moduleEnvCache;
+}
+
+// TAX_RATE as declared in the component (characterized, not assumed)
+export function componentTaxRate() {
+  const m = componentSrc.match(/const TAX_RATE = ([0-9.]+);/);
+  if (!m) throw new Error('TAX_RATE declaration not found');
+  return parseFloat(m[1]);
+}
+
+// ── Component-scope function factories ───────────────────────────────────────
+
+// calculateMaterial(material) with the default supplier lengths (no overrides)
+export function makeCalculateMaterial({ availableLengthsFor } = {}) {
+  const env = componentModuleEnv();
+  const alf = availableLengthsFor || ((category) => env.getStockLengthsForCategory(category));
+  const code = declSource(componentSrc, 'calculateMaterial');
+  return evalWith(code, ['calculateMaterial'], {
+    steelDatabase: env.steelDatabase,
+    plateThicknesses: env.plateThicknesses,
+    calcPlateWeightPerFoot: env.calcPlateWeightPerFoot,
+    calculateOptimalStock: env.calculateOptimalStock,
+    getStockLengthsForCategory: env.getStockLengthsForCategory,
+    availableLengthsFor: alf,
+  }).calculateMaterial;
+}
+
+export function makeTaxFns(taxCategory) {
+  const env = componentModuleEnv();
+  const code = [
+    `const TAX_RATE = ${componentTaxRate()};`,
+    declSource(componentSrc, 'calculateItemTax'),
+    declSource(componentSrc, 'getItemTaxBreakdown'),
+  ].join('\n');
+  return evalWith(code, ['calculateItemTax', 'getItemTaxBreakdown'], {
+    taxCategory,
+    fmtPrice: env.fmtPrice,
+  });
+}
+
+export function makeGetItemTotal() {
+  const code = declSource(componentSrc, 'getItemTotal');
+  return evalWith(code, ['getItemTotal']).getItemTotal;
+}
+
+export function makeBreakoutTotals({ items, breakoutGroups, adjustments }) {
+  const code = [
+    declSource(componentSrc, 'getItemTotal'),
+    declSource(componentSrc, 'calculateBreakoutTotals'),
+  ].join('\n');
+  return evalWith(code, ['calculateBreakoutTotals'], {
+    items, breakoutGroups, adjustments,
+  }).calculateBreakoutTotals;
+}
+
+export function makeCalculateTotals({ items, adjustments, taxCategory }) {
+  const env = componentModuleEnv();
+  const code = [
+    `const TAX_RATE = ${componentTaxRate()};`,
+    declSource(componentSrc, 'calculateItemTax'),
+    declSource(componentSrc, 'calculateTotals'),
+  ].join('\n');
+  return evalWith(code, ['calculateTotals'], {
+    items, adjustments, taxCategory,
+    CONNECTION_WEIGHT_OPS: env.CONNECTION_WEIGHT_OPS,
+    fmtPrice: env.fmtPrice,
+  }).calculateTotals;
+}
+
+export function makeBuildStockListExport({ displayedStockList, sizePricing, projectNest, stockListFilter = '' }) {
+  const code = declSource(componentSrc, 'buildStockListExport');
+  return evalWith(code, ['buildStockListExport'], {
+    displayedStockList, sizePricing, projectNest, stockListFilter,
+  }).buildStockListExport;
+}
+
+// State-mutating component functions: run against a captured setItems.
+// Returns { fn..., getState } — call the update fn, then read getState().
+export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
+  const env = componentModuleEnv();
+  let state = initialItems;
+  const setItems = (next) => { state = typeof next === 'function' ? next(state) : next; };
+  const code = [
+    declSource(componentSrc, 'updateRecapCost'),
+    declSource(componentSrc, 'updateFabrication'),
+    declSource(componentSrc, 'updateMaterialFab'),
+  ].join('\n');
+  const bound = evalWith(code, ['updateRecapCost', 'updateFabrication', 'updateMaterialFab'], {
+    get items() { return state; },
+    setItems,
+    getPricingForSize: async () => pricing,
+    customOpRateMap: {},
+    getConnectionWeight: env.getConnectionWeight,
+    CONNECTION_WEIGHT_OPS: env.CONNECTION_WEIGHT_OPS,
+    OP_PRICING_FIELD: env.OP_PRICING_FIELD,
+    OP_WEIGHT_FIELD: env.OP_WEIGHT_FIELD,
+    OP_DEFAULT_UNIT: env.OP_DEFAULT_UNIT,
+  });
+  return { ...bound, getState: () => state };
+}
+
+// ── Import route (app/api/import-csv/route.js) ──────────────────────────────
+const ROUTE_EXPORTS = [
+  'normalizeShapeSize', 'parseFeetInches', 'parseCSVLine', 'parseTakeoffCSV',
+  'generateEndLabor', 'generateRowFabOps',
+  'parseMarkIsParent', 'getMarkBase',
+  'memberFingerprint', 'consolidateMembers', 'mergeFabOps', 'aggregateTakeoffData',
+  'normalizeToBeamSizeKey', 'getShapeTypeFromKey',
+  'CUT_COST_FIELD', 'CONN_PRICING', 'GLOBAL_OP_FIELD',
+  'END_LABOR_MAP', 'HOLE_MAP', 'WELD_MAP', 'CONNECTION_MAP', 'PREP_MAP',
+];
+
+let routeEnvCache = null;
+export function routeEnv() {
+  if (!routeEnvCache) {
+    const code = sliceBetween(routeSrc, 'function normalizeShapeSize', '\n// Enrich each member');
+    routeEnvCache = evalWith(code, ROUTE_EXPORTS);
+  }
+  return routeEnvCache;
+}
+
+// getConnxCost — copy A, inside enrichItemsWithPricing (route.js)
+export function makeRouteGetConnxCost(shopLaborRate) {
+  const code = declSource(routeSrc, 'getConnxCost');
+  return evalWith(code, ['getConnxCost'], { shopLaborRate }).getConnxCost;
+}
+
+// enrichOp — attaches rate/connWeight to an op from a pricing row + global rates
+export function makeRouteEnrichOp({ rates, shopLaborRate }) {
+  const env = routeEnv();
+  const code = [
+    declSource(routeSrc, 'getConnxCost'),
+    declSource(routeSrc, 'enrichOp'),
+  ].join('\n');
+  return evalWith(code, ['enrichOp'], {
+    rates, shopLaborRate,
+    GLOBAL_OP_FIELD: env.GLOBAL_OP_FIELD,
+    CUT_COST_FIELD: env.CUT_COST_FIELD,
+    CONN_PRICING: env.CONN_PRICING,
+  }).enrichOp;
+}
+
+// ── lib/fab-pricing.js ───────────────────────────────────────────────────────
+export function fabPricingKeyFns() {
+  const code = sliceBetween(fabPricingSrc, 'function normalizeKey', '\n// Returns a flat pricing object');
+  return evalWith(code, ['normalizeKey', 'getShapeType']);
+}
+
+// connxCost — copy B, inside getFabPricingForSize (lib/fab-pricing.js).
+// Closure deps are `row` and `shopLaborRate`.
+export function makeLibConnxCost(row, shopLaborRate) {
+  const code = declSource(fabPricingSrc, 'connxCost');
+  return evalWith(code, ['connxCost'], { row, shopLaborRate }).connxCost;
+}

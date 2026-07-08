@@ -1,0 +1,107 @@
+# Characterization Findings (2026-07-08)
+
+Suspected bugs and risky behaviors discovered while freezing today's numbers.
+**Every one of these is asserted AS-IS in the test suite** — nothing was
+changed in production code. Numbers below match `FINDING #n` comments in the
+tests. Review each and decide: fix (then update the test), or bless as
+intended behavior.
+
+---
+
+## #1 — Duplicated connection-cost logic in two files (drift risk, currently agree)
+
+`getConnxCost` (app/api/import-csv/route.js, inside `enrichItemsWithPricing`)
+and `connxCost` (lib/fab-pricing.js, inside `getFabPricingForSize`) implement
+the same rule twice. Driven over a 9-row matrix (explicit costs, provide-T/O
+flags, laborHours on row vs category, zero-dollar costs, fractional hours),
+**they currently agree on every case** — the test in `connx-dual.test.js`
+locks the agreement, so any future edit to one copy without the other fails
+the suite. Same situation for two more duplicate pairs, also currently in
+agreement and locked:
+- `calculateItemTax` vs `getItemTaxBreakdown().taxAmount` (component, two tax implementations)
+- `getItemTotal` (component) vs `getItemTotal` (components/pdf/pdfUtils.js)
+
+**Risk**: not a wrong number today, but the classic source of one tomorrow.
+The extraction should unify each pair.
+
+## #2 — Moment connections price the same as standard connections on the laborHours path
+
+When a beam/category has no explicit `momentConnxCost` and cost derives from
+`laborHours × shopLaborRate`, the result is identical for moment and standard
+connections — no moment premium. If moment connections genuinely cost more
+labor, the data model can't express it on this path. (Both copies, same rule.)
+Test: `connx-dual.test.js`.
+
+## #3 — Quote base bid excludes tax while bidAmount includes it
+
+`getItemTotal` (and therefore `calculateBreakoutTotals().baseBid` on the Quote
+tab) contains no tax term. `calculateTotals().grandTotal` — which is saved as
+`bidAmount` — includes tax. With F.O.B. or New Construction tax active, the
+quote's base bid and the dashboard bid amount differ by the full tax amount.
+Test: `tax-and-totals.test.js`.
+
+## #4 — Import consolidation sums fab quantities POSITIONALLY
+
+`consolidateMembers` merges members whose *sorted* fab signature matches, but
+accumulates quantities by array index. Two members with the same ops in
+different order merge cross-op: Drill(2)+Cut(1) → both become 3. Generation
+order is deterministic today, which is why it works — but the invariant is
+implicit. Test: `import-route.test.js`.
+
+## #5 — Plate without dimensions silently prices at zero
+
+`calculateMaterial` on a Plate line lacking `plateThickness`/`plateWidth`
+yields wpf 0, weight 0, cost $0 with no error (the amber zero-weight banner is
+the only defense). Test: `calculate-material.test.js`.
+
+## #6 — Over-length pieces price at NET weight with no waste
+
+`calculateOptimalStock` for a piece longer than every stock length returns
+`waste: Infinity` and `stocksRequired = pieces`; `calculateMaterial` then takes
+the `stockLen >= length` guard path: `stocksRequired 0`, `stockWeight =
+fabWeight`, cost on net weight. A 62' W21x44 therefore carries **no waste and
+no purchasable stick** in the standalone (non-nested) path — likely
+underpricing spliced members. (The nesting path flags these as OVER LEN
+instead.) Tests: `module-calcs.test.js`, `calculate-material.test.js`.
+
+## #7 — roundCustom is asymmetric for negative values
+
+The 0.29 rule computes the decimal via `num - floor(num)`, so −1.5 → −1 but
+−1.8 → −2. Negative adjustments/credits displayed through `fmtPrice` round
+differently than their positive counterparts. Test: `module-calcs.test.js`.
+
+## #8 — Half-cent loss in laborHours-derived connection costs
+
+`(1.333 × 65).toFixed(2)` → `86.64`, not `86.65` (IEEE representation of
+86.645 is slightly below the midpoint). Sub-cent, but frozen so the extraction
+can't "fix" it silently and shift totals. Test: `connx-dual.test.js`.
+
+---
+
+## Behavior notes (not bugs, but worth blessing explicitly)
+
+- **LF pricing pays for full purchased sticks** (`stocksRequired × stockLength × $/ft`),
+  not net footage — consistent with LB pricing on purchased weight. EA pricing
+  ignores stock entirely (`pieces × $/ea`).
+- **roundCustom (≤0.29 floors, >0.29 ceils)** governs every displayed/export
+  weight and whole-dollar price; CSV/PDF totals inherit it.
+- **`mergeFabOps` dedupes cut/weld ops** when the same member mark spans
+  multiple rows (accumulates only drills/connections) — correct for one
+  physical member split across rows, but means a cut listed on two rows of the
+  same mark counts once.
+
+## Inventory paths NOT under test (called out per Step 4)
+
+- **Pooled-overlay totalCost effect** (SteelEstimator.jsx useEffect ~5445):
+  the per-priceBy pooled cost formula lives inline in a React effect. Its
+  allocation inputs are fully tested via `computeProjectNest`, and the same
+  formula shape is tested in `calculateMaterial`/`buildStockListExport`, but
+  the effect body itself is not executed by this suite.
+- **RFQ vendor CSV upload** (`handleRfqPricingUpload`): FileReader-bound;
+  weighted-average-by-size pricing application is untested.
+- **`sizePricing` memo / `applySizePrice`**: inline memo/setter; the derived
+  rate rules are exercised only indirectly through `buildStockListExport`.
+- **`addMaterialFab` default row** (qty 1 × fetched rate): trivial, untested.
+- **Prisma row selection** in `getFabPricingForSize`/`enrichItemsWithPricing`
+  (exact-beam vs category-prefix fallback): the *lookup* is I/O and untested;
+  the *cost math* it feeds is fully tested.

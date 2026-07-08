@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden snapshot: mixed multi-item nest > freezes groups and allocations 1`] = `
+{
+  "allocs": [
+    {
+      "alloc": 119.4047,
+      "id": "m1",
+      "yield": 1.063076,
+    },
+    {
+      "alloc": 60.5953,
+      "id": "m3",
+      "yield": 1.063076,
+    },
+    {
+      "alloc": 55.9103,
+      "id": "m2",
+      "yield": 1.054713,
+    },
+    {
+      "alloc": 24.0897,
+      "id": "m4",
+      "yield": 1.054713,
+    },
+  ],
+  "shape": [
+    {
+      "buy": 80,
+      "net": 75.85,
+      "size": "C15x33.9",
+      "sticks": [
+        {
+          "cuts": [
+            "17.67@1",
+            "17.67@1",
+            "17.67@1",
+          ],
+          "len": 55,
+        },
+        {
+          "cuts": [
+            "11.42@2",
+            "11.42@2",
+          ],
+          "len": 25,
+        },
+      ],
+      "yield": 1.054713,
+    },
+    {
+      "buy": 180,
+      "net": 169.32,
+      "size": "W16x26",
+      "sticks": [
+        {
+          "cuts": [
+            "9.5@2",
+            "9.5@2",
+            "9.5@2",
+            "9.5@2",
+            "9.5@2",
+            "9.5@2",
+          ],
+          "len": 60,
+        },
+        {
+          "cuts": [
+            "28.08@1",
+            "28.08@1",
+          ],
+          "len": 60,
+        },
+        {
+          "cuts": [
+            "28.08@1",
+            "28.08@1",
+          ],
+          "len": 60,
+        },
+      ],
+      "yield": 1.063076,
+    },
+  ],
+}
+`;

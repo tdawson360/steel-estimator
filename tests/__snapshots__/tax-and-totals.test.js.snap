@@ -1,0 +1,102 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DUPLICATE MATH: getItemTotal (component) vs getItemTotal (pdfUtils) > getItemCostBreakdown components reconcile to the total 1`] = `
+{
+  "fabMarkupAmt": 63.15520000000001,
+  "fabrication": 789.44,
+  "matMarkupAmt": 853.5503769600001,
+  "material": 7112.919808000001,
+  "recapCost": 1580,
+  "total": 10399.065384960002,
+}
+`;
+
+exports[`calculateTotals → grandTotal (= bidAmount on save) > category fob reconciles and snapshots 1`] = `
+{
+  "grandTotal": 14942.26,
+  "subtotal": 15316.76,
+  "totalAdjustments": -374.5,
+  "totalConnectionWeight": 60,
+  "totalFabMarkup": 63.16,
+  "totalFabWeight": 12671.56,
+  "totalFabricationCost": 789.44,
+  "totalMarkup": 916.71,
+  "totalMaterialCost": 10983.7,
+  "totalMaterialMarkup": 853.55,
+  "totalRecapCosts": 1580,
+  "totalStockWeight": 13382.06,
+  "totalTax": 1046.91,
+}
+`;
+
+exports[`calculateTotals → grandTotal (= bidAmount on save) > category newConstruction reconciles and snapshots 1`] = `
+{
+  "grandTotal": 14871.92,
+  "subtotal": 15246.42,
+  "totalAdjustments": -374.5,
+  "totalConnectionWeight": 60,
+  "totalFabMarkup": 63.16,
+  "totalFabWeight": 12671.56,
+  "totalFabricationCost": 789.44,
+  "totalMarkup": 916.71,
+  "totalMaterialCost": 10983.7,
+  "totalMaterialMarkup": 853.55,
+  "totalRecapCosts": 1580,
+  "totalStockWeight": 13382.06,
+  "totalTax": 976.57,
+}
+`;
+
+exports[`calculateTotals → grandTotal (= bidAmount on save) > category noTax reconciles and snapshots 1`] = `
+{
+  "grandTotal": 13895.35,
+  "subtotal": 14269.85,
+  "totalAdjustments": -374.5,
+  "totalConnectionWeight": 60,
+  "totalFabMarkup": 63.16,
+  "totalFabWeight": 12671.56,
+  "totalFabricationCost": 789.44,
+  "totalMarkup": 916.71,
+  "totalMaterialCost": 10983.7,
+  "totalMaterialMarkup": 853.55,
+  "totalRecapCosts": 1580,
+  "totalStockWeight": 13382.06,
+  "totalTax": 0,
+}
+`;
+
+exports[`calculateTotals → grandTotal (= bidAmount on save) > category null reconciles and snapshots 1`] = `
+{
+  "grandTotal": 13895.35,
+  "subtotal": 14269.85,
+  "totalAdjustments": -374.5,
+  "totalConnectionWeight": 60,
+  "totalFabMarkup": 63.16,
+  "totalFabWeight": 12671.56,
+  "totalFabricationCost": 789.44,
+  "totalMarkup": 916.71,
+  "totalMaterialCost": 10983.7,
+  "totalMaterialMarkup": 853.55,
+  "totalRecapCosts": 1580,
+  "totalStockWeight": 13382.06,
+  "totalTax": 0,
+}
+`;
+
+exports[`calculateTotals → grandTotal (= bidAmount on save) > category resale reconciles and snapshots 1`] = `
+{
+  "grandTotal": 13895.35,
+  "subtotal": 14269.85,
+  "totalAdjustments": -374.5,
+  "totalConnectionWeight": 60,
+  "totalFabMarkup": 63.16,
+  "totalFabWeight": 12671.56,
+  "totalFabricationCost": 789.44,
+  "totalMarkup": 916.71,
+  "totalMaterialCost": 10983.7,
+  "totalMaterialMarkup": 853.55,
+  "totalRecapCosts": 1580,
+  "totalStockWeight": 13382.06,
+  "totalTax": 0,
+}
+`;
