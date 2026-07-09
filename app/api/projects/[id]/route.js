@@ -2,6 +2,8 @@ import prisma from '../../../../lib/db';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../lib/auth';
+import { diffAssertedTotals } from '../../../../lib/estimating/recompute';
+import { recomputePayload, logTotalsMismatch } from '../../../../lib/recompute-server';
 
 async function getUser() {
   const session = await getServerSession(authOptions);
