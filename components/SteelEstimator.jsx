@@ -39,6 +39,7 @@ import {
   calculateBreakoutTotals as engineBreakoutTotals,
   projectTotals,
 } from '../lib/estimating/totals';
+import { serverIdMap, applyIdMap, reconcileItems } from '../lib/estimating/reconcile';
 
 // ── Session-expiry stash ──────────────────────────────────────────────────────
 // When a save fails because the session died, the full save payload is kept in
@@ -1078,11 +1079,26 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
 
     try {
       setSaveStatus('saving');
-      await apiFetch(`/api/projects/${currentProjectId}`, {
+      const saved = await apiFetch(`/api/projects/${currentProjectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      // Reconcile to the server: apply DB-assigned IDs and the
+      // server-authoritative numbers from the response, so the screen shows
+      // exactly what the database holds. Guarded on prev === sent state so an
+      // edit made while the request was in flight is never clobbered (the
+      // next autosave reconciles it). Merges are identity-preserving, so a
+      // steady-state save leaves references untouched and autosave stays
+      // quiet.
+      if (saved && Array.isArray(saved.items)) {
+        const bgMap = serverIdMap(breakoutGroups, saved.breakoutGroups || []);
+        const adjMap = serverIdMap(adjustments, saved.adjustments || []);
+        setBreakoutGroups(prev => prev === breakoutGroups ? applyIdMap(prev, bgMap) : prev);
+        setAdjustments(prev => prev === adjustments ? applyIdMap(prev, adjMap) : prev);
+        setItems(prev => prev === items ? reconcileItems(prev, saved.items, bgMap) : prev);
+      }
 
       clearStash(currentProjectId);
       setSessionExpired(false);
