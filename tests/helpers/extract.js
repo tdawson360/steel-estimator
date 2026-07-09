@@ -100,6 +100,7 @@ const LIB_ENV = {
 
 import * as libRevu from '../../lib/estimating/import-revu.js';
 import * as libRfq from '../../lib/estimating/import-rfq.js';
+import * as libFabCosts from '../../lib/estimating/fab-costs.js';
 import { parseCSVLine as libParseCSVLine } from '../../lib/estimating/import-takeoff.js';
 
 // Everything the tests need from the former component module scope now lives
@@ -156,6 +157,7 @@ export function makeBuildStockListExport({ displayedStockList, sizePricing, proj
   const code = declSource(componentSrc, 'buildStockListExport');
   return evalWith(code, ['buildStockListExport'], {
     displayedStockList, sizePricing, projectNest, stockListFilter,
+    stockRowEstCost: libFabCosts.stockRowEstCost,
   }).buildStockListExport;
 }
 
@@ -180,6 +182,7 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
     OP_PRICING_FIELD: env.OP_PRICING_FIELD,
     OP_WEIGHT_FIELD: env.OP_WEIGHT_FIELD,
     OP_DEFAULT_UNIT: env.OP_DEFAULT_UNIT,
+    computeFabLineTotal: libFabCosts.computeFabLineTotal,
   });
   return { ...bound, getState: () => state };
 }

@@ -26,6 +26,7 @@ import { MATERIAL_SORT_PRESETS } from '../lib/estimating/sorting';
 import { calculateMaterial as engineCalculateMaterial } from '../lib/estimating/material-calc';
 import { parseRevuCSV, aggregateImportData } from '../lib/estimating/import-revu';
 import { parseVendorPricingCsv, vendorPricingFor, matchVendorPricing } from '../lib/estimating/import-rfq';
+import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch } from '../lib/estimating/fab-costs';
 import {
   calculateItemTax as engineCalculateItemTax,
   itemTaxBreakdown as engineItemTaxBreakdown,
@@ -421,11 +422,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     const rows = displayedStockList.map(r => {
       const sp = sizePricing.get(r.size);
       const hasRate = !!sp && !sp.mixed && (sp.unitPrice || 0) > 0;
-      const estCost = !hasRate ? null
-        : sp.priceBy === 'LB' ? r.totalWeight * sp.unitPrice
-        : sp.priceBy === 'CWT' ? (r.totalWeight / 100) * sp.unitPrice
-        : sp.priceBy === 'LF' ? r.stockLength * r.totalStocks * sp.unitPrice
-        : null;
+      const estCost = stockRowEstCost(r, sp);
       return {
         itemNumber: r.pooled ? 'Pooled' : r.itemNumber,
         size: r.size,
@@ -2491,27 +2488,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             }
           }
           
-          // Calculate total
-          const qty = updated.quantity || 0;
-          const len = updated.length || 0;
-          const rate = updated.unitPrice || 0;
-          
-          // For connection operations: check unit type
-          if (updated.connWeight && CONNECTION_WEIGHT_OPS.has(updated.operation)) {
-            // If unit is LB, multiply by connWeight; if EA, just qty × rate
-            if (updated.unit === 'LB') {
-              updated.totalCost = qty * updated.connWeight * rate;
-            } else {
-              updated.totalCost = qty * rate;
-            }
-          } else if ((updated.unit === 'IN' || updated.unit === 'LF') && len > 0) {
-            // For length-based: Total = Qty × Length × Rate
-            updated.totalCost = qty * len * rate;
-          } else {
-            // For standard: Total = Qty × Rate
-            updated.totalCost = qty * rate;
-          }
-          
+          // Calculate total (engine rules: connections by LB/EA, length-based, standard)
+          updated.totalCost = computeFabLineTotal(updated);
+
           return updated;
         });
         
@@ -2782,13 +2761,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           const alloc = projectNest && !item.priceStandalone ? projectNest.byMaterial.get(mat.id) : null;
           let candidate;
           if (alloc) {
-            const stockWeight = (base.fabWeight || 0) * alloc.yield;
-            const unitPrice = base.unitPrice || 0;
-            let totalCost = base.totalCost;
-            if (base.priceBy === 'LB') totalCost = stockWeight * unitPrice;
-            else if (base.priceBy === 'CWT') totalCost = (stockWeight / 100) * unitPrice;
-            else if (base.priceBy === 'LF') totalCost = alloc.allocStockLengthFt * unitPrice;
-            else if (base.priceBy === 'EA') totalCost = (base.pieces || 0) * unitPrice;
+            const { stockWeight, totalCost } = pooledLineCost(base, alloc);
             candidate = {
               ...base,
               pooled: true,
@@ -2938,7 +2911,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     let changed = 0;
     items.forEach(item => item.materials.forEach(mat => {
       const len = parseFloat(mat.length) || 0;
-      if (len > 0 && Math.abs(+(Math.max(Math.round(len * 12), 1) / 12).toFixed(2) - len) > 1e-9) changed++;
+      if (len > 0 && Math.abs(roundLengthToInch(len) - len) > 1e-9) changed++;
     }));
     if (changed === 0) {
       alert('All material lengths are already on even inches.');
@@ -2950,7 +2923,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       materials: item.materials.map(mat => {
         const len = parseFloat(mat.length) || 0;
         if (len <= 0) return mat;
-        const rounded = +(Math.max(Math.round(len * 12), 1) / 12).toFixed(2);
+        const rounded = roundLengthToInch(len);
         if (Math.abs(rounded - len) < 1e-9) return mat;
         const updated = calculateMaterial({ ...mat, length: rounded });
         if (updated.galvanized) {
@@ -4798,11 +4771,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 <tbody>
                   {displayedStockList.map((stock, i) => {
                     const sp = sizePricing.get(stock.size);
-                    const rowEstCost = (!sp || sp.mixed || !sp.unitPrice) ? null
-                      : sp.priceBy === 'LB' ? stock.totalWeight * sp.unitPrice
-                      : sp.priceBy === 'CWT' ? (stock.totalWeight / 100) * sp.unitPrice
-                      : sp.priceBy === 'LF' ? stock.stockLength * stock.totalStocks * sp.unitPrice
-                      : null;
+                    const rowEstCost = stockRowEstCost(stock, sp);
                     return (
                     <tr key={i} className={stock.pooled ? 'bg-indigo-50 dark:bg-indigo-950 hover:bg-indigo-100 dark:hover:bg-indigo-900' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}>
                       <td className="border p-2">
@@ -4849,14 +4818,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     <td className="border p-2 text-right">{fmtWt(displayedStockList.reduce((s, r) => s + r.totalWeight, 0))} lbs</td>
                     <td className="border p-2" colSpan={2}></td>
                     <td className="border p-2 text-right">
-                      {fmtPrice(displayedStockList.reduce((s, r) => {
-                        const sp = sizePricing.get(r.size);
-                        if (!sp || sp.mixed || !sp.unitPrice) return s;
-                        if (sp.priceBy === 'LB') return s + r.totalWeight * sp.unitPrice;
-                        if (sp.priceBy === 'CWT') return s + (r.totalWeight / 100) * sp.unitPrice;
-                        if (sp.priceBy === 'LF') return s + r.stockLength * r.totalStocks * sp.unitPrice;
-                        return s;
-                      }, 0))}
+                      {fmtPrice(displayedStockList.reduce((s, r) => s + (stockRowEstCost(r, sizePricing.get(r.size)) || 0), 0))}
                     </td>
                   </tr>
                 </tfoot>
