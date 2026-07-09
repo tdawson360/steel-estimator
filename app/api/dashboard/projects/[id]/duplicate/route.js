@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../lib/auth';
 import prisma from '../../../../../../lib/db';
+import { diffAssertedTotals } from '../../../../../../lib/estimating/recompute';
+import { recomputePayload, logTotalsMismatch, dbProjectToEngineTree } from '../../../../../../lib/recompute-server';
 
 export async function POST(request, { params }) {
   const session = await getServerSession(authOptions);
@@ -54,6 +56,29 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // ── 1b. SERVER-AUTHORITATIVE RECOMPUTE OF THE COPY ──────────────────────
+    // The copy joins the same regime as PUT: run the engine over the original
+    // tree and persist SERVER numbers, so a duplicate of a pre-regime project
+    // (whose stored totals may be stale client math) is engine-correct
+    // immediately, not only after its first save. Drift from the original's
+    // stored values is logged, never fatal.
+    let recomputed = null;
+    try {
+      const tree = dbProjectToEngineTree(original);
+      recomputed = await recomputePayload(tree);
+      const diffs = diffAssertedTotals(tree, recomputed, original.bidAmount ?? null);
+      if (diffs.length > 0) {
+        logTotalsMismatch(`${id} (duplicate source)`, diffs);
+      }
+    } catch (err) {
+      console.warn('[TOTALS-MISMATCH]', JSON.stringify({
+        at: new Date().toISOString(),
+        projectId: id,
+        error: 'recompute-failed (duplicate)',
+        message: err.message,
+      }));
+    }
+
     // ── 2. DEEP COPY IN A SINGLE TRANSACTION ────────────────────────────────
     // Uses createMany for flat relation sets and Promise.all to parallelize
     // independent creates within the same parent entity.
@@ -91,7 +116,7 @@ export async function POST(request, { params }) {
           bidDate:          original.bidDate,
           bidTime:          original.bidTime,
           startDate:        original.startDate,
-          bidAmount:        original.bidAmount,
+          bidAmount:        recomputed ? recomputed.totals.grandTotal : original.bidAmount,
           newOrCo:          original.newOrCo,
           estimatorId:      original.estimatorId,
           // Reset workflow fields for the copy
@@ -163,8 +188,10 @@ export async function POST(request, { params }) {
       ]);
 
       // Copy items (must be sequential — each item needs its returned ID
-      // for nested material/fab creates)
-      for (const item of original.items) {
+      // for nested material/fab creates). rItem/rMat/rFab are the
+      // server-recomputed counterparts (index-aligned with original arrays).
+      for (const [ii, item] of original.items.entries()) {
+        const rItem = recomputed?.items?.[ii];
         const newItem = await tx.item.create({
           data: {
             itemNumber:     item.itemNumber,
@@ -188,17 +215,19 @@ export async function POST(request, { params }) {
             ? tx.recapCost.createMany({
                 data: item.recapCosts.map(rc => ({
                   costType: rc.costType, cost: rc.cost, markup: rc.markup,
-                  total: rc.total, hours: rc.hours, rate: rc.rate,
+                  total: rItem?.recapCosts?.[rc.costType]?.total ?? rc.total,
+                  hours: rc.hours, rate: rc.rate,
                   itemId: newItem.id,
                 })),
               })
             : Promise.resolve(),
           item.fabrication.length > 0
             ? tx.itemFabrication.createMany({
-                data: item.fabrication.map(fab => ({
+                data: item.fabrication.map((fab, fi) => ({
                   sortOrder: fab.sortOrder, operation: fab.operation,
                   quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
-                  totalCost: fab.totalCost, itemId: newItem.id,
+                  totalCost: rItem?.fabrication?.[fi]?.totalCost ?? fab.totalCost,
+                  itemId: newItem.id,
                 })),
               })
             : Promise.resolve(),
@@ -214,17 +243,20 @@ export async function POST(request, { params }) {
 
         // Materials (must be sequential — each material needs its returned ID
         // for children and material-level fabrication)
-        for (const mat of item.materials) {
+        for (const [mIdx, mat] of item.materials.entries()) {
+          const rMat = rItem?.materials?.[mIdx];
           const newMat = await tx.material.create({
             data: {
               sortOrder: mat.sortOrder, category: mat.category, shape: mat.shape,
               description: mat.description, length: mat.length, pieces: mat.pieces,
               stockLength: mat.stockLength, stocksRequired: mat.stocksRequired,
               waste: mat.waste, weightPerFt: mat.weightPerFt,
-              fabWeight: mat.fabWeight, stockWeight: mat.stockWeight,
+              fabWeight: rMat ? (rMat.fabWeight || 0) : mat.fabWeight,
+              stockWeight: rMat ? (rMat.stockWeight || 0) : mat.stockWeight,
               priceBy: mat.priceBy, unitPrice: mat.unitPrice,
               pricePerFt: mat.pricePerFt, pricePerLb: mat.pricePerLb,
-              totalCost: mat.totalCost, galvanized: mat.galvanized,
+              totalCost: rMat ? (rMat.totalCost || 0) : mat.totalCost,
+              galvanized: mat.galvanized,
               galvRate: mat.galvRate, width: mat.width, thickness: mat.thickness,
               itemId: newItem.id,
             },
@@ -233,10 +265,12 @@ export async function POST(request, { params }) {
           // Batch-create material fab ops (flat, no returned IDs needed)
           const matFabPromise = mat.fabrication.length > 0
             ? tx.materialFabrication.createMany({
-                data: mat.fabrication.map(fab => ({
+                data: mat.fabrication.map((fab, fi) => ({
                   sortOrder: fab.sortOrder, operation: fab.operation,
-                  quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
-                  totalCost: fab.totalCost, connWeight: fab.connWeight,
+                  quantity: rMat?.fabrication?.[fi]?.quantity ?? fab.quantity,
+                  unit: fab.unit, rate: fab.rate,
+                  totalCost: rMat?.fabrication?.[fi]?.totalCost ?? fab.totalCost,
+                  connWeight: fab.connWeight,
                   isGalvLine: fab.isGalvLine, materialId: newMat.id,
                 })),
               })
