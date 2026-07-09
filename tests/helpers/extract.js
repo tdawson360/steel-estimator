@@ -88,18 +88,18 @@ import * as libPlates from '../../lib/estimating/plates.js';
 import * as libStockLengths from '../../lib/estimating/stock-lengths.js';
 import * as libFormat from '../../lib/estimating/format.js';
 import * as libSizes from '../../lib/estimating/sizes.js';
+import * as libStockOpt from '../../lib/estimating/stock-optimization.js';
+import * as libNesting from '../../lib/estimating/nesting.js';
+import * as libSequence from '../../lib/estimating/sequence.js';
+import * as libSorting from '../../lib/estimating/sorting.js';
 
 const LIB_ENV = {
   ...libAisc, ...libFabOps, ...libPlates, ...libStockLengths, ...libFormat, ...libSizes,
+  ...libStockOpt, ...libNesting, ...libSequence, ...libSorting,
 };
 
 // Names still sliced out of the component (in declaration-dependency order)
 const COMPONENT_SLICED = [
-  'calculateOptimalStock',
-  'NEST_EXCLUDED_CATEGORIES', 'isNestableMaterial', 'nestCutsFFD',
-  'MAX_NEST_PIECES', 'computeProjectNest',
-  'toAlphaSeq', 'toChildAlphaSuffix', 'parseAlphaSeq', 'parseChildAlphaSuffix',
-  'MATERIAL_SORT_PRESETS', 'compressGroupSticks',
   'parseCSVLine', 'findColumnIndex', 'parseRevuCSV', 'aggregateImportData',
 ];
 
