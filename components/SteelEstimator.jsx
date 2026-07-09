@@ -1097,7 +1097,27 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         const adjMap = serverIdMap(adjustments, saved.adjustments || []);
         setBreakoutGroups(prev => prev === breakoutGroups ? applyIdMap(prev, bgMap) : prev);
         setAdjustments(prev => prev === adjustments ? applyIdMap(prev, adjMap) : prev);
-        setItems(prev => prev === items ? reconcileItems(prev, saved.items, bgMap) : prev);
+        let itemsReconciled = false;
+        setItems(prev => {
+          if (prev !== items) return prev;
+          itemsReconciled = true;
+          return reconcileItems(prev, saved.items, bgMap);
+        });
+        // Expansion state is keyed by item ID — remap keys when the reconcile
+        // swaps temp IDs for DB IDs, or newly saved items snap shut.
+        const itemIdMap = serverIdMap(items, saved.items);
+        setExpandedItems(prev => {
+          if (!itemsReconciled) return prev;
+          let changed = false;
+          const next = {};
+          for (const [k, v] of Object.entries(prev)) {
+            const nid = itemIdMap.get(Number(k));
+            const key = (nid !== undefined && nid !== Number(k)) ? String(nid) : k;
+            if (key !== k) changed = true;
+            next[key] = v;
+          }
+          return changed ? next : prev;
+        });
       }
 
       clearStash(currentProjectId);
