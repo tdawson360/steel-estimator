@@ -227,50 +227,50 @@ const ROUTE_EXPORTS = [
   'generateEndLabor', 'generateRowFabOps',
   'parseMarkIsParent', 'getMarkBase',
   'memberFingerprint', 'consolidateMembers', 'mergeFabOps', 'aggregateTakeoffData',
-  'normalizeToBeamSizeKey', 'getShapeTypeFromKey',
-  'CUT_COST_FIELD', 'CONN_PRICING', 'GLOBAL_OP_FIELD',
   'END_LABOR_MAP', 'HOLE_MAP', 'WELD_MAP', 'CONNECTION_MAP', 'PREP_MAP',
 ];
+
+// Connection pricing is now the single engine implementation — both former
+// copies (route.js inner closure, lib/fab-pricing.js inner closure) route
+// through lib/estimating/connection-pricing.js. The dual tests keep running
+// against both ENTRY POINTS, which now provably share one implementation.
+import * as libConnx from '../../lib/estimating/connection-pricing.js';
 
 let routeEnvCache = null;
 export function routeEnv() {
   if (!routeEnvCache) {
     const code = sliceBetween(routeSrc, 'function normalizeShapeSize', '\n// Enrich each member');
-    routeEnvCache = evalWith(code, ROUTE_EXPORTS);
+    routeEnvCache = {
+      ...evalWith(code, ROUTE_EXPORTS),
+      normalizeToBeamSizeKey: libConnx.normalizeBeamSizeKey,
+      getShapeTypeFromKey: libConnx.getShapeTypeFromKey,
+      CUT_COST_FIELD: libConnx.CUT_COST_FIELD,
+      CONN_PRICING: libConnx.CONN_PRICING,
+      GLOBAL_OP_FIELD: libConnx.GLOBAL_OP_FIELD,
+    };
   }
   return routeEnvCache;
 }
 
-// getConnxCost — copy A, inside enrichItemsWithPricing (route.js)
+// getConnxCost — entry point A (import route path)
 export function makeRouteGetConnxCost(shopLaborRate) {
-  const code = declSource(routeSrc, 'getConnxCost');
-  return evalWith(code, ['getConnxCost'], { shopLaborRate }).getConnxCost;
+  return (row, isMoment) => libConnx.getConnxCost(row, isMoment, shopLaborRate);
 }
 
 // enrichOp — attaches rate/connWeight to an op from a pricing row + global rates
 export function makeRouteEnrichOp({ rates, shopLaborRate }) {
-  const env = routeEnv();
-  const code = [
-    declSource(routeSrc, 'getConnxCost'),
-    declSource(routeSrc, 'enrichOp'),
-  ].join('\n');
-  return evalWith(code, ['enrichOp'], {
-    rates, shopLaborRate,
-    GLOBAL_OP_FIELD: env.GLOBAL_OP_FIELD,
-    CUT_COST_FIELD: env.CUT_COST_FIELD,
-    CONN_PRICING: env.CONN_PRICING,
-  }).enrichOp;
+  return (op, pricingRow) => libConnx.enrichOp(op, pricingRow, rates, shopLaborRate);
 }
 
 // ── lib/fab-pricing.js ───────────────────────────────────────────────────────
 export function fabPricingKeyFns() {
-  const code = sliceBetween(fabPricingSrc, 'function normalizeKey', '\n// Returns a flat pricing object');
-  return evalWith(code, ['normalizeKey', 'getShapeType']);
+  return {
+    normalizeKey: libConnx.normalizeBeamSizeKey,
+    getShapeType: libConnx.getShapeTypeFromKey,
+  };
 }
 
-// connxCost — copy B, inside getFabPricingForSize (lib/fab-pricing.js).
-// Closure deps are `row` and `shopLaborRate`.
+// connxCost — entry point B (lib/fab-pricing.js path)
 export function makeLibConnxCost(row, shopLaborRate) {
-  const code = declSource(fabPricingSrc, 'connxCost');
-  return evalWith(code, ['connxCost'], { row, shopLaborRate }).connxCost;
+  return (isMoment) => libConnx.getConnxCost(row, isMoment, shopLaborRate);
 }
