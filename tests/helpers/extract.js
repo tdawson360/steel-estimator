@@ -183,6 +183,7 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
     OP_WEIGHT_FIELD: env.OP_WEIGHT_FIELD,
     OP_DEFAULT_UNIT: env.OP_DEFAULT_UNIT,
     computeFabLineTotal: libFabCosts.computeFabLineTotal,
+    recapEntryTotal: libTotals.recapEntryTotal,
   });
   return { ...bound, getState: () => state };
 }

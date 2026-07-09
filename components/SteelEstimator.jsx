@@ -28,12 +28,14 @@ import { parseRevuCSV, aggregateImportData } from '../lib/estimating/import-revu
 import { parseVendorPricingCsv, vendorPricingFor, matchVendorPricing } from '../lib/estimating/import-rfq';
 import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch } from '../lib/estimating/fab-costs';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
+import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
 import {
   calculateItemTax as engineCalculateItemTax,
   itemTaxBreakdown as engineItemTaxBreakdown,
   getItemTotal,
   getItemCostBreakdown,
   itemBreakdown as engineItemBreakdown,
+  recapEntryTotal,
   calculateBreakoutTotals as engineBreakoutTotals,
   projectTotals,
 } from '../lib/estimating/totals';
@@ -187,28 +189,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // can't ship, add custom / mill-order lengths, and cap stick counts.
   const [stockLengthOverrides, setStockLengthOverrides] = useState({});
 
-  const normalizeLengthOverride = (o) => {
-    if (Array.isArray(o)) return { lengths: o, caps: {} };
-    if (o && typeof o === 'object') {
-      return {
-        lengths: Array.isArray(o.lengths) ? o.lengths : [],
-        caps: (o.caps && typeof o.caps === 'object') ? o.caps : {},
-      };
-    }
-    return null;
-  };
-
-  const availableLengthsFor = (category, size) => {
-    const o = size ? normalizeLengthOverride(stockLengthOverrides[size]) : null;
-    if (o && o.lengths.length > 0) return [...o.lengths].sort((a, b) => a - b);
-    return getStockLengthsForCategory(category);
-  };
+  // Shared resolution path (lib/estimating/supplier-lengths) — the server-side
+  // recompute uses the same functions, so client and server see identical
+  // purchasable-length inputs by construction.
+  const availableLengthsFor = (category, size) =>
+    availableLengthsForOverrides(stockLengthOverrides, category, size);
 
   // Max sticks the supplier can supply, per length (absent = unlimited)
-  const lengthCapsFor = (category, size) => {
-    const o = size ? normalizeLengthOverride(stockLengthOverrides[size]) : null;
-    return o ? o.caps : {};
-  };
+  const lengthCapsFor = (category, size) =>
+    lengthCapsForOverrides(stockLengthOverrides, category, size);
 
   const isDefaultOverride = (category, lengths, caps) => {
     const defaults = getStockLengthsForCategory(category);
@@ -2661,17 +2650,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     setItems(items.map(item => {
       if (item.id === itemId) {
         const updatedCosts = { ...item.recapCosts };
-        if (costType === 'projectManagement') {
-          // PM uses hours * rate
-          updatedCosts.projectManagement = { ...updatedCosts.projectManagement, [field]: parseFloat(value) || 0 };
-          updatedCosts.projectManagement.total = updatedCosts.projectManagement.hours * updatedCosts.projectManagement.rate;
-        } else {
-          // Installation, Drafting, Engineering, Shipping, Custom use cost + markup %
-          updatedCosts[costType] = { ...updatedCosts[costType], [field]: parseFloat(value) || 0 };
-          const baseCost = updatedCosts[costType].cost || 0;
-          const markupPct = updatedCosts[costType].markup || 0;
-          updatedCosts[costType].total = baseCost + (baseCost * markupPct / 100);
-        }
+        // Total per the single engine rule (PM: hours × rate; else cost + markup%)
+        updatedCosts[costType] = { ...updatedCosts[costType], [field]: parseFloat(value) || 0 };
+        updatedCosts[costType].total = recapEntryTotal(costType, updatedCosts[costType]);
         return { ...item, recapCosts: updatedCosts };
       }
       return item;
