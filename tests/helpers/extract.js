@@ -127,19 +127,14 @@ export function componentTaxRate() {
 
 // ── Component-scope function factories ───────────────────────────────────────
 
-// calculateMaterial(material) with the default supplier lengths (no overrides)
+// calculateMaterial now lives in lib/estimating/material-calc.js — the maker
+// keeps its old shape (availableLengthsFor override) for the existing tests.
+import { calculateMaterial as libCalculateMaterial } from '../../lib/estimating/material-calc.js';
 export function makeCalculateMaterial({ availableLengthsFor } = {}) {
-  const env = componentModuleEnv();
-  const alf = availableLengthsFor || ((category) => env.getStockLengthsForCategory(category));
-  const code = declSource(componentSrc, 'calculateMaterial');
-  return evalWith(code, ['calculateMaterial'], {
-    steelDatabase: env.steelDatabase,
-    plateThicknesses: env.plateThicknesses,
-    calcPlateWeightPerFoot: env.calcPlateWeightPerFoot,
-    calculateOptimalStock: env.calculateOptimalStock,
-    getStockLengthsForCategory: env.getStockLengthsForCategory,
-    availableLengthsFor: alf,
-  }).calculateMaterial;
+  return (material) => libCalculateMaterial(
+    material,
+    availableLengthsFor ? { stockLengthsFor: availableLengthsFor } : {}
+  );
 }
 
 export function makeTaxFns(taxCategory) {
