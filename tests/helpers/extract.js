@@ -201,6 +201,33 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
   return { ...bound, getState: () => state };
 }
 
+// RFQ vendor-CSV pricing upload: the parsing/weighted-average/apply logic
+// lives in a FileReader onload closure. Slice the onload body and drive it
+// with a fake event; capture setItems / setRfqUploadResult.
+export function makeRfqUpload(initialItems, calculateMaterialFn) {
+  const env = componentModuleEnv();
+  let state = initialItems;
+  let result = null;
+  const setItems = (next) => { state = typeof next === 'function' ? next(state) : next; };
+  const setRfqUploadResult = (r) => { result = r; };
+  const code =
+    'const reader = {};\n' +
+    sliceBetween(componentSrc, 'reader.onload = (evt) => {', 'reader.readAsText(file);') +
+    '\nconst __onload = reader.onload;';
+  const { __onload } = evalWith(code, ['__onload'], {
+    items: initialItems,
+    setItems,
+    setRfqUploadResult,
+    normalizeShapeSize: env.normalizeShapeSize,
+    calculateMaterial: calculateMaterialFn,
+  });
+  return {
+    upload: (csvText) => __onload({ target: { result: csvText } }),
+    getState: () => state,
+    getResult: () => result,
+  };
+}
+
 // ── Import route (app/api/import-csv/route.js) ──────────────────────────────
 const ROUTE_EXPORTS = [
   'normalizeShapeSize', 'parseFeetInches', 'parseCSVLine', 'parseTakeoffCSV',
