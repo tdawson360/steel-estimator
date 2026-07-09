@@ -19,3 +19,7 @@ prisma/dev.db-journal
 
 # Claude Code local config
 .claude/
+
+# Server-authority shakeout log
+mismatch.log
+tests/.tmp-*.db

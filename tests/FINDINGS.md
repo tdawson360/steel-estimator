@@ -89,6 +89,34 @@ differently than their positive counterparts. Test: `module-calcs.test.js`.
 86.645 is slightly below the midpoint). Sub-cent, but frozen so the extraction
 can't "fix" it silently and shift totals. Test: `connx-dual.test.js`.
 
+## #9 — Persistence loses engine inputs: plate dims, custom weight, fab-line length (found 2026-07-09)
+
+Three engine inputs have no DB column and do not survive a save → load
+round-trip:
+
+- **`plateThickness` / `plateWidth`** — the Material table has `thickness`/
+  `width` columns, but they are only mirrored at material creation (not on
+  edit) and the loader never maps them back to `plateThickness`/`plateWidth`.
+  `calculateMaterial` derives plate weight ONLY from those fields, so a
+  dimensioned plate reloads as dimensionless and re-prices at $0 (the reload
+  manifestation of #5).
+- **`customWeight`** — no column at all; a Custom line reloads with
+  weightPerFoot 0 and re-prices at $0.
+- **MaterialFabrication `length`** — no column; an IN/LF length-based fab
+  line (`qty × length × rate`) reloads without length and recomputes as
+  `qty × rate`. Pre-regime the stored `totalCost` masked this on screen until
+  the line was next edited; under server-authoritative recompute the drift is
+  logged (`[TOTALS-MISMATCH]`) and the engine number is persisted on the next
+  save — the loss now surfaces instead of lurking.
+
+Consequence for the server-authority regime: recompute of a payload (PUT) has
+full fidelity, but recompute of a SAVED tree (duplicate route, or any save
+after a reload) sees only the persisted inputs. The API characterization test
+(`api-server-authority.test.js`) pins both: the duplicate of a project with
+these lossy lines matches the engine over the DB tree, and a round-trip-stable
+project duplicates with zero drift. Adjudication (adding the missing columns
+vs blessing the loss) is deferred — behavior frozen as-is.
+
 ---
 
 ## Behavior notes (not bugs, but worth blessing explicitly)
