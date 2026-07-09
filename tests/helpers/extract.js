@@ -99,6 +99,7 @@ const LIB_ENV = {
 };
 
 import * as libRevu from '../../lib/estimating/import-revu.js';
+import * as libRfq from '../../lib/estimating/import-rfq.js';
 import { parseCSVLine as libParseCSVLine } from '../../lib/estimating/import-takeoff.js';
 
 // Everything the tests need from the former component module scope now lives
@@ -202,6 +203,10 @@ export function makeRfqUpload(initialItems, calculateMaterialFn) {
     setRfqUploadResult,
     normalizeShapeSize: env.normalizeShapeSize,
     calculateMaterial: calculateMaterialFn,
+    // engine functions the thinned onload now calls
+    parseVendorPricingCsv: libRfq.parseVendorPricingCsv,
+    vendorPricingFor: libRfq.vendorPricingFor,
+    matchVendorPricing: libRfq.matchVendorPricing,
   });
   return {
     upload: (csvText) => __onload({ target: { result: csvText } }),
