@@ -27,10 +27,13 @@ import { calculateMaterial as engineCalculateMaterial } from '../lib/estimating/
 import { parseRevuCSV, aggregateImportData } from '../lib/estimating/import-revu';
 import { parseVendorPricingCsv, vendorPricingFor, matchVendorPricing } from '../lib/estimating/import-rfq';
 import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch } from '../lib/estimating/fab-costs';
+import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import {
   calculateItemTax as engineCalculateItemTax,
   itemTaxBreakdown as engineItemTaxBreakdown,
   getItemTotal,
+  getItemCostBreakdown,
+  itemBreakdown as engineItemBreakdown,
   calculateBreakoutTotals as engineBreakoutTotals,
   projectTotals,
 } from '../lib/estimating/totals';
@@ -2795,81 +2798,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // Get stock list. Pooled materials are covered by the nest's purchase
   // summary; everything else (plates, custom, standalone items, nesting off)
   // contributes its per-line stocks as before.
-  const getStockList = () => {
-    const stockSummary = {};
-    const addStocks = (size, stockLength, weightPerFoot, count) => {
-      const key = `${size}-${stockLength}`;
-      if (!stockSummary[key]) {
-        stockSummary[key] = { size, stockLength, weightPerFoot: weightPerFoot || 0, totalStocks: 0, totalWeight: 0 };
-      }
-      stockSummary[key].totalStocks += count;
-      stockSummary[key].totalWeight += count * stockLength * (weightPerFoot || 0);
-    };
-    items.forEach(item => {
-      item.materials.forEach(mat => {
-        if (projectNest && mat.pooled) return; // covered by the nest below
-        if (mat.size && mat.stocksRequired > 0) {
-          addStocks(mat.size, mat.stockLength, mat.weightPerFoot, mat.stocksRequired);
-        }
-      });
-    });
-    if (projectNest) {
-      projectNest.groups.forEach(g => {
-        g.purchase.forEach(p => addStocks(g.size, p.stockLength, g.weightPerFoot, p.count));
-      });
-    }
-    return Object.values(stockSummary).sort((a, b) => a.size.localeCompare(b.size));
-  };
+  const getStockList = () => buildStockSummary(items, projectNest);
 
   // Memoized stock list to avoid recalculating on every render
   const stockList = useMemo(() => getStockList(), [items, projectNest]);
 
   // Per-item stock breakdown (one row per item + size + stockLength) for the buy list display
-  const getDetailedStockList = () => {
-    const result = [];
-    items.forEach(item => {
-      const perItem = {};
-      item.materials.forEach(mat => {
-        if (projectNest && mat.pooled) return; // shown as pooled rows below
-        if (mat.size && mat.stocksRequired > 0) {
-          const key = `${mat.size}-${mat.stockLength}`;
-          if (!perItem[key]) {
-            perItem[key] = {
-              itemNumber: item.itemNumber,
-              itemName: item.itemName,
-              size: mat.size,
-              stockLength: mat.stockLength,
-              weightPerFoot: mat.weightPerFoot || 0,
-              totalStocks: 0,
-              totalWeight: 0,
-            };
-          }
-          perItem[key].totalStocks += mat.stocksRequired;
-          perItem[key].totalWeight += mat.stocksRequired * mat.stockLength * (mat.weightPerFoot || 0);
-        }
-      });
-      result.push(...Object.values(perItem));
-    });
-    if (projectNest) {
-      projectNest.groups.forEach(g => {
-        const itemNumbers = [...new Set(g.sticks.flatMap(st => st.cuts.map(c => c.itemNumber)))]
-          .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
-        g.purchase.forEach(p => {
-          result.push({
-            itemNumber: 'Pooled',
-            itemName: `Items ${itemNumbers.join(', ')}`,
-            size: g.size,
-            stockLength: p.stockLength,
-            weightPerFoot: g.weightPerFoot,
-            totalStocks: p.count,
-            totalWeight: p.count * p.stockLength * (g.weightPerFoot || 0),
-            pooled: true,
-          });
-        });
-      });
-    }
-    return result;
-  };
+  const getDetailedStockList = () => buildDetailedStockList(items, projectNest);
 
   const detailedStockList = useMemo(() => getDetailedStockList(), [items, projectNest]);
 
@@ -4592,24 +4527,22 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                           <div className="text-xs text-gray-400 mt-1">Ctrl+V to paste from clipboard</div>
                         </div>
 
-                        {/* Cost Summary — right panel */}
+                        {/* Cost Summary — right panel (numbers from the estimating engine:
+                            getItemCostBreakdown + itemBreakdown; "Total Item Cost" here
+                            intentionally excludes recap — see FINDINGS.md behavior notes) */}
                         <div className="shrink-0">
                         <div className="grid grid-cols-2 gap-y-1 text-xs">
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2">Total Fab Wt:</div>
                           <div className="text-right text-blue-800 font-bold">
-                            {fmtWt(
-                              item.materials.reduce((sum, m) => sum + (m.fabWeight || 0), 0) +
-                              item.materials.reduce((sum, m) => 
-                                sum + ((m.fabrication || []).reduce((fs, f) => 
-                                  fs + (CONNECTION_WEIGHT_OPS.has(f.operation) && f.connWeight
-                                    ? (f.quantity || 0) * f.connWeight 
-                                    : 0), 0)), 0)
-                            )} lbs
+                            {(() => {
+                              const ib = engineItemBreakdown(item, taxCategory, DEFAULT_PRICING_RATES);
+                              return fmtWt(ib.fabWeight + ib.connectionWeight);
+                            })()} lbs
                           </div>
 
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2">Material Cost:</div>
                           <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
-                            {fmtPrice(item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0))}
+                            {fmtPrice(getItemCostBreakdown(item).material)}
                           </div>
 
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2 flex items-center justify-end gap-1">
@@ -4624,15 +4557,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             />%:
                           </div>
                           <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
-                            {fmtPrice(item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0) * (item.materialMarkup || 0) / 100)}
+                            {fmtPrice(getItemCostBreakdown(item).matMarkupAmt)}
                           </div>
 
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2 pt-1 border-t border-gray-300 dark:border-gray-600">Fabrication Cost:</div>
                           <div className="text-right text-gray-700 dark:text-gray-300 font-semibold pt-1 border-t border-gray-300 dark:border-gray-600">
-                            {fmtPrice(
-                              item.materials.reduce((sum, m) => sum + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0) +
-                              item.fabrication.reduce((sum, f) => sum + (f.totalCost || 0), 0)
-                            )}
+                            {fmtPrice(getItemCostBreakdown(item).fabrication)}
                           </div>
 
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2 flex items-center justify-end gap-1">
@@ -4647,21 +4577,20 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                             />%:
                           </div>
                           <div className="text-right text-gray-700 dark:text-gray-300 font-semibold">
-                            {fmtPrice(
-                              (item.materials.reduce((sum, m) => sum + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0) +
-                              item.fabrication.reduce((sum, f) => sum + (f.totalCost || 0), 0)) * (item.fabMarkup || 0) / 100
-                            )}
+                            {fmtPrice(getItemCostBreakdown(item).fabMarkupAmt)}
                           </div>
 
                           <div className="text-right text-green-800 font-bold pr-2 pt-1 border-t-2 border-gray-400 dark:border-gray-500">Total Item Cost:</div>
                           <div className="text-right text-green-800 font-bold pt-1 border-t-2 border-gray-400 dark:border-gray-500">
-                            {fmtPrice(
-                              // Material cost with material markup
-                              (item.materials.reduce((sum, m) => sum + (m.totalCost || 0), 0)) * (1 + (item.materialMarkup || 0) / 100) +
-                              // Fab cost with fab markup
-                              (item.materials.reduce((sum, m) => sum + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0) +
-                              item.fabrication.reduce((sum, f) => sum + (f.totalCost || 0), 0)) * (1 + (item.fabMarkup || 0) / 100)
-                            )}
+                            {(() => {
+                              // Material + fab with their markups; recap intentionally excluded
+                              // on this panel (same expression as before extraction)
+                              const b = getItemCostBreakdown(item);
+                              return fmtPrice(
+                                b.material * (1 + (item.materialMarkup || 0) / 100) +
+                                b.fabrication * (1 + (item.fabMarkup || 0) / 100)
+                              );
+                            })()}
                           </div>
                         </div>
                         </div>{/* end shrink-0 cost panel */}

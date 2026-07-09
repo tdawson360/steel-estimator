@@ -1,4 +1,17 @@
-# Characterization Findings (2026-07-08)
+# Characterization Findings (2026-07-08; extraction notes 2026-07-09)
+
+> **Session B (calc-extraction) status**: all calculation logic now lives in
+> `lib/estimating/` as pure functions; every finding below was preserved
+> exactly and its new home is noted in the module's header comment. The
+> duplicate implementations in #1 are now SINGLE functions
+> (`lib/estimating/totals.js`, `lib/estimating/connection-pricing.js`) — the
+> drift risk is closed. Finding #4 was evaluated for the permitted keyed-
+> matching improvement: the characterization suite proved keyed matching is
+> NOT output-identical (the frozen test asserts the positional cross-sum on
+> order-shuffled input), so per the session rules it REMAINS POSITIONAL.
+> Two additional identical-text duplicates found and collapsed during
+> extraction: `normalizeShapeSize` and `parseCSVLine` (route copies vs
+> component copies — byte-identical, merged without behavior change).
 
 Suspected bugs and risky behaviors discovered while freezing today's numbers.
 **Every one of these is asserted AS-IS in the test suite** — nothing was
@@ -79,6 +92,13 @@ can't "fix" it silently and shift totals. Test: `connx-dual.test.js`.
 ---
 
 ## Behavior notes (not bugs, but worth blessing explicitly)
+
+- **The Estimate tab's per-item "Total Item Cost" panel excludes recap costs**
+  (it shows `mat×(1+muMat) + fab×(1+muFab)` only), while `getItemTotal` — used
+  by the Quote tab's base bid — includes recap. Three "total" notions now
+  coexist: panel total (no recap, no tax), getItemTotal (recap, no tax — #3),
+  grandTotal/bidAmount (recap + tax). Preserved as-is during extraction
+  (noted 2026-07-09; the panel now consumes `getItemCostBreakdown`).
 
 - **LF pricing pays for full purchased sticks** (`stocksRequired × stockLength × $/ft`),
   not net footage — consistent with LB pricing on purchased weight. EA pricing
