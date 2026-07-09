@@ -181,6 +181,28 @@ export async function PUT(request, { params }) {
       }
     });
 
+    // ── Server-authoritative recompute ────────────────────────────────────
+    // Run the engine over the incoming tree and persist the SERVER's numbers;
+    // client-asserted totals are received but only used for drift detection.
+    // If the engine itself throws on unexpected data, fall back to client
+    // values rather than failing the save (shakeout behavior) — but log it
+    // under the same greppable prefix.
+    let recomputed = null;
+    try {
+      recomputed = await recomputePayload(data);
+      const diffs = diffAssertedTotals(data, recomputed, data.bidAmount ?? null);
+      if (diffs.length > 0) {
+        logTotalsMismatch(projectId, diffs);
+      }
+    } catch (err) {
+      console.warn('[TOTALS-MISMATCH]', JSON.stringify({
+        at: new Date().toISOString(),
+        projectId,
+        error: 'recompute-failed',
+        message: err.message,
+      }));
+    }
+
     const updatedProject = await prisma.$transaction(async (tx) => {
 
       // ── 1. Update project-level fields ───────────────────────────────────
@@ -206,7 +228,9 @@ export async function PUT(request, { params }) {
           dashboardStatus: data.dashboardStatus ?? null,
           newOrCo: data.newOrCo ?? null,
           notes: data.notes ?? null,
-          bidAmount: data.bidAmount ?? null,
+          // Server-computed grand total; the client's asserted bidAmount is
+          // never the stored value (drift is logged above).
+          bidAmount: recomputed ? recomputed.totals.grandTotal : (data.bidAmount ?? null),
           typeStructural: data.typeStructural ?? false,
           typeMiscellaneous: data.typeMiscellaneous ?? false,
           typeOrnamental: data.typeOrnamental ?? false,
@@ -331,6 +355,8 @@ export async function PUT(request, { params }) {
         for (let mi = 0; mi < incomingMats.length; mi++) {
           const mat = incomingMats[mi];
           const matIsNew = !isExistingId(mat.id, existingMatIds);
+          // Server-recomputed counterpart (index-aligned with the payload)
+          const rMat = recomputed?.items?.[i]?.materials?.[mi];
 
           const matData = {
             sortOrder: mi,
@@ -343,13 +369,13 @@ export async function PUT(request, { params }) {
             stocksRequired: mat.stocksRequired || 0,
             waste: mat.waste || 0,
             weightPerFt: (mat.weightPerFoot ?? mat.weightPerFt ?? 0),
-            fabWeight: mat.fabWeight || 0,
-            stockWeight: mat.stockWeight || 0,
+            fabWeight: (rMat ? rMat.fabWeight : mat.fabWeight) || 0,
+            stockWeight: (rMat ? rMat.stockWeight : mat.stockWeight) || 0,
             priceBy: mat.priceBy || 'LB',
             unitPrice: mat.unitPrice || 0,
             pricePerFt: mat.pricePerFt || 0,
             pricePerLb: mat.pricePerLb || 0,
-            totalCost: mat.totalCost || 0,
+            totalCost: (rMat ? rMat.totalCost : mat.totalCost) || 0,
             galvanized: mat.galvanized || false,
             galvRate: mat.galvRate || 0,
             width: mat.width || null,
@@ -382,13 +408,15 @@ export async function PUT(request, { params }) {
           for (let fi = 0; fi < incomingMatFabs.length; fi++) {
             const fab = incomingMatFabs[fi];
             const fabIsNew = !isExistingId(fab.id, existingMatFabIds);
+            const rFab = rMat?.fabrication?.[fi];
             const fabData = {
               sortOrder: fi,
               operation: fab.operation || '',
-              quantity: fab.quantity || 0,
+              // quantity too: the auto-galv line's qty is the recomputed fabWeight
+              quantity: (rFab ? rFab.quantity : fab.quantity) || 0,
               unit: fab.unit || 'ea',
               rate: fab.unitPrice || fab.rate || 0,
-              totalCost: fab.totalCost || 0,
+              totalCost: (rFab ? rFab.totalCost : fab.totalCost) || 0,
               connWeight: fab.connWeight || 0,
               isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
             };
@@ -505,13 +533,14 @@ export async function PUT(request, { params }) {
         for (let ifi = 0; ifi < incomingItemFabs.length; ifi++) {
           const ifab = incomingItemFabs[ifi];
           const ifabIsNew = !isExistingId(ifab.id, existingItemFabIds);
+          const rIfab = recomputed?.items?.[i]?.fabrication?.[ifi];
           const ifabData = {
             sortOrder: ifi,
             operation: ifab.operation || '',
             quantity: ifab.quantity || 0,
             unit: ifab.unit || 'ea',
             rate: ifab.unitPrice || ifab.rate || 0,
-            totalCost: ifab.totalCost || 0,
+            totalCost: (rIfab ? rIfab.totalCost : ifab.totalCost) || 0,
           };
           if (ifabIsNew) {
             await tx.itemFabrication.create({
@@ -543,10 +572,11 @@ export async function PUT(request, { params }) {
         }
 
         for (const [costType, costData] of incomingRecapEntries) {
+          const rRecap = recomputed?.items?.[i]?.recapCosts?.[costType];
           const rcData = {
             cost: costData.cost || 0,
             markup: costData.markup || 0,
-            total: costData.total || 0,
+            total: (rRecap ? rRecap.total : costData.total) || 0,
             hours: costData.hours || 0,
             rate: costData.rate || 0,
           };
@@ -674,7 +704,11 @@ export async function PUT(request, { params }) {
       });
     });
 
-    return NextResponse.json(updatedProject);
+    // The persisted tree already holds the server's numbers; serverTotals
+    // gives the client the recomputed roll-up for reconciliation.
+    return NextResponse.json(
+      recomputed ? { ...updatedProject, serverTotals: recomputed.totals } : updatedProject
+    );
 
   } catch (error) {
     console.error('Error saving project:', error);
