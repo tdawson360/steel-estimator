@@ -6,6 +6,7 @@ import CustomerSearchInput from './CustomerSearchInput';
 
 // Company Logo (Base64 encoded)
 import COMPANY_LOGO from '../lib/logo.js';
+import { DEFAULT_PRICING_RATES } from '../lib/estimating/rates';
 
 // ── Session-expiry stash ──────────────────────────────────────────────────────
 // When a save fails because the session died, the full save payload is kept in
@@ -2443,7 +2444,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   };
   
   // Tax Category
-  const TAX_RATE = 0.0825;
+  const TAX_RATE = DEFAULT_PRICING_RATES.taxRate;
   const [taxCategory, setTaxCategory] = useState(null);
 
   // Cross-item stock nesting (persisted per project)

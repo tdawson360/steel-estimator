@@ -103,11 +103,11 @@ export function componentModuleEnv() {
   return moduleEnvCache;
 }
 
-// TAX_RATE as declared in the component (characterized, not assumed)
+// TAX_RATE now lives in lib/estimating/rates.js (the component consumes
+// DEFAULT_PRICING_RATES.taxRate) — characterized from the rates source.
+import { DEFAULT_PRICING_RATES } from '../../lib/estimating/rates.js';
 export function componentTaxRate() {
-  const m = componentSrc.match(/const TAX_RATE = ([0-9.]+);/);
-  if (!m) throw new Error('TAX_RATE declaration not found');
-  return parseFloat(m[1]);
+  return DEFAULT_PRICING_RATES.taxRate;
 }
 
 // ── Component-scope function factories ───────────────────────────────────────

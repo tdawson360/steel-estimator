@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
 import prisma from '../../../lib/db';
+import { DEFAULT_PRICING_RATES } from '../../../lib/estimating/rates';
 
 // ── SHAPE SIZE NORMALIZATION ──────────────────────────────────────────────────
 
@@ -607,7 +608,7 @@ async function enrichItemsWithPricing(items) {
 
   // Fetch shop labor rate (needed to compute WF connection costs from laborHours)
   const rates = await prisma.pricingRates.findUnique({ where: { id: 1 } });
-  const shopLaborRate = rates?.shopLaborRatePerHr ?? 65;
+  const shopLaborRate = rates?.shopLaborRatePerHr ?? DEFAULT_PRICING_RATES.shopLaborRatePerHr;
 
   // Batch-fetch beam-specific records, including their parent category (for laborHours)
   const beamRows = await prisma.beamConnectionData.findMany({
