@@ -222,34 +222,25 @@ export function makeRfqUpload(initialItems, calculateMaterialFn) {
 }
 
 // ── Import route (app/api/import-csv/route.js) ──────────────────────────────
-const ROUTE_EXPORTS = [
-  'normalizeShapeSize', 'parseFeetInches', 'parseCSVLine', 'parseTakeoffCSV',
-  'generateEndLabor', 'generateRowFabOps',
-  'parseMarkIsParent', 'getMarkBase',
-  'memberFingerprint', 'consolidateMembers', 'mergeFabOps', 'aggregateTakeoffData',
-  'END_LABOR_MAP', 'HOLE_MAP', 'WELD_MAP', 'CONNECTION_MAP', 'PREP_MAP',
-];
-
-// Connection pricing is now the single engine implementation — both former
-// copies (route.js inner closure, lib/fab-pricing.js inner closure) route
-// through lib/estimating/connection-pricing.js. The dual tests keep running
-// against both ENTRY POINTS, which now provably share one implementation.
+// The takeoff-import pure functions now live in
+// lib/estimating/import-takeoff.js; connection pricing is the single engine
+// implementation in lib/estimating/connection-pricing.js. The dual tests keep
+// running against both ENTRY POINTS, which now provably share one
+// implementation.
 import * as libConnx from '../../lib/estimating/connection-pricing.js';
+import * as libTakeoff from '../../lib/estimating/import-takeoff.js';
+import { normalizeShapeSize as libNormalizeShapeSize } from '../../lib/estimating/sizes.js';
 
-let routeEnvCache = null;
 export function routeEnv() {
-  if (!routeEnvCache) {
-    const code = sliceBetween(routeSrc, 'function normalizeShapeSize', '\n// Enrich each member');
-    routeEnvCache = {
-      ...evalWith(code, ROUTE_EXPORTS),
-      normalizeToBeamSizeKey: libConnx.normalizeBeamSizeKey,
-      getShapeTypeFromKey: libConnx.getShapeTypeFromKey,
-      CUT_COST_FIELD: libConnx.CUT_COST_FIELD,
-      CONN_PRICING: libConnx.CONN_PRICING,
-      GLOBAL_OP_FIELD: libConnx.GLOBAL_OP_FIELD,
-    };
-  }
-  return routeEnvCache;
+  return {
+    ...libTakeoff,
+    normalizeShapeSize: libNormalizeShapeSize,
+    normalizeToBeamSizeKey: libConnx.normalizeBeamSizeKey,
+    getShapeTypeFromKey: libConnx.getShapeTypeFromKey,
+    CUT_COST_FIELD: libConnx.CUT_COST_FIELD,
+    CONN_PRICING: libConnx.CONN_PRICING,
+    GLOBAL_OP_FIELD: libConnx.GLOBAL_OP_FIELD,
+  };
 }
 
 // getConnxCost — entry point A (import route path)
