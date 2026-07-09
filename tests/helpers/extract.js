@@ -77,28 +77,43 @@ export function evalWith(code, returns, injections = {}) {
   return fn(...names.map((n) => injections[n]));
 }
 
-// ── Component module scope (everything before the React component) ──────────
-const COMPONENT_MODULE_EXPORTS = [
-  'roundCustom', 'fmtWt', 'fmtPrice', 'fmtRate', 'fmtQuotePrice',
-  'calcPlateWeightPerFoot', 'plateThicknesses', 'steelDatabase',
-  'standardStockLengths', 'pipeStockLengths', 'angleStockLengths',
-  'hssStockLengths', 'plateStockLengths', 'roundBarStockLengths',
-  'getStockLengthsForCategory', 'calculateOptimalStock',
-  'isNestableMaterial', 'nestCutsFFD', 'computeProjectNest', 'MAX_NEST_PIECES',
-  'compressGroupSticks',
+// ── Component module scope ───────────────────────────────────────────────────
+// Data modules and pure helpers have been extracted to lib/estimating/ — the
+// env composes real imports with per-declaration slices of whatever still
+// lives in the component. As extraction proceeds, names migrate from the
+// sliced list to the imports; test assertions and snapshots never change.
+import * as libAisc from '../../lib/estimating/aisc-shapes.js';
+import * as libFabOps from '../../lib/estimating/fab-operations.js';
+import * as libPlates from '../../lib/estimating/plates.js';
+import * as libStockLengths from '../../lib/estimating/stock-lengths.js';
+import * as libFormat from '../../lib/estimating/format.js';
+import * as libSizes from '../../lib/estimating/sizes.js';
+
+const LIB_ENV = {
+  ...libAisc, ...libFabOps, ...libPlates, ...libStockLengths, ...libFormat, ...libSizes,
+};
+
+// Names still sliced out of the component (in declaration-dependency order)
+const COMPONENT_SLICED = [
+  'calculateOptimalStock',
+  'NEST_EXCLUDED_CATEGORIES', 'isNestableMaterial', 'nestCutsFFD',
+  'MAX_NEST_PIECES', 'computeProjectNest',
   'toAlphaSeq', 'toChildAlphaSuffix', 'parseAlphaSeq', 'parseChildAlphaSuffix',
-  'MATERIAL_SORT_PRESETS',
-  'normalizeShapeSize', 'translateSizeToAISC',
+  'MATERIAL_SORT_PRESETS', 'compressGroupSticks',
   'parseCSVLine', 'findColumnIndex', 'parseRevuCSV', 'aggregateImportData',
-  'getConnectionWeight', 'wfConnectionWeights', 'cConnectionWeights',
-  'CONNECTION_WEIGHT_OPS', 'OP_PRICING_FIELD', 'OP_WEIGHT_FIELD', 'OP_DEFAULT_UNIT',
 ];
 
 let moduleEnvCache = null;
 export function componentModuleEnv() {
   if (!moduleEnvCache) {
-    const code = sliceBetween(componentSrc, 'const steelDatabase = {', '\nconst SteelEstimator = ');
-    moduleEnvCache = evalWith(code, COMPONENT_MODULE_EXPORTS);
+    const code = COMPONENT_SLICED.map((n) => declSource(componentSrc, n)).join('\n');
+    const sliced = evalWith(code, COMPONENT_SLICED, {
+      getStockLengthsForCategory: LIB_ENV.getStockLengthsForCategory,
+      translateSizeToAISC: LIB_ENV.translateSizeToAISC,
+      normalizeShapeSize: LIB_ENV.normalizeShapeSize,
+      steelDatabase: LIB_ENV.steelDatabase,
+    });
+    moduleEnvCache = { ...LIB_ENV, ...sliced };
   }
   return moduleEnvCache;
 }
