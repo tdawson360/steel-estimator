@@ -1,63 +1,13 @@
-// pdfUtils.js — Pure JS helpers for PDF generation (no JSX, no React)
-// Mirrors the formatting + calculation functions from SteelEstimator.jsx
+// pdfUtils.js — thin re-export layer over the estimating engine.
+// The former local copies of roundCustom/fmt*/getItemTotal/getItemCostBreakdown
+// are collapsed into lib/estimating/ (single implementations); the export
+// surface here is unchanged so PDF components keep importing from this file.
 
-export const roundCustom = (num) => {
-  if (num === null || num === undefined || isNaN(num)) return 0;
-  const decimal = num - Math.floor(num);
-  return decimal <= 0.29 ? Math.floor(num) : Math.ceil(num);
-};
+export { roundCustom, fmtPrice, fmtRate, fmtQuotePrice, fmtRate4 } from '../../lib/estimating/format';
+export { getItemTotal, getItemCostBreakdown } from '../../lib/estimating/totals';
 
-export const fmtPrice = (num) => {
-  return '$' + roundCustom(num).toLocaleString();
-};
-
-export const fmtRate = (num) => {
-  if (num === null || num === undefined || isNaN(num)) return '$0.00';
-  return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-// Supplier rates converted from CWT carry 4 decimals ($47.85/cwt → $0.4785/lb).
-// Shows 2 places minimum, up to 4 when the rate needs them.
-export const fmtRate4 = (num) => {
-  if (num === null || num === undefined || isNaN(num)) return '$0.00';
-  return '$' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-};
-
-export const fmtQuotePrice = (num) => {
-  const rounded = roundCustom(num);
-  return '$' + rounded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-// Mirrors SteelEstimator.jsx getItemTotal (line 2343)
-export const getItemTotal = (item) => {
-  const matCost = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-  const matFabCost = item.materials.reduce((s, m) => {
-    return s + (m.fabrication ? m.fabrication.reduce((fs, f) => fs + (f.totalCost || 0), 0) : 0);
-  }, 0);
-  const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-  const totalFabCost = matFabCost + itemFabCost;
-  const markedUpMatCost = matCost * (1 + (item.materialMarkup || 0) / 100);
-  const markedUpFabCost = totalFabCost * (1 + (item.fabMarkup || 0) / 100);
-  const recapCost = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
-  return markedUpMatCost + markedUpFabCost + recapCost;
-};
-
-// Returns breakdown used in the Recap table columns
-export const getItemCostBreakdown = (item) => {
-  const material = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-  const matFabCost = item.materials.reduce((s, m) => {
-    return s + (m.fabrication ? m.fabrication.reduce((fs, f) => fs + (f.totalCost || 0), 0) : 0);
-  }, 0);
-  const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-  const fabrication = matFabCost + itemFabCost;
-  const recapCost = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
-  const matMarkupAmt = material * (item.materialMarkup || 0) / 100;
-  const fabMarkupAmt = fabrication * (item.fabMarkup || 0) / 100;
-  const total = getItemTotal(item);
-  return { material, matMarkupAmt, fabrication, fabMarkupAmt, recapCost, total };
-};
-
-// Return visible fab ops for a material (filter galv rows)
+// Return visible fab ops for a material (filter galv rows) — display concern,
+// stays here.
 export const visibleFabOps = (fab) => {
   return (fab || []).filter(f => !f.isAutoGalv && !f.isConnGalv);
 };

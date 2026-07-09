@@ -24,6 +24,13 @@ import {
 import { toAlphaSeq, toChildAlphaSuffix, parseAlphaSeq, parseChildAlphaSuffix } from '../lib/estimating/sequence';
 import { MATERIAL_SORT_PRESETS } from '../lib/estimating/sorting';
 import { calculateMaterial as engineCalculateMaterial } from '../lib/estimating/material-calc';
+import {
+  calculateItemTax as engineCalculateItemTax,
+  itemTaxBreakdown as engineItemTaxBreakdown,
+  getItemTotal,
+  calculateBreakoutTotals as engineBreakoutTotals,
+  projectTotals,
+} from '../lib/estimating/totals';
 
 // ── Session-expiry stash ──────────────────────────────────────────────────────
 // When a save fails because the session died, the full save payload is kept in
@@ -509,65 +516,9 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   };
 
   // Calculate tax for a single item based on taxCategory
-  const calculateItemTax = (item) => {
-    if (!taxCategory || taxCategory === 'resale' || taxCategory === 'noTax') return 0;
-    
-    const matCost = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-    const matMarkup = matCost * (item.materialMarkup || 0) / 100;
-    
-    if (taxCategory === 'newConstruction') {
-      return (matCost + matMarkup) * TAX_RATE;
-    }
-    
-    if (taxCategory === 'fob') {
-      const matFabCost = item.materials.reduce((s, m) => s + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0);
-      const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-      const fabCost = matFabCost + itemFabCost;
-      const fabMarkup = fabCost * (item.fabMarkup || 0) / 100;
-      return (matCost + matMarkup + fabCost + fabMarkup) * TAX_RATE;
-    }
-    
-    return 0;
-  };
+  const calculateItemTax = (item) => engineCalculateItemTax(item, taxCategory, DEFAULT_PRICING_RATES);
 
-  const getItemTaxBreakdown = (item) => {
-    const matCost = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-    const matMarkupPct = item.materialMarkup || 0;
-    const matMarkup = matCost * matMarkupPct / 100;
-    const matFabCost = item.materials.reduce((s, m) => s + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0);
-    const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-    const fabCost = matFabCost + itemFabCost;
-    const fabMarkupPct = item.fabMarkup || 0;
-    const fabMarkup = fabCost * fabMarkupPct / 100;
-    const recapTotal = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
-
-    let taxableBase = 0;
-    let taxableComponents = [];
-    let notTaxed = [];
-
-    if (!taxCategory || taxCategory === 'resale' || taxCategory === 'noTax') {
-      notTaxed = ['Materials', 'Material Markup', 'Fabrication', 'Fab Markup', 'Recap Costs'];
-    } else if (taxCategory === 'newConstruction') {
-      taxableBase = matCost + matMarkup;
-      if (matCost > 0) taxableComponents.push({ label: 'Material Cost', amount: matCost });
-      if (matMarkup > 0) taxableComponents.push({ label: `Material Markup (${matMarkupPct}%)`, amount: matMarkup });
-      notTaxed = [];
-      if (fabCost > 0) notTaxed.push(`Fabrication (${fmtPrice(fabCost)})`);
-      if (fabMarkup > 0) notTaxed.push(`Fab Markup (${fmtPrice(fabMarkup)})`);
-      if (recapTotal > 0) notTaxed.push(`Recap/Labor (${fmtPrice(recapTotal)})`);
-    } else if (taxCategory === 'fob') {
-      taxableBase = matCost + matMarkup + fabCost + fabMarkup;
-      if (matCost > 0) taxableComponents.push({ label: 'Material Cost', amount: matCost });
-      if (matMarkup > 0) taxableComponents.push({ label: `Material Markup (${matMarkupPct}%)`, amount: matMarkup });
-      if (fabCost > 0) taxableComponents.push({ label: 'Fabrication Cost', amount: fabCost });
-      if (fabMarkup > 0) taxableComponents.push({ label: `Fab Markup (${fabMarkupPct}%)`, amount: fabMarkup });
-      notTaxed = [];
-      if (recapTotal > 0) notTaxed.push(`Recap/Labor (${fmtPrice(recapTotal)})`);
-    }
-
-    const taxAmount = taxableBase * TAX_RATE;
-    return { taxableBase, taxableComponents, notTaxed, taxAmount, matCost, matMarkup, fabCost, fabMarkup, recapTotal };
-  };
+  const getItemTaxBreakdown = (item) => engineItemTaxBreakdown(item, taxCategory, DEFAULT_PRICING_RATES);
   
   // Vendor RFQ
   const [showRfqModal, setShowRfqModal] = useState(false);
@@ -1651,69 +1602,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   };
 
   // Calculate item total
-  const getItemTotal = (item) => {
-    const matCost = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-    // Include material-level fab costs
-    const matFabCost = item.materials.reduce((s, m) => {
-      return s + (m.fabrication ? m.fabrication.reduce((fs, f) => fs + (f.totalCost || 0), 0) : 0);
-    }, 0);
-    // Plus item-level fab costs
-    const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-    const totalFabCost = matFabCost + itemFabCost;
-    // Apply separate markups to material and fab costs
-    const markedUpMatCost = matCost * (1 + (item.materialMarkup || 0) / 100);
-    const markedUpFabCost = totalFabCost * (1 + (item.fabMarkup || 0) / 100);
-    // Add recap costs (not marked up)
-    const recapCost = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
-    return markedUpMatCost + markedUpFabCost + recapCost;
-  };
+  // getItemTotal now imported from lib/estimating/totals (single implementation)
 
   // Calculate breakout totals
-  const calculateBreakoutTotals = () => {
-    const result = {
-      baseBid: 0,
-      deducts: [],
-      adds: []
-    };
-
-    // Get items with no group or base group - these are always in base bid
-    items.forEach(item => {
-      const itemTotal = getItemTotal(item);
-      const group = breakoutGroups.find(g => g.id === item.breakoutGroupId);
-      
-      if (!group || group.type === 'base') {
-        result.baseBid += itemTotal;
-      } else if (group.type === 'deduct') {
-        // Deducts are included in base bid but shown as options
-        result.baseBid += itemTotal;
-      }
-      // Add items are NOT included in base bid
-    });
-
-    // Add adjustments to base bid (internal - baked in but not shown separately on quote)
-    const totalAdjustments = adjustments.reduce((sum, adj) => sum + (parseFloat(adj.amount) || 0), 0);
-    result.baseBid += totalAdjustments;
-
-    // Calculate deduct totals
-    breakoutGroups.filter(g => g.type === 'deduct').forEach(group => {
-      const groupItems = items.filter(i => i.breakoutGroupId === group.id);
-      const total = groupItems.reduce((s, i) => s + getItemTotal(i), 0);
-      if (total > 0) {
-        result.deducts.push({ ...group, total, items: groupItems });
-      }
-    });
-
-    // Calculate add totals
-    breakoutGroups.filter(g => g.type === 'add').forEach(group => {
-      const groupItems = items.filter(i => i.breakoutGroupId === group.id);
-      const total = groupItems.reduce((s, i) => s + getItemTotal(i), 0);
-      if (total > 0) {
-        result.adds.push({ ...group, total, items: groupItems });
-      }
-    });
-
-    return result;
-  };
+  const calculateBreakoutTotals = () => engineBreakoutTotals(items, breakoutGroups, adjustments);
 
   // Memoized breakout totals to avoid recalculating on every render
   const breakoutTotals = useMemo(() => calculateBreakoutTotals(), [items, breakoutGroups, adjustments]);
@@ -3243,64 +3135,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   }, [projectNest, stockLengthOverrides]);
 
   // Calculate totals
-  const calculateTotals = () => {
-    let totalMaterialCost = 0;
-    let totalFabricationCost = 0;
-    let totalFabWeight = 0;
-    let totalStockWeight = 0;
-    let totalRecapCosts = 0;
-    let totalMaterialMarkup = 0;
-    let totalFabMarkup = 0;
-    let totalConnectionWeight = 0;
-
-    items.forEach(item => {
-      let itemMatCost = 0;
-      let itemFabCost = 0;
-      
-      item.materials.forEach(mat => {
-        itemMatCost += mat.totalCost || 0;
-        totalFabWeight += mat.fabWeight || 0;
-        totalStockWeight += mat.stockWeight || 0;
-        // Add material-level fabrication costs and connection weights
-        if (mat.fabrication) {
-          mat.fabrication.forEach(fab => {
-            itemFabCost += fab.totalCost || 0;
-            // Add connection weights
-            if (CONNECTION_WEIGHT_OPS.has(fab.operation) && fab.connWeight) {
-              totalConnectionWeight += (fab.quantity || 0) * fab.connWeight;
-            }
-          });
-        }
-      });
-      // Add item-level fabrication costs
-      item.fabrication.forEach(fab => {
-        itemFabCost += fab.totalCost || 0;
-      });
-      
-      // Calculate markups for this item (separate material and fab)
-      const matMarkupAmount = itemMatCost * ((item.materialMarkup || 0) / 100);
-      const fabMarkupAmount = itemFabCost * ((item.fabMarkup || 0) / 100);
-      totalMaterialMarkup += matMarkupAmount;
-      totalFabMarkup += fabMarkupAmount;
-      
-      // Add to totals (before markup)
-      totalMaterialCost += itemMatCost;
-      totalFabricationCost += itemFabCost;
-      
-      // Add recap costs
-      Object.values(item.recapCosts).forEach(cost => {
-        totalRecapCosts += cost.total || 0;
-      });
-    });
-
-    const totalMarkup = totalMaterialMarkup + totalFabMarkup;
-    const totalTax = items.reduce((s, i) => s + calculateItemTax(i), 0);
-    const subtotal = totalMaterialCost + totalFabricationCost + totalMarkup + totalRecapCosts + totalTax;
-    const totalAdjustments = adjustments.reduce((sum, adj) => sum + (parseFloat(adj.amount) || 0), 0);
-    const grandTotal = subtotal + totalAdjustments;
-
-    return { totalMaterialCost, totalFabricationCost, totalMaterialMarkup, totalFabMarkup, totalMarkup, totalRecapCosts, totalTax, totalFabWeight, totalStockWeight, totalConnectionWeight, subtotal, totalAdjustments, grandTotal };
-  };
+  const calculateTotals = () => projectTotals(items, adjustments, taxCategory, DEFAULT_PRICING_RATES).totals;
 
   const totals = useMemo(() => calculateTotals(), [items, adjustments, taxCategory]);
 

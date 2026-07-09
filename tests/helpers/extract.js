@@ -137,46 +137,29 @@ export function makeCalculateMaterial({ availableLengthsFor } = {}) {
   );
 }
 
+// Tax / item totals / breakout / project totals now live in
+// lib/estimating/totals.js (single implementations). The makers keep their
+// old signatures so test files and golden masters are untouched.
+import * as libTotals from '../../lib/estimating/totals.js';
+
 export function makeTaxFns(taxCategory) {
-  const env = componentModuleEnv();
-  const code = [
-    `const TAX_RATE = ${componentTaxRate()};`,
-    declSource(componentSrc, 'calculateItemTax'),
-    declSource(componentSrc, 'getItemTaxBreakdown'),
-  ].join('\n');
-  return evalWith(code, ['calculateItemTax', 'getItemTaxBreakdown'], {
-    taxCategory,
-    fmtPrice: env.fmtPrice,
-  });
+  const rates = DEFAULT_PRICING_RATES;
+  return {
+    calculateItemTax: (item) => libTotals.calculateItemTax(item, taxCategory, rates),
+    getItemTaxBreakdown: (item) => libTotals.itemTaxBreakdown(item, taxCategory, rates),
+  };
 }
 
 export function makeGetItemTotal() {
-  const code = declSource(componentSrc, 'getItemTotal');
-  return evalWith(code, ['getItemTotal']).getItemTotal;
+  return libTotals.getItemTotal;
 }
 
 export function makeBreakoutTotals({ items, breakoutGroups, adjustments }) {
-  const code = [
-    declSource(componentSrc, 'getItemTotal'),
-    declSource(componentSrc, 'calculateBreakoutTotals'),
-  ].join('\n');
-  return evalWith(code, ['calculateBreakoutTotals'], {
-    items, breakoutGroups, adjustments,
-  }).calculateBreakoutTotals;
+  return () => libTotals.calculateBreakoutTotals(items, breakoutGroups, adjustments);
 }
 
 export function makeCalculateTotals({ items, adjustments, taxCategory }) {
-  const env = componentModuleEnv();
-  const code = [
-    `const TAX_RATE = ${componentTaxRate()};`,
-    declSource(componentSrc, 'calculateItemTax'),
-    declSource(componentSrc, 'calculateTotals'),
-  ].join('\n');
-  return evalWith(code, ['calculateTotals'], {
-    items, adjustments, taxCategory,
-    CONNECTION_WEIGHT_OPS: env.CONNECTION_WEIGHT_OPS,
-    fmtPrice: env.fmtPrice,
-  }).calculateTotals;
+  return () => libTotals.projectTotals(items, adjustments, taxCategory, DEFAULT_PRICING_RATES).totals;
 }
 
 export function makeBuildStockListExport({ displayedStockList, sizePricing, projectNest, stockListFilter = '' }) {
