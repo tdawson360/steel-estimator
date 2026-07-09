@@ -98,24 +98,13 @@ const LIB_ENV = {
   ...libStockOpt, ...libNesting, ...libSequence, ...libSorting,
 };
 
-// Names still sliced out of the component (in declaration-dependency order)
-const COMPONENT_SLICED = [
-  'parseCSVLine', 'findColumnIndex', 'parseRevuCSV', 'aggregateImportData',
-];
+import * as libRevu from '../../lib/estimating/import-revu.js';
+import { parseCSVLine as libParseCSVLine } from '../../lib/estimating/import-takeoff.js';
 
-let moduleEnvCache = null;
+// Everything the tests need from the former component module scope now lives
+// in lib/estimating/ — no slicing remains at module level.
 export function componentModuleEnv() {
-  if (!moduleEnvCache) {
-    const code = COMPONENT_SLICED.map((n) => declSource(componentSrc, n)).join('\n');
-    const sliced = evalWith(code, COMPONENT_SLICED, {
-      getStockLengthsForCategory: LIB_ENV.getStockLengthsForCategory,
-      translateSizeToAISC: LIB_ENV.translateSizeToAISC,
-      normalizeShapeSize: LIB_ENV.normalizeShapeSize,
-      steelDatabase: LIB_ENV.steelDatabase,
-    });
-    moduleEnvCache = { ...LIB_ENV, ...sliced };
-  }
-  return moduleEnvCache;
+  return { ...LIB_ENV, ...libRevu, parseCSVLine: libParseCSVLine };
 }
 
 // TAX_RATE now lives in lib/estimating/rates.js (the component consumes
