@@ -201,6 +201,7 @@ model Item {
   fabrication     ItemFabrication[]
   recapCosts      RecapCost[]
   snapshots       ItemSnapshot[]
+  laborGroups     LaborGroup[]
 
   @@index([projectId, sortOrder])
 }
@@ -283,11 +284,50 @@ model MaterialFabrication {
   
   // Galvanizing auto-generated line
   isGalvLine   Boolean @default(false)    // True if auto-created for galvanizing
-  
+
+  // Per-op length in inches/feet for IN/LF-unit ops (qty × length × rate)
+  length       Float?
+  // Connection galvanizing (separate from the material-level galv flag)
+  galvanized   Boolean @default(false)
+  galvWeight   Float?
+  // Child-fab pricing target ('self' or a parent material id, stored as string)
+  applyTo      String?
+
+  // Labor group membership (grouped pricing — rate comes from the group)
+  laborGroupId Int?
+  laborGroup   LaborGroup? @relation(fields: [laborGroupId], references: [id], onDelete: SetNull)
+
   materialId   Int
   material     Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@index([materialId, sortOrder])
+}
+
+// =============================================================================
+// LABOR GROUP
+// =============================================================================
+// Grouped fab-op pricing within one item: fab rows on members of the same
+// shape family (e.g. all W12s) sharing one operation are priced once as a
+// single unit rate. Member rows keep their own quantities; the group rate is
+// stamped onto each member's rate and line totals stay per-row.
+
+model LaborGroup {
+  id           Int     @id @default(autoincrement())
+  sortOrder    Int     @default(0)
+
+  operation    String  @default("")       // "WF Connx", "Cut- Single Cope End", ...
+  familyKey    String  @default("")       // "W12", "HSS 4x4", "L 3x3", ...
+  unit         String  @default("ea")
+  rate         Float   @default(0)        // The single group rate
+  collapsed    Boolean @default(false)    // Persisted UI collapse state
+  colorIndex   Int     @default(0)        // Stable palette slot
+
+  itemId       Int
+  item         Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  fabrications MaterialFabrication[]
+
+  @@index([itemId, sortOrder])
 }
 
 // =============================================================================
@@ -347,7 +387,13 @@ model ChildMaterialFabrication {
   totalCost    Float   @default(0)
   connWeight   Float   @default(0)
   isGalvLine   Boolean @default(false)
-  
+
+  // Same lossy-persistence fixes as MaterialFabrication (FINDINGS #9)
+  length       Float?
+  galvanized   Boolean @default(false)
+  galvWeight   Float?
+  applyTo      String?
+
   childMaterialId Int
   childMaterial   ChildMaterial @relation(fields: [childMaterialId], references: [id], onDelete: Cascade)
 
