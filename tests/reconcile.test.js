@@ -108,3 +108,68 @@ describe('reconcileItems', () => {
     expect(merged).toBe(items);
   });
 });
+
+describe('reconcileItems with labor groups', () => {
+  const groupedClient = () => ([
+    {
+      id: 1,
+      itemNumber: '001',
+      recapCosts: {},
+      laborGroups: [
+        { id: 1719500000010.5, operation: 'Cut- Straight', familyKey: 'W12', unit: 'EA', rate: 8.5, collapsed: true, colorIndex: 2 },
+      ],
+      materials: [
+        {
+          id: 2, size: 'W12x26', totalCost: 100, stockWeight: 50, fabWeight: 40,
+          fabrication: [
+            { id: 1719500000011.1, operation: 'Cut- Straight', quantity: 2, totalCost: 17, laborGroupId: 1719500000010.5 },
+          ],
+          children: [],
+        },
+      ],
+      fabrication: [],
+      snapshots: [],
+    },
+  ]);
+  const groupedSaved = () => ([
+    {
+      id: 1,
+      itemNumber: '001',
+      recapCosts: [],
+      laborGroups: [
+        { id: 61, operation: 'Cut- Straight', familyKey: 'W12', unit: 'EA', rate: 8.5, collapsed: true, colorIndex: 2, sortOrder: 0 },
+      ],
+      materials: [
+        {
+          id: 2, totalCost: 100, stockWeight: 50, fabWeight: 40,
+          fabrication: [
+            { id: 301, operation: 'Cut- Straight', quantity: 2, totalCost: 17, laborGroupId: 61 },
+          ],
+          children: [],
+        },
+      ],
+      fabrication: [],
+      snapshots: [],
+    },
+  ]);
+
+  it('remaps temp group ids onto created rows, including fab laborGroupId', () => {
+    const items = groupedClient();
+    const merged = reconcileItems(items, groupedSaved());
+    expect(merged[0].laborGroups[0].id).toBe(61);
+    // rate/collapsed/colorIndex stay client values (server echo)
+    expect(merged[0].laborGroups[0].rate).toBe(8.5);
+    expect(merged[0].laborGroups[0].collapsed).toBe(true);
+    expect(merged[0].materials[0].fabrication[0].laborGroupId).toBe(61);
+    expect(merged[0].materials[0].fabrication[0].id).toBe(301);
+  });
+
+  it('is identity-preserving at steady state with groups present', () => {
+    const items = groupedClient();
+    const once = reconcileItems(items, groupedSaved());
+    const twice = reconcileItems(once, groupedSaved());
+    expect(twice).toBe(once);
+    expect(twice[0].laborGroups).toBe(once[0].laborGroups);
+    expect(twice[0].materials).toBe(once[0].materials);
+  });
+});

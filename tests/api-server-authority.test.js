@@ -162,6 +162,220 @@ describe('tamper test: PUT persists engine numbers, never client assertions', ()
   });
 });
 
+describe('FINDINGS #9 fix: length-based fab lines survive persistence', () => {
+  it('an IN-unit fab line round-trips its length and stays qty × len × rate', async () => {
+    const beam = mat({ size: 'W16x26', category: 'W Shape', pieces: 2, length: 24, priceBy: 'LB', unitPrice: 0.85 });
+    beam.fabrication = [
+      fab({ operation: 'Welding- Fillet', quantity: 3, unit: 'IN', length: 12, unitPrice: 1.5 }), // 3 × 12 × 1.5 = 54
+    ];
+    const payload = {
+      projectName: 'Length Fixture',
+      taxCategory: 'fob',
+      items: [item({ itemNumber: '001', itemName: 'LENGTH', materials: [beam] })],
+      adjustments: [],
+    };
+    const engine = recomputeEstimate({ items: payload.items, adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+
+    const project = await prisma.project.create({ data: { createdById: 1, projectName: 'Length Fixture' } });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await PUT(
+      putRequest({ ...payload, bidAmount: engine.totals.grandTotal }),
+      { params: { id: String(project.id) } }
+    );
+    expect(res.status).toBe(200);
+    expect(warn.mock.calls.filter(c => c[0] === '[TOTALS-MISMATCH]')).toEqual([]);
+    warn.mockRestore();
+
+    // The length column persisted, and the stored total is the length-based one
+    const stored = await loadStored(project.id);
+    const storedFab = stored.items[0].materials[0].fabrication[0];
+    expect(storedFab.length).toBe(12);
+    expect(storedFab.totalCost).toBeCloseTo(54, 6);
+
+    // Recomputing over the DB tree reproduces the same number — the
+    // save/load round-trip is no longer lossy for length-based lines.
+    const reloaded = recomputeEstimate(dbProjectToEngineTree(stored), DEFAULT_PRICING_RATES);
+    expect(reloaded.items[0].materials[0].fabrication[0].totalCost).toBeCloseTo(54, 6);
+  });
+});
+
+describe('labor groups: PUT persistence round-trip', () => {
+  // Two W12 beams with a cope group (temp id). Member rates deliberately
+  // stale — the group rate must drive the persisted totals.
+  function groupedPayload(tempGroupId) {
+    const beamA = mat({ size: 'W12x26', category: 'W Shape', pieces: 2, length: 30, priceBy: 'LB', unitPrice: 0.85 });
+    beamA.fabrication = [
+      fab({ operation: 'Cut- Single Cope End', quantity: 2, unit: 'EA', unitPrice: 8.5, laborGroupId: tempGroupId }),
+      fab({ operation: 'Drill Holes', quantity: 4, unit: 'EA', unitPrice: 2.5 }),
+    ];
+    const beamB = mat({ size: 'W12x14', category: 'W Shape', pieces: 1, length: 22, priceBy: 'LB', unitPrice: 0.85 });
+    beamB.fabrication = [
+      fab({ operation: 'Cut- Single Cope End', quantity: 1, unit: 'EA', unitPrice: 8.5, laborGroupId: tempGroupId }),
+    ];
+    return {
+      projectName: 'Group Fixture',
+      taxCategory: 'fob',
+      items: [item({
+        itemNumber: '001', itemName: 'GROUPED',
+        materials: [beamA, beamB],
+        laborGroups: [{
+          id: tempGroupId, operation: 'Cut- Single Cope End', familyKey: 'W12',
+          unit: 'EA', rate: 8.5, collapsed: true, colorIndex: 3,
+        }],
+      })],
+      adjustments: [],
+    };
+  }
+
+  async function loadWithGroups(id) {
+    return prisma.project.findUnique({
+      where: { id },
+      include: {
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            laborGroups: { orderBy: { sortOrder: 'asc' } },
+            materials: {
+              orderBy: { sortOrder: 'asc' },
+              include: { fabrication: { orderBy: { sortOrder: 'asc' } } },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  let groupProjectId;
+
+  it('creates the group, links member fabs, and persists group-rate totals', async () => {
+    const tempGroupId = Date.now() + Math.random();
+    const payload = groupedPayload(tempGroupId);
+    const engine = recomputeEstimate({ items: payload.items, adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+
+    const project = await prisma.project.create({ data: { createdById: 1, projectName: 'Group Fixture' } });
+    groupProjectId = project.id;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await PUT(
+      putRequest({ ...payload, bidAmount: engine.totals.grandTotal }),
+      { params: { id: String(project.id) } }
+    );
+    expect(res.status).toBe(200);
+    expect(warn.mock.calls.filter(c => c[0] === '[TOTALS-MISMATCH]')).toEqual([]);
+    warn.mockRestore();
+
+    // Response carries the created group and remapped fab references
+    const body = await res.json();
+    const savedGroup = body.items[0].laborGroups[0];
+    expect(typeof savedGroup.id).toBe('number');
+    expect(savedGroup.operation).toBe('Cut- Single Cope End');
+    expect(savedGroup.familyKey).toBe('W12');
+    expect(savedGroup.rate).toBe(8.5);
+    expect(savedGroup.collapsed).toBe(true);
+    expect(savedGroup.colorIndex).toBe(3);
+
+    const stored = await loadWithGroups(project.id);
+    const dbGroup = stored.items[0].laborGroups[0];
+    expect(stored.items[0].materials[0].fabrication[0].laborGroupId).toBe(dbGroup.id);
+    expect(stored.items[0].materials[1].fabrication[0].laborGroupId).toBe(dbGroup.id);
+    expect(stored.items[0].materials[0].fabrication[1].laborGroupId).toBe(null);
+    // Grouped line totals persisted at the group rate
+    expect(stored.items[0].materials[0].fabrication[0].totalCost).toBeCloseTo(2 * 8.5, 6);
+    expect(stored.items[0].materials[1].fabrication[0].totalCost).toBeCloseTo(1 * 8.5, 6);
+  });
+
+  it('a group-rate change re-persists member totals at the new rate, no drift', async () => {
+    const stored = await loadWithGroups(groupProjectId);
+    const tree = dbProjectToEngineTree(stored);
+    // Client edits the group rate and stamps members (what updateLaborGroupRate does)
+    tree.items[0].laborGroups[0].rate = 10;
+    for (const m of tree.items[0].materials) {
+      for (const f of m.fabrication) {
+        if (f.laborGroupId != null) {
+          f.unitPrice = 10; f.rate = 10;
+          f.totalCost = (f.quantity || 0) * 10;
+        }
+      }
+    }
+    const engine = recomputeEstimate(tree, DEFAULT_PRICING_RATES);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await PUT(
+      putRequest({ projectName: 'Group Fixture', taxCategory: 'fob', items: tree.items, adjustments: [], bidAmount: engine.totals.grandTotal }),
+      { params: { id: String(groupProjectId) } }
+    );
+    expect(res.status).toBe(200);
+    expect(warn.mock.calls.filter(c => c[0] === '[TOTALS-MISMATCH]')).toEqual([]);
+    warn.mockRestore();
+
+    const after = await loadWithGroups(groupProjectId);
+    expect(after.items[0].laborGroups[0].rate).toBe(10);
+    expect(after.items[0].materials[0].fabrication[0].totalCost).toBeCloseTo(2 * 10, 6);
+    expect(after.items[0].materials[1].fabrication[0].totalCost).toBeCloseTo(1 * 10, 6);
+  });
+
+  it('dissolving the group deletes its row and nulls member references', async () => {
+    const stored = await loadWithGroups(groupProjectId);
+    const tree = dbProjectToEngineTree(stored);
+    tree.items[0].laborGroups = [];
+    // Rows keep their (stamped) rates — dissolve leaves pricing in place
+    const engine = recomputeEstimate(tree, DEFAULT_PRICING_RATES);
+
+    const res = await PUT(
+      putRequest({ projectName: 'Group Fixture', taxCategory: 'fob', items: tree.items, adjustments: [], bidAmount: engine.totals.grandTotal }),
+      { params: { id: String(groupProjectId) } }
+    );
+    expect(res.status).toBe(200);
+
+    const after = await loadWithGroups(groupProjectId);
+    expect(after.items[0].laborGroups).toEqual([]);
+    for (const m of after.items[0].materials) {
+      for (const f of m.fabrication) expect(f.laborGroupId).toBe(null);
+    }
+    // Rates survived the dissolve
+    expect(after.items[0].materials[0].fabrication[0].rate).toBe(10);
+  });
+
+  it('deleting an item that has groups does not FK-fail', async () => {
+    const tempGroupId = Date.now() + Math.random();
+    const payload = groupedPayload(tempGroupId);
+    const project = await prisma.project.create({ data: { createdById: 1, projectName: 'Group Delete Fixture' } });
+    let res = await PUT(putRequest(payload), { params: { id: String(project.id) } });
+    expect(res.status).toBe(200);
+
+    // Save again with the item removed entirely
+    res = await PUT(
+      putRequest({ projectName: 'Group Delete Fixture', taxCategory: 'fob', items: [], adjustments: [] }),
+      { params: { id: String(project.id) } }
+    );
+    expect(res.status).toBe(200);
+    const remaining = await prisma.laborGroup.findMany({ where: { item: { projectId: project.id } } });
+    expect(remaining).toEqual([]);
+  });
+
+  it('duplicating a grouped project carries groups and membership', async () => {
+    const tempGroupId = Date.now() + Math.random();
+    const payload = groupedPayload(tempGroupId);
+    const engine = recomputeEstimate({ items: payload.items, adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    const project = await prisma.project.create({ data: { createdById: 1, projectName: 'Group Dup Fixture' } });
+    const putRes = await PUT(
+      putRequest({ ...payload, bidAmount: engine.totals.grandTotal }),
+      { params: { id: String(project.id) } }
+    );
+    expect(putRes.status).toBe(200);
+
+    const res = await DUPLICATE_POST({}, { params: { id: String(project.id) } });
+    expect(res.status).toBe(201);
+    const { id: copyId } = await res.json();
+
+    const copy = await loadWithGroups(copyId);
+    const copyGroup = copy.items[0].laborGroups[0];
+    expect(copyGroup.operation).toBe('Cut- Single Cope End');
+    expect(copyGroup.rate).toBe(8.5);
+    expect(copy.items[0].materials[0].fabrication[0].laborGroupId).toBe(copyGroup.id);
+    expect(copy.items[0].materials[1].fabrication[0].laborGroupId).toBe(copyGroup.id);
+  });
+});
+
 describe('duplicate test: the copy is engine-correct immediately', () => {
   it('duplicating a project with corrupted stored totals yields engine-over-DB-tree numbers', async () => {
     // Simulate a pre-regime project: corrupt stored rows directly in the DB
@@ -174,9 +388,9 @@ describe('duplicate test: the copy is engine-correct immediately', () => {
 
     // The copy's expected numbers: the engine over the SAVED tree (what the
     // client would compute after loading this project). Note this differs
-    // from `honest` — plateThickness/plateWidth, customWeight, and fab-line
-    // length have no DB columns, so those lines lose their inputs across a
-    // save/load round-trip (see FINDINGS.md #9).
+    // from `honest` — plateThickness/plateWidth and customWeight have no DB
+    // columns, so those lines lose their inputs across a save/load
+    // round-trip (see FINDINGS.md #9; fab-line length DOES persist now).
     const expected = recomputeEstimate(dbProjectToEngineTree(await loadStored(projectId)), DEFAULT_PRICING_RATES);
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

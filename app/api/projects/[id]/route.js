@@ -27,6 +27,7 @@ const FULL_PROJECT_INCLUDE = {
         }
       },
       fabrication: { orderBy: { sortOrder: 'asc' } },
+      laborGroups: { orderBy: { sortOrder: 'asc' } },
       recapCosts: true,
       snapshots: {
         orderBy: { sortOrder: 'asc' },
@@ -167,6 +168,7 @@ export async function PUT(request, { params }) {
               }
             },
             fabrication: true,
+            laborGroups: true,
             recapCosts: true,
             snapshots: { select: { id: true } },
           }
@@ -294,6 +296,8 @@ export async function PUT(request, { params }) {
             await tx.materialFabrication.deleteMany({ where: { materialId: mat.id } });
           }
           await tx.material.deleteMany({ where: { itemId } });
+          // Labor groups go after the fab rows that reference them are gone
+          await tx.laborGroup.deleteMany({ where: { itemId } });
           await tx.itemFabrication.deleteMany({ where: { itemId } });
           await tx.recapCost.deleteMany({ where: { itemId } });
           await tx.itemSnapshot.deleteMany({ where: { itemId } });
@@ -332,8 +336,40 @@ export async function PUT(request, { params }) {
           await tx.item.update({ where: { id: activeItemId }, data: itemData });
         }
 
-        // ── 3a. Diff materials within this item ────────────────────────────
+        // ── 3a-pre. Diff labor groups ──────────────────────────────────────
+        // Creates/updates happen BEFORE the materials loop so fab rows can
+        // resolve laborGroupId through the temp→DB map (breakoutGroupMap
+        // pattern). Deletes are DEFERRED until after the materials loop so no
+        // fab write ever references a just-deleted group.
         const curItem = currentItemMap.get(activeItemId);
+        const existingLgIds = new Set((curItem?.laborGroups || []).map(g => g.id));
+        const incomingLgs = item.laborGroups || [];
+        const lgDiff = diffList(incomingLgs, existingLgIds);
+        const laborGroupMap = {};
+
+        for (let gi = 0; gi < incomingLgs.length; gi++) {
+          const g = incomingLgs[gi];
+          const gData = {
+            sortOrder: gi,
+            operation: g.operation || '',
+            familyKey: g.familyKey || '',
+            unit: g.unit || 'ea',
+            rate: g.rate || 0,
+            collapsed: !!g.collapsed,
+            colorIndex: g.colorIndex || 0,
+          };
+          if (isExistingId(g.id, existingLgIds)) {
+            await tx.laborGroup.update({ where: { id: Number(g.id) }, data: gData });
+            laborGroupMap[g.id] = Number(g.id);
+          } else {
+            const createdLg = await tx.laborGroup.create({
+              data: { ...gData, itemId: activeItemId },
+            });
+            laborGroupMap[g.id] = createdLg.id;
+          }
+        }
+
+        // ── 3a. Diff materials within this item ────────────────────────────
         const existingMatIds = new Set((curItem?.materials || []).map(m => m.id));
         const curMatMap = new Map((curItem?.materials || []).map(m => [m.id, m]));
         const incomingMats = item.materials || [];
@@ -419,6 +455,13 @@ export async function PUT(request, { params }) {
               totalCost: (rFab ? rFab.totalCost : fab.totalCost) || 0,
               connWeight: fab.connWeight || 0,
               isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
+              length: (typeof fab.length === 'number' && isFinite(fab.length)) ? fab.length : null,
+              galvanized: fab.galvanized || false,
+              galvWeight: (typeof fab.galvWeight === 'number' && isFinite(fab.galvWeight)) ? fab.galvWeight : null,
+              applyTo: fab.applyTo != null ? String(fab.applyTo) : null,
+              // Resolve through the temp→DB map; a reference to a group not in
+              // this payload (deleted) nulls out rather than dangling.
+              laborGroupId: fab.laborGroupId != null ? (laborGroupMap[fab.laborGroupId] ?? null) : null,
             };
             if (fabIsNew) {
               await tx.materialFabrication.create({
@@ -506,6 +549,10 @@ export async function PUT(request, { params }) {
                 totalCost: cfab.totalCost || 0,
                 connWeight: cfab.connWeight || 0,
                 isGalvLine: cfab.isGalvLine || cfab.isAutoGalv || cfab.isConnGalv || false,
+                length: (typeof cfab.length === 'number' && isFinite(cfab.length)) ? cfab.length : null,
+                galvanized: cfab.galvanized || false,
+                galvWeight: (typeof cfab.galvWeight === 'number' && isFinite(cfab.galvWeight)) ? cfab.galvWeight : null,
+                applyTo: cfab.applyTo != null ? String(cfab.applyTo) : null,
               };
               if (cfabIsNew) {
                 await tx.childMaterialFabrication.create({
@@ -518,6 +565,13 @@ export async function PUT(request, { params }) {
               }
             }
           }
+        }
+
+        // ── 3a-post. Deferred labor group deletes ────────────────────────
+        // All fab writes above resolved laborGroupId through the map, so
+        // nothing references these rows any more.
+        if (lgDiff.toDelete.length > 0) {
+          await tx.laborGroup.deleteMany({ where: { id: { in: lgDiff.toDelete } } });
         }
 
         // ── 3e. Diff item-level fabrication ──────────────────────────────

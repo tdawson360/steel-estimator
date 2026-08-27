@@ -36,6 +36,7 @@ export async function POST(request, { params }) {
           include: {
             recapCosts: true,
             fabrication: true,
+            laborGroups: true,
             snapshots: true,
             materials: {
               include: {
@@ -208,6 +209,21 @@ export async function POST(request, { params }) {
           },
         });
 
+        // Copy labor groups first (sequential — material fab rows below need
+        // the old→new ID map to keep their group membership)
+        const lgIdMap = new Map();
+        for (const lg of item.laborGroups || []) {
+          const newLg = await tx.laborGroup.create({
+            data: {
+              sortOrder: lg.sortOrder, operation: lg.operation,
+              familyKey: lg.familyKey, unit: lg.unit, rate: lg.rate,
+              collapsed: lg.collapsed, colorIndex: lg.colorIndex,
+              itemId: newItem.id,
+            },
+          });
+          lgIdMap.set(lg.id, newLg.id);
+        }
+
         // Batch-create recap costs and item-level fab in parallel
         // (both are flat sets that only need newItem.id, not returned IDs)
         await Promise.all([
@@ -271,7 +287,11 @@ export async function POST(request, { params }) {
                   unit: fab.unit, rate: fab.rate,
                   totalCost: rMat?.fabrication?.[fi]?.totalCost ?? fab.totalCost,
                   connWeight: fab.connWeight,
-                  isGalvLine: fab.isGalvLine, materialId: newMat.id,
+                  isGalvLine: fab.isGalvLine,
+                  length: fab.length, galvanized: fab.galvanized,
+                  galvWeight: fab.galvWeight, applyTo: fab.applyTo,
+                  laborGroupId: fab.laborGroupId != null ? (lgIdMap.get(fab.laborGroupId) ?? null) : null,
+                  materialId: newMat.id,
                 })),
               })
             : Promise.resolve();
@@ -303,7 +323,10 @@ export async function POST(request, { params }) {
                     sortOrder: fab.sortOrder, operation: fab.operation,
                     quantity: fab.quantity, unit: fab.unit, rate: fab.rate,
                     totalCost: fab.totalCost, connWeight: fab.connWeight,
-                    isGalvLine: fab.isGalvLine, childMaterialId: newChild.id,
+                    isGalvLine: fab.isGalvLine,
+                    length: fab.length, galvanized: fab.galvanized,
+                    galvWeight: fab.galvWeight, applyTo: fab.applyTo,
+                    childMaterialId: newChild.id,
                   })),
                 });
               }
