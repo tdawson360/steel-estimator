@@ -57,6 +57,31 @@ describe('parseTakeoffCSV quantity + length rules', () => {
   });
 });
 
+describe('length fallback: Length_Ft OR Measured_Length suffices', () => {
+  // Profiles export both columns by design: users either type a known
+  // dimension into Length_Ft or measure only (Measured_Length formula).
+  const BOTH = 'Item_Number,Item_Description,Quantity,Shape_Size,Length_Ft,Measured_Length,Part_Label,Member_Mark';
+  const csvBoth = (rows) => [BOTH, ...rows].join('\n');
+
+  it('typed Length_Ft overrides the measurement', () => {
+    const { rawRows } = env.parseTakeoffCSV(csvBoth([
+      '1,FRAMING,1,W 8 x 21,20,22.53,HORIZ,',
+    ]));
+    expect(rawRows[0].lengthFt).toBe(20);
+  });
+  it('blank Length_Ft falls through to Measured_Length instead of 0', () => {
+    const { rawRows } = env.parseTakeoffCSV(csvBoth([
+      '1,FRAMING,1,W 8 x 21,,22.53,HORIZ,',
+    ]));
+    expect(rawRows[0].lengthFt).toBe(22.5); // nearest-inch rounding still applies
+  });
+  it("built-in Length feet-inches string parses as last resort", () => {
+    const HDR = 'Item_Number,Item_Description,Quantity,Shape_Size,Length,Part_Label,Member_Mark';
+    const { rawRows } = env.parseTakeoffCSV([HDR, `1,FRAMING,1,W 8 x 21,"28'-1""",HORIZ,`].join('\n'));
+    expect(rawRows[0].lengthFt).toBe(28.08); // parsed as a dimension, not parseFloat -> 28
+  });
+});
+
 describe('generateEndLabor / generateRowFabOps', () => {
   it('maps and splits compound operations', () => {
     expect(env.generateEndLabor('Straight')).toEqual([{ operation: 'Cut- Straight', quantity: 1, unit: 'EA' }]);

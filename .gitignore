@@ -23,3 +23,6 @@ prisma/dev.db-journal
 # Server-authority shakeout log
 mismatch.log
 tests/.tmp-*.db
+
+# Office lock files
+~$*.xlsx
