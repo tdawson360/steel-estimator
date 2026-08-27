@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, Image } from '@react-pdf/renderer';
 import { styles, COLORS, CompanyHeader, PageFooter, SectionBar } from './PdfShared';
-import { visibleFabOps, roundCustom } from './pdfUtils';
+import { visibleFabOps, visibleFabOpsForGroups, computeGroupSummaries, groupAnchors, laborGroupPdfColor, roundCustom } from './pdfUtils';
 
 // ─── Price-Redacted Summary Page ────────────────────────────────────────────
 
@@ -124,8 +124,14 @@ const ErectorSummaryPage = ({
 // ─── Materials table — no pricing columns ───────────────────────────────────
 // Columns: Shape/Size | Description | Len (ft) | Qty | Fab Wt | Operation | Qty | Unit
 
-const MaterialsTable = ({ materials }) => {
+const MaterialsTable = ({ materials, laborGroups = [] }) => {
   const parentMats = materials.filter(m => !m.parentMaterialId);
+  // Labor groups: shaded member rows (hidden when collapsed) + one summary
+  // line per group after its family block — no pricing on this document
+  const groupById = new Map(laborGroups.map(g => [g.id, g]));
+  const groupSummaries = laborGroups.length ? computeGroupSummaries({ materials, laborGroups }) : [];
+  const groupAnchorMap = laborGroups.length ? groupAnchors(materials, laborGroups) : new Map();
+  const lastParentId = parentMats.length ? parentMats[parentMats.length - 1].id : null;
 
   // Fixed widths for the right-side columns
   const LEN = 44;
@@ -150,7 +156,7 @@ const MaterialsTable = ({ materials }) => {
 
       {parentMats.map((mat) => {
         const children = materials.filter(m => m.parentMaterialId === mat.id);
-        const matFabOps = visibleFabOps(mat.fabrication);
+        const matFabOps = visibleFabOpsForGroups(mat.fabrication, groupById);
 
         return (
           <View key={mat.id}>
@@ -166,21 +172,26 @@ const MaterialsTable = ({ materials }) => {
               <Text style={{ width: UNIT, fontSize: 8 }} />
             </View>
 
-            {/* Parent fab ops — green sub-rows */}
-            {matFabOps.map(f => (
-              <View key={f.id} style={{ flexDirection: 'row', backgroundColor: COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: 16, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
+            {/* Parent fab ops — green sub-rows (grouped ops carry their group's shade) */}
+            {matFabOps.map(f => {
+              const grp = f.laborGroupId != null ? groupById.get(f.laborGroupId) : null;
+              const gc = grp ? laborGroupPdfColor(grp.colorIndex) : null;
+              const opColor = gc ? gc.text : COLORS.green;
+              return (
+              <View key={f.id} style={{ flexDirection: 'row', backgroundColor: gc ? gc.fill : COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: 16, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
                 <Text style={{ flex: 3, fontSize: 7 }} />
                 <Text style={{ flex: 2, fontSize: 7 }} />
                 <Text style={{ width: LEN, fontSize: 7 }} />
                 <Text style={{ width: PQTY, fontSize: 7 }} />
                 <Text style={{ width: FABWT, fontSize: 7 }} />
-                <Text style={[styles.bold, { flex: 2, fontSize: 7, color: COLORS.green, marginLeft: 8 }]}>
+                <Text style={[styles.bold, { flex: 2, fontSize: 7, color: opColor, marginLeft: 8 }]}>
                   {f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '')}
                 </Text>
-                <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
-                <Text style={{ width: UNIT, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.unit || ''}</Text>
+                <Text style={{ width: OQTY, fontSize: 7, textAlign: 'right', color: opColor }}>{f.quantity || ''}</Text>
+                <Text style={{ width: UNIT, fontSize: 7, textAlign: 'right', color: opColor }}>{f.unit || ''}</Text>
               </View>
-            ))}
+              );
+            })}
 
             {/* Child materials */}
             {children.map(child => {
@@ -214,6 +225,24 @@ const MaterialsTable = ({ materials }) => {
                 </View>
               );
             })}
+            {/* Labor group summary lines — aggregate op counts, no pricing */}
+            {groupSummaries
+              .filter(g => (groupAnchorMap.get(g.id) ?? lastParentId) === mat.id)
+              .map(g => {
+                const gc = laborGroupPdfColor(g.colorIndex);
+                return (
+                <View key={`lg-${g.id}`} style={{ flexDirection: 'row', backgroundColor: gc.fill, paddingVertical: 3, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
+                  <Text style={[styles.bold, { flex: 3, fontSize: 7, color: gc.text }]}>Group: {g.familyKey}</Text>
+                  <Text style={{ flex: 2, fontSize: 7, color: COLORS.gray }}>{g.memberCount} member row{g.memberCount === 1 ? '' : 's'}</Text>
+                  <Text style={{ width: LEN, fontSize: 7 }} />
+                  <Text style={{ width: PQTY, fontSize: 7 }} />
+                  <Text style={{ width: FABWT, fontSize: 7 }} />
+                  <Text style={[styles.bold, { flex: 2, fontSize: 7, color: gc.text, marginLeft: 8 }]}>{g.operation}</Text>
+                  <Text style={[styles.bold, { width: OQTY, fontSize: 7, textAlign: 'right', color: gc.text }]}>{g.totalQty || ''}</Text>
+                  <Text style={[styles.bold, { width: UNIT, fontSize: 7, textAlign: 'right', color: gc.text }]}>{(g.unit || 'ea').toUpperCase()}</Text>
+                </View>
+                );
+              })}
           </View>
         );
       })}
@@ -373,7 +402,7 @@ export const ErectorScopePdf = ({
           )}
 
           {item.materials && item.materials.length > 0 ? (
-            <MaterialsTable materials={item.materials} />
+            <MaterialsTable materials={item.materials} laborGroups={item.laborGroups || []} />
           ) : (
             <Text style={{ fontSize: 8, color: COLORS.gray, marginBottom: 8 }}>No materials on this item.</Text>
           )}

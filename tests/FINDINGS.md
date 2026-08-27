@@ -102,20 +102,22 @@ round-trip:
   manifestation of #5).
 - **`customWeight`** — no column at all; a Custom line reloads with
   weightPerFoot 0 and re-prices at $0.
-- **MaterialFabrication `length`** — no column; an IN/LF length-based fab
-  line (`qty × length × rate`) reloads without length and recomputes as
-  `qty × rate`. Pre-regime the stored `totalCost` masked this on screen until
-  the line was next edited; under server-authoritative recompute the drift is
-  logged (`[TOTALS-MISMATCH]`) and the engine number is persisted on the next
-  save — the loss now surfaces instead of lurking.
+- **MaterialFabrication `length`** — ~~no column~~ **FIXED 2026-08-27** with
+  the labor-groups migration (`add_labor_groups`): `length`, `galvanized`,
+  `galvWeight`, and `applyTo` now have columns on MaterialFabrication and
+  ChildMaterialFabrication, are written by the PUT and duplicate routes, and
+  are mapped by both mirrored normalizers (client loader + `dbFabToEngine`).
+  An IN/LF length-based fab line now round-trips exactly — pinned in
+  `api-server-authority.test.js` ("FINDINGS #9 fix").
 
-Consequence for the server-authority regime: recompute of a payload (PUT) has
-full fidelity, but recompute of a SAVED tree (duplicate route, or any save
-after a reload) sees only the persisted inputs. The API characterization test
-(`api-server-authority.test.js`) pins both: the duplicate of a project with
-these lossy lines matches the engine over the DB tree, and a round-trip-stable
-project duplicates with zero drift. Adjudication (adding the missing columns
-vs blessing the loss) is deferred — behavior frozen as-is.
+Still open: the two material-level inputs above (`plateThickness`/`plateWidth`
+mapping and `customWeight`). Consequence for the server-authority regime:
+recompute of a payload (PUT) has full fidelity, but recompute of a SAVED tree
+(duplicate route, or any save after a reload) sees only the persisted inputs.
+The API characterization test (`api-server-authority.test.js`) pins both: the
+duplicate of a project with these lossy lines matches the engine over the DB
+tree, and a round-trip-stable project duplicates with zero drift. Adjudication
+of the remaining two fields is deferred — behavior frozen as-is.
 
 ---
 

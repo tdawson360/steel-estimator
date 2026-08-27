@@ -1,5 +1,51 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`labor-grouped fixture end-to-end > totals + group summaries snapshot (fob), pinned to the penny 1`] = `
+{
+  "groups": [
+    {
+      "family": "W12",
+      "members": 2,
+      "op": "Cut- Single Cope End",
+      "qty": 3,
+      "rate": 8.5,
+      "total": 25.5,
+    },
+    {
+      "family": "W12",
+      "members": 1,
+      "op": "WF Connx",
+      "qty": 2,
+      "rate": 1.1,
+      "total": 66,
+    },
+    {
+      "family": "L 3x3",
+      "members": 2,
+      "op": "Drill Holes",
+      "qty": 18,
+      "rate": 2.25,
+      "total": 40.5,
+    },
+  ],
+  "totals": {
+    "grandTotal": 2485.95,
+    "subtotal": 2485.95,
+    "totalAdjustments": 0,
+    "totalConnectionWeight": 85,
+    "totalFabMarkup": 8.29,
+    "totalFabWeight": 2111.2,
+    "totalFabricationCost": 165.75,
+    "totalMarkup": 201.24,
+    "totalMaterialCost": 1929.5,
+    "totalMaterialMarkup": 192.95,
+    "totalRecapCosts": 0,
+    "totalStockWeight": 2250,
+    "totalTax": 189.46,
+  },
+}
+`;
+
 exports[`large fixture (330 materials) end-to-end > grandTotal to the penny, per tax category 1`] = `
 {
   "fob": {

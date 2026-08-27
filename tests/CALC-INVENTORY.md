@@ -71,6 +71,20 @@ stubs, `import` = plain ES import.
 | 45 | `normalizeKey` / `getShapeType` | size → pricing key (compare vs #42) |
 | 46 | `connxCost` (inside getFabPricingForSize) | **copy B** of connection-cost rule — dual-tested vs #43 |
 
+## lib/estimating/labor-groups.js (plain imports — added 2026-08-27)
+
+| # | Function | Notes |
+|---|---|---|
+| 47 | `familyKeyForSize` | shape family key (W12, HSS 4x4, L 3x3…); Plate/Flats/Custom → null (ungroupable) — `labor-groups.test.js` |
+| 48 | `applyGroupRates` | stamps group rate onto member fab rows before `computeFabLineTotal`; hooked into `recomputeEstimate` (order-preserving — index alignment) |
+| 49 | `computeGroupSummaries` | group line: totalQty = Σ member qty, totalCost = Σ member line totals (NOT count × rate — connection/length rows use their per-row formulas) |
+| 50 | `buildAutoGroups` | import/manual grouping: join-existing precedence, min-2 rule, uniform-rate prefill vs mixed→0 |
+| 51 | `sortMaterialsByFamily` / `familyBlocks` / `groupAnchors` | family-block ordering + group-line placement (display concern, still pinned) |
+
+Grouped-pricing end-to-end: `e2e-golden.test.js` ("labor-grouped fixture"),
+API persistence round-trip: `api-server-authority.test.js` ("labor groups"),
+reconcile identity: `reconcile.test.js` ("with labor groups").
+
 ## Server-side other
 
 - `handleSave`: `bidAmount = totals.grandTotal` — covered by #22 e2e.

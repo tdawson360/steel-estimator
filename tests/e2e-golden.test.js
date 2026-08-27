@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 import { makeCalculateTotals, makeGetItemTotal, makeBuildStockListExport, componentModuleEnv } from './helpers/extract.js';
 import { getItemTotal as pdfGetItemTotal } from '../components/pdf/pdfUtils.js';
-import { standardFixture, bigFixture } from './helpers/fixtures.js';
+import { standardFixture, bigFixture, mat, fab, item } from './helpers/fixtures.js';
+import { recomputeEstimate, diffAssertedTotals } from '../lib/estimating/recompute.js';
+import { computeGroupSummaries } from '../lib/estimating/labor-groups.js';
+import { DEFAULT_PRICING_RATES } from '../lib/estimating/rates.js';
 
 const env = componentModuleEnv();
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -115,6 +118,80 @@ describe('large fixture (330 materials) end-to-end', () => {
       over: g.overLengthCuts.length, short: g.shortfallCuts.length,
     }));
     expect(summary).toMatchSnapshot();
+  });
+});
+
+describe('labor-grouped fixture end-to-end', () => {
+  // Two families (W12 mixed weights, L3x3), two groups including a
+  // connection-LB group, one group collapsed, one detached row priced
+  // individually, and typed group rates — the feature's full pricing surface.
+  function groupedFixture() {
+    const copeGroup = { id: 8101, operation: 'Cut- Single Cope End', familyKey: 'W12', unit: 'EA', rate: 8.5, collapsed: false, colorIndex: 0, sortOrder: 0 };
+    const connxGroup = { id: 8102, operation: 'WF Connx', familyKey: 'W12', unit: 'LB', rate: 1.1, collapsed: true, colorIndex: 1, sortOrder: 1 };
+    const drillGroup = { id: 8103, operation: 'Drill Holes', familyKey: 'L 3x3', unit: 'EA', rate: 2.25, collapsed: false, colorIndex: 2, sortOrder: 2 };
+
+    const w26 = mat({ size: 'W12x26', category: 'W Shape', pieces: 2, length: 30, priceBy: 'LB', unitPrice: 0.85 });
+    w26.fabrication = [
+      fab({ operation: 'Cut- Single Cope End', quantity: 2, unit: 'EA', unitPrice: 8.5, laborGroupId: 8101 }),
+      fab({ operation: 'WF Connx', quantity: 2, unit: 'LB', unitPrice: 1.1, connWeight: 30, laborGroupId: 8102 }),
+    ];
+    const w14 = mat({ size: 'W12x14', category: 'W Shape', pieces: 1, length: 22, priceBy: 'LB', unitPrice: 0.85 });
+    w14.fabrication = [
+      fab({ operation: 'Cut- Single Cope End', quantity: 1, unit: 'EA', unitPrice: 8.5, laborGroupId: 8101 }),
+      // Detached row: same op + family but individually priced (no group id)
+      fab({ operation: 'WF Connx', quantity: 1, unit: 'LB', unitPrice: 1.35, connWeight: 25 }),
+    ];
+    const angleA = mat({ size: 'L3x3x1/4', category: 'Angle', pieces: 4, length: 8, priceBy: 'LB', unitPrice: 0.9 });
+    angleA.fabrication = [fab({ operation: 'Drill Holes', quantity: 12, unit: 'EA', unitPrice: 2.25, laborGroupId: 8103 })];
+    const angleB = mat({ size: 'L3x3x3/8', category: 'Angle', pieces: 2, length: 6, priceBy: 'LB', unitPrice: 0.9 });
+    angleB.fabrication = [fab({ operation: 'Drill Holes', quantity: 6, unit: 'EA', unitPrice: 2.25, laborGroupId: 8103 })];
+
+    return {
+      items: [item({
+        itemNumber: '001', itemName: 'GROUPED GOLDEN', materialMarkup: 10, fabMarkup: 5,
+        materials: [w26, w14, angleA, angleB],
+        laborGroups: [copeGroup, connxGroup, drillGroup],
+      })],
+      adjustments: [],
+    };
+  }
+
+  it('totals + group summaries snapshot (fob), pinned to the penny', () => {
+    const { items, adjustments } = groupedFixture();
+    const result = recomputeEstimate({ items, adjustments, taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    const summaries = computeGroupSummaries(result.items[0]).map(g => ({
+      op: g.operation, family: g.familyKey, qty: g.totalQty,
+      rate: g.rate, total: round2(g.totalCost), members: g.memberCount,
+    }));
+    expect({ totals: round2All(result.totals), groups: summaries }).toMatchSnapshot();
+
+    // Hand math: cope 3 EA × 8.50; connx (grouped, LB) 2 × 30 × 1.10;
+    // detached connx 1 × 25 × 1.35; drills (12 + 6) × 2.25
+    expect(summaries.find(g => g.op === 'Cut- Single Cope End').total).toBe(25.5);
+    expect(summaries.find(g => g.op === 'WF Connx').total).toBe(66);
+    expect(summaries.find(g => g.op === 'Drill Holes').total).toBe(40.5);
+    const fabLineSum = result.items[0].materials.flatMap(m => m.fabrication).reduce((s, f) => s + (f.totalCost || 0), 0);
+    expect(fabLineSum).toBeCloseTo(25.5 + 66 + 1 * 25 * 1.35 + 40.5, 6);
+  });
+
+  it('client-stamped tree and server recompute agree within a cent', () => {
+    // The client eagerly stamps group rates onto member rows (fixture already
+    // holds stamped rates), so the asserted totals must match the engine.
+    const { items, adjustments } = groupedFixture();
+    const recomputed = recomputeEstimate({ items, adjustments, taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    expect(diffAssertedTotals({ items }, recomputed, null)).toEqual([]);
+  });
+
+  it('a stale member rate cannot drift the persisted totals (group rate wins)', () => {
+    const { items, adjustments } = groupedFixture();
+    // Tamper: client sends a wrong per-row rate on a grouped row
+    items[0].materials[0].fabrication[0].unitPrice = 999;
+    items[0].materials[0].fabrication[0].totalCost = 1998;
+    const recomputed = recomputeEstimate({ items, adjustments, taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    // Engine re-stamps from the group: 2 × 8.50
+    expect(recomputed.items[0].materials[0].fabrication[0].totalCost).toBeCloseTo(17, 6);
+    const diffs = diffAssertedTotals({ items }, recomputed, null);
+    expect(diffs.some(d => d.field === 'materialFab.totalCost')).toBe(true);
   });
 });
 

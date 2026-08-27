@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, Image } from '@react-pdf/renderer';
 import { styles, COLORS, CompanyHeader, PageFooter, SectionBar } from './PdfShared';
-import { fmtPrice, fmtRate, fmtQuotePrice, getItemTotal, getItemCostBreakdown, visibleFabOps, roundCustom } from './pdfUtils';
+import { fmtPrice, fmtRate, fmtQuotePrice, getItemTotal, getItemCostBreakdown, visibleFabOps, visibleFabOpsForGroups, computeGroupSummaries, groupAnchors, laborGroupPdfColor, roundCustom } from './pdfUtils';
 
 // ─── Shared: Blueprint Snapshots grid ──────────────────────────────────────
 
@@ -301,6 +301,13 @@ const QuotePage = ({
 
 const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
   const parentMats = item.materials.filter(m => !m.parentMaterialId);
+  // Labor groups: shading + collapse for member rows, one summary line per
+  // group at the bottom of its family block (mirrors the estimate screen)
+  const laborGroups = item.laborGroups || [];
+  const groupById = new Map(laborGroups.map(g => [g.id, g]));
+  const groupSummaries = laborGroups.length ? computeGroupSummaries(item) : [];
+  const groupAnchorMap = laborGroups.length ? groupAnchors(item.materials, laborGroups) : new Map();
+  const lastParentId = parentMats.length ? parentMats[parentMats.length - 1].id : null;
   const genDate = new Date().toLocaleDateString();
   const dateHeader = estimateDate ? new Date(estimateDate).toLocaleDateString() : genDate;
 
@@ -324,19 +331,43 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
     if (f.isAutoGalv || f.isConnGalv) return null;
     const opName = f.operation === 'Custom' ? (f.customOperation || 'Custom') : (f.operation || '');
     const unitRate = f.unitPrice || f.rate || (f.quantity > 0 ? f.totalCost / f.quantity : 0);
+    // Grouped rows show the group's shade with qty only — the price lives on
+    // the group's summary line
+    const grp = f.laborGroupId != null ? groupById.get(f.laborGroupId) : null;
+    const gc = grp ? laborGroupPdfColor(grp.colorIndex) : null;
+    const opColor = gc ? gc.text : COLORS.green;
     return (
-      <View key={f.id} style={{ flexDirection: 'row', backgroundColor: COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: indent, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
-        <Text style={{ flex: 1, fontSize: 7, color: COLORS.green }}>{opName}</Text>
+      <View key={f.id} style={{ flexDirection: 'row', backgroundColor: gc ? gc.fill : COLORS.lightGreen, paddingVertical: 2, paddingHorizontal: 4, paddingLeft: indent, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
+        <Text style={{ flex: 1, fontSize: 7, color: opColor }}>{opName}</Text>
         <Text style={{ flex: 1, fontSize: 7 }} />
         <Text style={{ width: COL.len, fontSize: 7 }} />
-        <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.quantity || ''}</Text>
+        <Text style={{ width: COL.qty, fontSize: 7, textAlign: 'right', color: opColor }}>{f.quantity || ''}</Text>
         <Text style={{ width: COL.wt, fontSize: 7 }} />
         <Text style={{ width: COL.fabWt, fontSize: 7 }} />
-        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{unitRate ? fmtRate(unitRate) : ''}</Text>
-        <Text style={{ width: COL.total, fontSize: 7, textAlign: 'right', color: COLORS.green }}>{f.totalCost ? fmtPrice(f.totalCost) : ''}</Text>
+        <Text style={{ width: COL.rate, fontSize: 7, textAlign: 'right', color: opColor }}>{grp ? '' : (unitRate ? fmtRate(unitRate) : '')}</Text>
+        <Text style={{ width: COL.total, fontSize: 7, textAlign: 'right', color: opColor }}>{grp ? '' : (f.totalCost ? fmtPrice(f.totalCost) : '')}</Text>
       </View>
     );
   };
+
+  // Group summary line: the group's single price, after its family block
+  const renderGroupRows = (parentId) => groupSummaries
+    .filter(g => (groupAnchorMap.get(g.id) ?? lastParentId) === parentId)
+    .map(g => {
+      const gc = laborGroupPdfColor(g.colorIndex);
+      return (
+        <View key={`lg-${g.id}`} style={{ flexDirection: 'row', backgroundColor: gc.fill, paddingVertical: 3, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: COLORS.medGray, borderBottomStyle: 'solid' }}>
+          <Text style={[styles.bold, { flex: 1, fontSize: 7, color: gc.text }]}>{g.operation} — {g.familyKey}</Text>
+          <Text style={{ flex: 1, fontSize: 7, color: COLORS.gray }}>Group of {g.memberCount}</Text>
+          <Text style={{ width: COL.len, fontSize: 7 }} />
+          <Text style={[styles.bold, { width: COL.qty, fontSize: 7, textAlign: 'right', color: gc.text }]}>{g.totalQty || ''}</Text>
+          <Text style={{ width: COL.wt, fontSize: 7 }} />
+          <Text style={{ width: COL.fabWt, fontSize: 7 }} />
+          <Text style={[styles.bold, { width: COL.rate, fontSize: 7, textAlign: 'right', color: gc.text }]}>{g.rate ? fmtRate(g.rate) : ''}</Text>
+          <Text style={[styles.bold, { width: COL.total, fontSize: 7, textAlign: 'right', color: gc.text }]}>{g.totalCost ? fmtPrice(g.totalCost) : ''}</Text>
+        </View>
+      );
+    });
 
   return (
     <Page size="LETTER" style={styles.page} break>
@@ -357,7 +388,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
 
       {parentMats.map((mat, idx) => {
         const children = item.materials.filter(m => m.parentMaterialId === mat.id);
-        const matFabRows = visibleFabOps(mat.fabrication);
+        const matFabRows = visibleFabOpsForGroups(mat.fabrication, groupById);
         return (
           <View key={mat.id}>
             {/* Parent row */}
@@ -391,6 +422,7 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
                 </View>
               );
             })}
+            {renderGroupRows(mat.id)}
           </View>
         );
       })}
