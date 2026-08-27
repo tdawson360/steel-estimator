@@ -1,7 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { apiFetch, ApiError, SessionExpiredError } from '../lib/api-client';
-import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical, Link2, Unlink, Layers } from 'lucide-react';
+import { laborGroupStyle } from './laborGroupStyles';
 import CustomerSearchInput from './CustomerSearchInput';
 
 // Company Logo (Base64 encoded)
@@ -27,6 +28,11 @@ import { calculateMaterial as engineCalculateMaterial } from '../lib/estimating/
 import { parseRevuCSV, aggregateImportData } from '../lib/estimating/import-revu';
 import { parseVendorPricingCsv, vendorPricingFor, matchVendorPricing } from '../lib/estimating/import-rfq';
 import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch } from '../lib/estimating/fab-costs';
+import {
+  familyKeyForSize, fabGroupKey, isGroupableFab, applyGroupRates,
+  computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
+  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT,
+} from '../lib/estimating/labor-groups';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
 import {
@@ -900,6 +906,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   totalCost: f.totalCost || 0,
                   connWeight: f.connWeight || 0,
                   isGalvLine: isGalv,
+                  length: (typeof f.length === 'number' && isFinite(f.length)) ? f.length : null,
+                  galvanized: f.galvanized || false,
+                  galvWeight: (typeof f.galvWeight === 'number' && isFinite(f.galvWeight)) ? f.galvWeight : null,
+                  applyTo: f.applyTo ?? null,
+                  laborGroupId: f.laborGroupId ?? null,
                   ...(isGalv ? {
                     isAutoGalv: true,
                     description: f.operation === 'Galvanizing' ? `Galv - ${mat.description || mat.shape}` : (f.operation || ''),
@@ -943,6 +954,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     totalCost: f.totalCost || 0,
                     connWeight: f.connWeight || 0,
                     isGalvLine: isGalv,
+                    length: (typeof f.length === 'number' && isFinite(f.length)) ? f.length : null,
+                    galvanized: f.galvanized || false,
+                    galvWeight: (typeof f.galvWeight === 'number' && isFinite(f.galvWeight)) ? f.galvWeight : null,
+                    applyTo: f.applyTo ?? null,
                     ...(isGalv ? {
                       isAutoGalv: true,
                       description: f.operation === 'Galvanizing' ? `Galv - ${child.description || child.shape}` : (f.operation || ''),
@@ -970,18 +985,45 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               caption: s.caption || '',
               sortOrder: s.sortOrder || 0,
             })),
+            laborGroups: (item.laborGroups || []).map(g => ({
+              id: g.id,
+              operation: g.operation || '',
+              familyKey: g.familyKey || '',
+              unit: g.unit || 'ea',
+              rate: g.rate || 0,
+              collapsed: !!g.collapsed,
+              colorIndex: g.colorIndex || 0,
+              sortOrder: g.sortOrder || 0,
+            })),
           };
         });
-        setItems(loadedItems.map(item => ({
-          ...item,
-          materials: resequenceMaterials(item.materials).map(mat => {
-            const calcMat = calculateMaterial(mat);
-            return {
-              ...calcMat,
-              children: (calcMat.children || []).map(c => calculateMaterial(c)),
-            };
-          }),
-        })));
+        setItems(loadedItems.map(item => {
+          const calcItem = {
+            ...item,
+            materials: resequenceMaterials(item.materials).map(mat => {
+              const calcMat = calculateMaterial(mat);
+              return {
+                ...calcMat,
+                children: (calcMat.children || []).map(c => calculateMaterial(c)),
+              };
+            }),
+          };
+          // Labor groups: re-stamp member rates from the group and refresh the
+          // affected line totals so any DB drift self-heals on load.
+          if (!(calcItem.laborGroups || []).length) return calcItem;
+          const stamped = applyGroupRates(calcItem);
+          return {
+            ...stamped,
+            materials: stamped.materials.map(mat => ({
+              ...mat,
+              fabrication: (mat.fabrication || []).map(f =>
+                (f.laborGroupId != null && isGroupableFab(f))
+                  ? { ...f, totalCost: computeFabLineTotal(f) }
+                  : f
+              ),
+            })),
+          };
+        }));
         const expanded = {};
         loadedItems.forEach(item => { expanded[item.id] = true; });
         setExpandedItems(expanded);
@@ -1635,6 +1677,40 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     setTakeoffError(null);
   };
 
+  // Auto-group an imported (or import-merged) item: same shape family + same
+  // operation among parent members → one labor group. Rows matching an
+  // existing group join it and adopt its rate; fresh keys with ≥2 rows form a
+  // new group (uniform enriched rates prefill; mixed rates start at 0 and the
+  // group line shows the needs-pricing flag). Members then sort into family
+  // blocks so each group line lands under its run of like material.
+  const autoGroupImportedItem = (itemLike) => {
+    const { groups, assignments } = buildAutoGroups(itemLike.materials, itemLike.laborGroups || [], {
+      minMembers: 2,
+      makeId: () => Date.now() + Math.random(),
+    });
+    if (!groups.length && !assignments.size) return itemLike;
+    const laborGroups = [...(itemLike.laborGroups || []), ...groups];
+    const groupById = new Map(laborGroups.map(g => [g.id, g]));
+    const materials = itemLike.materials.map(m => {
+      let changed = false;
+      const fabrication = (m.fabrication || []).map(f => {
+        const gid = assignments.get(f.id);
+        if (gid == null) return f;
+        const g = groupById.get(gid);
+        if (!g) return f;
+        changed = true;
+        const stamped = { ...f, laborGroupId: gid, unitPrice: g.rate || 0, rate: g.rate || 0 };
+        return { ...stamped, totalCost: computeFabLineTotal(stamped) };
+      });
+      return changed ? { ...m, fabrication } : m;
+    });
+    return {
+      ...itemLike,
+      laborGroups,
+      materials: resequenceMaterials(sortMaterialsByFamily(materials)),
+    };
+  };
+
   const executeTakeoffImport = () => {
     if (!takeoffPreview || !takeoffPreview.items) return;
 
@@ -1781,7 +1857,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           if (!exists) updatedFab.push({ ...op });
         }
 
-        updatedItems[existingIndex] = {
+        updatedItems[existingIndex] = autoGroupImportedItem({
           ...existingItem,
           itemName: existingItem.itemName === 'New Item' ? importItem.itemName : existingItem.itemName,
           drawingRef: (() => {
@@ -1792,7 +1868,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
           })(),
           materials: updatedMaterials,
           fabrication: updatedFab,
-        };
+        });
         newExpandedItems[existingItem.id] = true;
 
       } else {
@@ -1815,7 +1891,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             shipping: { cost: 0, markup: 0, total: 0 },
           },
         };
-        updatedItems.push(newItem);
+        updatedItems.push(autoGroupImportedItem(newItem));
         newExpandedItems[newId] = true;
       }
     }
@@ -1927,6 +2003,14 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
   // One-time reorder of an item's material lines by the chosen preset.
   // Attachments travel with their parent; resequencing reassigns A, B, C…
   const sortItemMaterials = (itemId, presetKey) => {
+    if (presetKey === 'family') {
+      // Shape-family blocks (W12 run, HSS 4x4 run, …) — how labor groups read
+      setItems(prev => prev.map(item => item.id !== itemId ? item : {
+        ...item,
+        materials: resequenceMaterials(sortMaterialsByFamily(item.materials)),
+      }));
+      return;
+    }
     const preset = MATERIAL_SORT_PRESETS[presetKey];
     if (!preset) return;
     setItems(prev => prev.map(item => {
@@ -2254,7 +2338,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         idsToDelete.push(...childIds);
 
         const remaining = item.materials.filter(m => !idsToDelete.includes(m.id));
-        return { ...item, materials: resequenceMaterials(remaining) };
+        return pruneEmptyLaborGroups({ ...item, materials: resequenceMaterials(remaining) });
       }
       return item;
     }));
@@ -2448,10 +2532,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         connWeight: null,
       };
 
+      // Labor groups: a new parent fab matching an existing group's
+      // family+operation joins it immediately and adopts the group rate.
+      let fabToAdd = newFab;
+      if (!isChild) {
+        const key = fabGroupKey(mat, newFab);
+        const grp = key
+          ? (item.laborGroups || []).find(g => `${g.familyKey}|${g.operation}` === key)
+          : null;
+        if (grp) {
+          fabToAdd = { ...newFab, laborGroupId: grp.id, unitPrice: grp.rate || 0 };
+          fabToAdd.totalCost = computeFabLineTotal(fabToAdd);
+        }
+      }
+
       return {
         ...item,
         materials: item.materials.map(m =>
-          m.id === materialId ? { ...m, fabrication: [...(m.fabrication || []), newFab] } : m
+          m.id === materialId ? { ...m, fabrication: [...(m.fabrication || []), fabToAdd] } : m
         ),
       };
     }));
@@ -2566,8 +2664,46 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
         
         return { ...mat, fabrication: finalFab };
       });
-      
-      return { ...item, materials: updatedMaterials };
+
+      let nextItem = { ...item, materials: updatedMaterials };
+
+      // Labor groups: an operation change re-evaluates membership — a parent
+      // row matching an existing group's family+operation auto-joins it (and
+      // adopts the group rate); a grouped row changed AWAY from its group's
+      // operation detaches (keeping the rate the op-change just applied).
+      if (field === 'operation') {
+        const matNow = updatedMaterials.find(m => m.id === materialId);
+        const fabNow = matNow && !matNow.parentMaterialId
+          ? (matNow.fabrication || []).find(f => f.id === fabId)
+          : null;
+        if (fabNow && isGroupableFab(fabNow)) {
+          const key = fabGroupKey(matNow, fabNow);
+          const grp = key
+            ? (item.laborGroups || []).find(g => `${g.familyKey}|${g.operation}` === key)
+            : null;
+          const targetId = grp ? grp.id : null;
+          if ((fabNow.laborGroupId ?? null) !== targetId) {
+            nextItem = {
+              ...nextItem,
+              materials: nextItem.materials.map(m => m.id !== materialId ? m : {
+                ...m,
+                fabrication: (m.fabrication || []).map(f => {
+                  if (f.id !== fabId) return f;
+                  const moved = {
+                    ...f,
+                    laborGroupId: targetId,
+                    ...(grp ? { unitPrice: grp.rate || 0, rate: grp.rate || 0 } : {}),
+                  };
+                  return { ...moved, totalCost: computeFabLineTotal(moved) };
+                }),
+              }),
+            };
+            nextItem = pruneEmptyLaborGroups(nextItem);
+          }
+        }
+      }
+
+      return nextItem;
     }));
   };
 
@@ -2578,12 +2714,155 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       const updatedMaterials = item.materials.map(mat => {
         if (mat.id !== materialId) return mat;
         // Filter out the target fab AND any linked galv lines (parentFabId or galv-{fabId} pattern)
-        return { ...mat, fabrication: (mat.fabrication || []).filter(f => 
+        return { ...mat, fabrication: (mat.fabrication || []).filter(f =>
           f.id !== fabId && f.parentFabId !== fabId && f.id !== `galv-${fabId}`
         ) };
       });
-      
-      return { ...item, materials: updatedMaterials };
+
+      return pruneEmptyLaborGroups({ ...item, materials: updatedMaterials });
+    }));
+  };
+
+  // ── Labor groups (grouped fab-op pricing within an item) ──────────────────
+  // The group's rate is the ONLY price entry for its member rows: every group
+  // mutation re-stamps member unitPrice/rate and recomputes the line totals,
+  // so client-asserted numbers always match the server recompute.
+
+  // Drop groups that no longer have any member fab rows (auto-dissolve).
+  const pruneEmptyLaborGroups = (item) => {
+    const groups = item.laborGroups || [];
+    if (!groups.length) return item;
+    const used = new Set();
+    for (const m of item.materials) {
+      for (const f of (m.fabrication || [])) {
+        if (f.laborGroupId != null) used.add(f.laborGroupId);
+      }
+    }
+    const kept = groups.filter(g => used.has(g.id));
+    return kept.length === groups.length ? item : { ...item, laborGroups: kept };
+  };
+
+  const updateLaborGroupRate = (itemId, groupId, rate) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const laborGroups = (item.laborGroups || []).map(g => g.id === groupId ? { ...g, rate } : g);
+      const materials = item.materials.map(m => {
+        let changed = false;
+        const fabrication = (m.fabrication || []).map(f => {
+          if (f.laborGroupId !== groupId || !isGroupableFab(f)) return f;
+          changed = true;
+          const stamped = { ...f, unitPrice: rate, rate };
+          return { ...stamped, totalCost: computeFabLineTotal(stamped) };
+        });
+        return changed ? { ...m, fabrication } : m;
+      });
+      return { ...item, laborGroups, materials };
+    }));
+  };
+
+  const toggleLaborGroupCollapsed = (itemId, groupId) => {
+    setItems(prev => prev.map(item => item.id !== itemId ? item : {
+      ...item,
+      laborGroups: (item.laborGroups || []).map(g =>
+        g.id === groupId ? { ...g, collapsed: !g.collapsed } : g),
+    }));
+  };
+
+  // itemId null → every item in the project
+  const setAllLaborGroupsCollapsed = (itemId, collapsed) => {
+    setItems(prev => prev.map(item => {
+      if (itemId != null && item.id !== itemId) return item;
+      if (!(item.laborGroups || []).length) return item;
+      if (item.laborGroups.every(g => !!g.collapsed === collapsed)) return item;
+      return { ...item, laborGroups: item.laborGroups.map(g => ({ ...g, collapsed })) };
+    }));
+  };
+
+  // "Group similar": sweep every matching ungrouped parent fab in the item
+  // into one group, seeded with the clicked row's rate, then pull the family
+  // together so the block reads like a paper takeoff.
+  const groupSimilarFabs = (itemId, materialId, fabId) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const mat = item.materials.find(m => m.id === materialId);
+      const fab = mat && (mat.fabrication || []).find(f => f.id === fabId);
+      if (!mat || !fab || mat.parentMaterialId || fab.laborGroupId != null) return item;
+      const key = fabGroupKey(mat, fab);
+      if (!key) return item;
+      const groups = item.laborGroups || [];
+      const existing = groups.find(g => `${g.familyKey}|${g.operation}` === key);
+      const familyKey = key.slice(0, key.indexOf('|'));
+      const operation = key.slice(key.indexOf('|') + 1);
+      const group = existing || {
+        id: Date.now() + Math.random(),
+        operation,
+        familyKey,
+        unit: fab.unit || 'EA',
+        rate: fab.unitPrice || 0,
+        collapsed: false,
+        colorIndex: nextColorIndex(groups),
+        sortOrder: groups.length,
+      };
+      const materials = item.materials.map(m => {
+        if (m.parentMaterialId) return m;
+        let changed = false;
+        const fabrication = (m.fabrication || []).map(f => {
+          if (f.laborGroupId != null || !isGroupableFab(f)) return f;
+          if (fabGroupKey(m, f) !== key) return f;
+          changed = true;
+          const stamped = { ...f, laborGroupId: group.id, unitPrice: group.rate, rate: group.rate };
+          return { ...stamped, totalCost: computeFabLineTotal(stamped) };
+        });
+        return changed ? { ...m, fabrication } : m;
+      });
+      return {
+        ...item,
+        laborGroups: existing ? groups : [...groups, group],
+        materials: resequenceMaterials(sortMaterialsByFamily(materials)),
+      };
+    }));
+  };
+
+  const joinFabToGroup = (itemId, materialId, fabId, groupId) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const group = (item.laborGroups || []).find(g => g.id === groupId);
+      if (!group) return item;
+      const materials = item.materials.map(m => m.id !== materialId ? m : {
+        ...m,
+        fabrication: (m.fabrication || []).map(f => {
+          if (f.id !== fabId) return f;
+          const stamped = { ...f, laborGroupId: group.id, unitPrice: group.rate, rate: group.rate };
+          return { ...stamped, totalCost: computeFabLineTotal(stamped) };
+        }),
+      });
+      return { ...item, materials };
+    }));
+  };
+
+  // Detached rows keep the group rate as their now-editable starting rate.
+  const detachFabFromGroup = (itemId, materialId, fabId) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const materials = item.materials.map(m => m.id !== materialId ? m : {
+        ...m,
+        fabrication: (m.fabrication || []).map(f =>
+          f.id === fabId ? { ...f, laborGroupId: null } : f),
+      });
+      return pruneEmptyLaborGroups({ ...item, materials });
+    }));
+  };
+
+  // Dissolve: rows return to individual pricing with the group rate left in place.
+  const dissolveLaborGroup = (itemId, groupId) => {
+    setItems(prev => prev.map(item => item.id !== itemId ? item : {
+      ...item,
+      laborGroups: (item.laborGroups || []).filter(g => g.id !== groupId),
+      materials: item.materials.map(m => ({
+        ...m,
+        fabrication: (m.fabrication || []).map(f =>
+          f.laborGroupId === groupId ? { ...f, laborGroupId: null } : f),
+      })),
     }));
   };
 
@@ -3498,6 +3777,24 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                   >
                     Round to 1″
                   </button>
+                  {items.some(i => (i.laborGroups || []).length > 0) && (
+                    <>
+                      <button
+                        onClick={() => setAllLaborGroupsCollapsed(null, true)}
+                        title="Collapse every labor group's member rows project-wide (prints follow this)"
+                        className="flex items-center gap-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Layers size={14} /> Collapse Groups
+                      </button>
+                      <button
+                        onClick={() => setAllLaborGroupsCollapsed(null, false)}
+                        title="Expand every labor group's member rows project-wide"
+                        className="flex items-center gap-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Layers size={14} /> Expand Groups
+                      </button>
+                    </>
+                  )}
                 </div>
                 <button onClick={addItem} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700">
                   <Plus size={16} /> Add Item
@@ -3514,7 +3811,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
               )}
 
-              {items.map(item => (
+              {items.map(item => {
+                // Labor group render data for this item (cheap; recomputed per render)
+                const laborGroups = item.laborGroups || [];
+                const groupById = new Map(laborGroups.map(g => [g.id, g]));
+                const groupSummaries = laborGroups.length ? computeGroupSummaries(item) : [];
+                const groupAnchorMap = laborGroups.length ? groupAnchors(item.materials, laborGroups) : new Map();
+                const itemParents = getParentMaterials(item.materials);
+                const lastParentId = itemParents.length ? itemParents[itemParents.length - 1].id : null;
+                return (
                 <div key={item.id} className="border rounded">
                   <div className="bg-gray-200 dark:bg-gray-600 p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
@@ -3556,10 +3861,23 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                               className="p-1 border rounded text-xs text-gray-700 dark:text-gray-300 dark:bg-gray-800 dark:border-gray-600"
                             >
                               <option value="" disabled>Sort by…</option>
+                              <option value="family">Shape Family</option>
                               {Object.entries(MATERIAL_SORT_PRESETS).map(([k, p]) => (
                                 <option key={k} value={k}>{p.label}</option>
                               ))}
                             </select>
+                            {laborGroups.length > 0 && (
+                              <button
+                                onClick={() => setAllLaborGroupsCollapsed(item.id, !laborGroups.every(g => g.collapsed))}
+                                title={laborGroups.every(g => g.collapsed)
+                                  ? "Expand this item's labor group rows"
+                                  : "Collapse this item's labor group rows (prints follow this)"}
+                                className="flex items-center gap-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
+                              >
+                                <Layers size={12} />
+                                {laborGroups.every(g => g.collapsed) ? 'Expand Groups' : 'Collapse Groups'}
+                              </button>
+                            )}
                             <button
                               onClick={() => mergeDuplicateItemMaterials(item.id)}
                               title="Combine identical lines (same category, size, length, description, galv, pricing, and fab ops) into one, summing quantities"
@@ -3755,16 +4073,31 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         </div>
                                       </td>
                                     </tr>
-                                    {/* Parent material fab rows */}
-                                    {(mat.fabrication || []).filter(f => !f.isAutoGalv && !f.isConnGalv).map(fab => {
+                                    {/* Parent material fab rows (a collapsed group's members are hidden) */}
+                                    {(mat.fabrication || [])
+                                      .filter(f => !f.isAutoGalv && !f.isConnGalv &&
+                                        !(f.laborGroupId != null && groupById.get(f.laborGroupId)?.collapsed))
+                                      .map(fab => {
                                       const hasLength = (fab.unit === 'IN' || fab.unit === 'LF') && fab.length;
                                       const extLen = hasLength ? (fab.quantity || 0) * (fab.length || 0) : null;
                                       const isConnection = CONNECTION_WEIGHT_OPS.has(fab.operation);
-                                      
+                                      // Labor group state for this row
+                                      const grp = fab.laborGroupId != null ? groupById.get(fab.laborGroupId) : null;
+                                      const gStyle = grp ? laborGroupStyle(grp.colorIndex) : null;
+                                      const fabBg = grp ? gStyle.input : 'bg-green-50 dark:bg-green-950';
+                                      const rowKey = !grp ? fabGroupKey(mat, fab) : null;
+                                      const joinTarget = rowKey
+                                        ? laborGroups.find(g => `${g.familyKey}|${g.operation}` === rowKey)
+                                        : null;
+                                      const canGroupSimilar = rowKey && !joinTarget && item.materials.some(m2 =>
+                                        !m2.parentMaterialId && (m2.fabrication || []).some(f2 =>
+                                          f2.id !== fab.id && f2.laborGroupId == null &&
+                                          isGroupableFab(f2) && fabGroupKey(m2, f2) === rowKey));
+
                                       return (
                                       <tr
                                         key={fab.id}
-                                        className="bg-green-50 dark:bg-green-950"
+                                        className={grp ? gStyle.row : 'bg-green-50 dark:bg-green-950'}
                                         draggable
                                         onDragStart={e => handleFabDragStart(e, item.id, mat.id, fab.id)}
                                         onDragOver={e => handleFabDragOver(e, item.id, mat.id, fab.id)}
@@ -3778,10 +4111,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         } : undefined}
                                       >
                                         {/* Seq */}
-                                        <td className="border p-1 text-green-600 text-center text-xs font-medium">
+                                        <td className={`border p-1 ${grp ? gStyle.tag : 'text-green-600'} text-center text-xs font-medium`}>
                                           <div className="flex items-center justify-center gap-0.5">
-                                            <GripVertical size={10} className="text-green-400 cursor-grab flex-shrink-0" />
-                                            <span>[Fab]</span>
+                                            <GripVertical size={10} className={`${grp ? gStyle.tag : 'text-green-400'} cursor-grab flex-shrink-0`} />
+                                            <span>{grp ? '[Grp]' : '[Fab]'}</span>
                                           </div>
                                         </td>
                                         {/* Description - Operation dropdown */}
@@ -3802,7 +4135,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           <select
                                             value={fab.operation}
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)}
-                                            className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
+                                            className={`w-full p-1 border rounded text-xs ${fabBg} dark:border-gray-600 dark:text-gray-100`}
                                           >
                                             <optgroup label="Cutting">
                                               {fabricationOperations.cutting.map(op => <option key={op} value={op}>{op}</option>)}
@@ -3863,12 +4196,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                               onClick={() => updateMaterialFab(item.id, mat.id, fab.id, 'quantity', Math.max(0, (fab.quantity || 0) - 1))}
                                               className="px-1 py-0.5 bg-green-200 hover:bg-green-300 rounded text-xs font-bold"
                                             >−</button>
-                                            <input 
-                                              type="number" 
-                                              step="1" 
-                                              value={fab.quantity || ''} 
-                                              onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} 
-                                              className="w-10 p-1 border rounded text-xs text-center bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                            <input
+                                              type="number"
+                                              step="1"
+                                              value={fab.quantity || ''}
+                                              onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                              className={`w-10 p-1 border rounded text-xs text-center ${fabBg} dark:border-gray-600 dark:text-gray-100`}
                                               placeholder="qty"
                                             />
                                             <button 
@@ -3882,12 +4215,12 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           {isConnection ? (
                                             <span className="block text-center text-gray-400">—</span>
                                           ) : (fab.unit === 'IN' || fab.unit === 'LF') ? (
-                                            <input 
-                                              type="number" 
-                                              step="0.1" 
-                                              value={fab.length || ''} 
-                                              onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'length', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                            <input
+                                              type="number"
+                                              step="0.1"
+                                              value={fab.length || ''}
+                                              onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'length', parseFloat(e.target.value) || 0)}
+                                              className={`w-full p-1 border rounded text-xs text-right ${fabBg} dark:border-gray-600 dark:text-gray-100`}
                                               placeholder="len"
                                             />
                                           ) : (
@@ -3926,10 +4259,10 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         {/* Units */}
                                         <td className="border p-1">
-                                          <select 
-                                            value={fab.unit} 
-                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unit', e.target.value)} 
-                                            className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
+                                          <select
+                                            value={fab.unit}
+                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unit', e.target.value)}
+                                            className={`w-full p-1 border rounded text-xs ${fabBg} dark:border-gray-600 dark:text-gray-100`}
                                           >
                                             <option value="EA">EA</option>
                                             <option value="IN">IN</option>
@@ -3939,22 +4272,52 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                             <option value="SF">SF</option>
                                           </select>
                                         </td>
-                                        {/* Rate */}
+                                        {/* Rate — grouped rows price only at the group line */}
                                         <td className="border p-1">
-                                          <input 
-                                            type="number" 
-                                            step="0.01" 
-                                            value={fab.unitPrice || ''} 
-                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                          {grp ? (
+                                            <span className="block text-center text-gray-400" title="Priced by the group line below">—</span>
+                                          ) : (
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            value={fab.unitPrice || ''}
+                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                            className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                             placeholder="$0.00"
                                           />
+                                          )}
                                         </td>
                                         {/* Total */}
-                                        <td className="border p-1 text-right font-semibold text-green-700">{fmtPrice(fab.totalCost || 0)}</td>
+                                        {grp ? (
+                                          <td className="border p-1 text-center text-gray-400" title="Priced by the group line below">—</td>
+                                        ) : (
+                                          <td className="border p-1 text-right font-semibold text-green-700">{fmtPrice(fab.totalCost || 0)}</td>
+                                        )}
                                         {/* Actions */}
                                         <td className="border p-1 text-center">
-                                          <button onClick={() => deleteMaterialFab(item.id, mat.id, fab.id)} className="text-red-600 hover:text-red-800"><Trash2 size={12} /></button>
+                                          <div className="flex items-center justify-center gap-1">
+                                            {grp && (
+                                              <button onClick={() => detachFabFromGroup(item.id, mat.id, fab.id)}
+                                                className={gStyle.tag} title="Detach from group — price this row individually (starts at the group rate)">
+                                                <Unlink size={12} />
+                                              </button>
+                                            )}
+                                            {joinTarget && (
+                                              <button onClick={() => joinFabToGroup(item.id, mat.id, fab.id, joinTarget.id)}
+                                                className={laborGroupStyle(joinTarget.colorIndex).tag}
+                                                title={`Join group: ${joinTarget.operation} — ${joinTarget.familyKey}`}>
+                                                <Link2 size={12} />
+                                              </button>
+                                            )}
+                                            {canGroupSimilar && (
+                                              <button onClick={() => groupSimilarFabs(item.id, mat.id, fab.id)}
+                                                className="text-violet-600 hover:text-violet-800"
+                                                title="Group similar — price every matching operation on this shape family with one rate">
+                                                <Layers size={12} />
+                                              </button>
+                                            )}
+                                            <button onClick={() => deleteMaterialFab(item.id, mat.id, fab.id)} className="text-red-600 hover:text-red-800"><Trash2 size={12} /></button>
+                                          </div>
                                         </td>
                                       </tr>
                                       );
@@ -4400,6 +4763,69 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       ))}
                                       </React.Fragment>
                                     ))}
+                                    {/* Labor group summary lines — the single price entry point for
+                                        each group, anchored after the last parent of its family block */}
+                                    {groupSummaries
+                                      .filter(g => (groupAnchorMap.get(g.id) ?? lastParentId) === mat.id)
+                                      .map(g => {
+                                        const gs = laborGroupStyle(g.colorIndex);
+                                        return (
+                                        <tr key={`lg-${g.id}`} className={gs.row} data-testid="labor-group-row">
+                                          {/* Seq: collapse chevron + tag */}
+                                          <td className={`border p-1 ${gs.tag} text-center text-xs font-medium`}>
+                                            <div className="flex items-center justify-center gap-0.5">
+                                              <button onClick={() => toggleLaborGroupCollapsed(item.id, g.id)}
+                                                title={g.collapsed ? 'Show this group\'s member rows' : 'Hide this group\'s member rows (prints follow this)'}>
+                                                {g.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                                              </button>
+                                              <span>[Grp]</span>
+                                            </div>
+                                          </td>
+                                          {/* Description */}
+                                          <td className={`border p-1 text-xs font-semibold ${gs.tag}`}>
+                                            {g.operation} — {g.familyKey}
+                                            <span className="ml-1 font-normal text-gray-500 dark:text-gray-400">({g.memberCount} row{g.memberCount === 1 ? '' : 's'})</span>
+                                          </td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          {/* Qty: sum of member quantities */}
+                                          <td className="border p-1 text-center text-xs font-semibold">{g.totalQty}</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          <td className="border p-1 text-center text-gray-400">—</td>
+                                          {/* Units */}
+                                          <td className="border p-1 text-xs text-center">{(g.unit || 'ea').toUpperCase()}</td>
+                                          {/* Rate — THE price input for the whole group */}
+                                          <td className="border p-1">
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              value={g.rate || ''}
+                                              onChange={e => updateLaborGroupRate(item.id, g.id, parseFloat(e.target.value) || 0)}
+                                              className={`w-full p-1 border rounded text-xs text-right dark:text-gray-100 ${g.rate
+                                                ? `${gs.input} dark:border-gray-600`
+                                                : 'bg-amber-100 dark:bg-amber-900 border-amber-400'}`}
+                                              placeholder="$0.00"
+                                              title={g.rate ? 'Group rate — prices every row in this group' : 'Needs pricing — enter the group rate'}
+                                            />
+                                          </td>
+                                          {/* Total: Σ member line totals */}
+                                          <td className={`border p-1 text-right font-semibold ${gs.total}`}>{fmtPrice(g.totalCost)}</td>
+                                          {/* Dissolve */}
+                                          <td className="border p-1 text-center">
+                                            <button onClick={() => dissolveLaborGroup(item.id, g.id)}
+                                              className="text-red-600 hover:text-red-800"
+                                              title="Dissolve group — rows return to individual pricing at the group rate">
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                        );
+                                      })}
                                   </React.Fragment>
                                 ))}
                               </tbody>
@@ -4615,7 +5041,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <button onClick={addItem} className="w-full p-3 border-2 border-dashed border-gray-400 dark:border-gray-500 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-center gap-2">
                 <Plus size={18} /> Add New Item
               </button>

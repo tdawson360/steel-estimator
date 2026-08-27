@@ -101,6 +101,7 @@ const LIB_ENV = {
 import * as libRevu from '../../lib/estimating/import-revu.js';
 import * as libRfq from '../../lib/estimating/import-rfq.js';
 import * as libFabCosts from '../../lib/estimating/fab-costs.js';
+import * as libLaborGroups from '../../lib/estimating/labor-groups.js';
 import { parseCSVLine as libParseCSVLine } from '../../lib/estimating/import-takeoff.js';
 
 // Everything the tests need from the former component module scope now lives
@@ -168,6 +169,7 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
   let state = initialItems;
   const setItems = (next) => { state = typeof next === 'function' ? next(state) : next; };
   const code = [
+    declSource(componentSrc, 'pruneEmptyLaborGroups'),
     declSource(componentSrc, 'updateRecapCost'),
     declSource(componentSrc, 'updateFabrication'),
     declSource(componentSrc, 'updateMaterialFab'),
@@ -184,6 +186,8 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
     OP_DEFAULT_UNIT: env.OP_DEFAULT_UNIT,
     computeFabLineTotal: libFabCosts.computeFabLineTotal,
     recapEntryTotal: libTotals.recapEntryTotal,
+    isGroupableFab: libLaborGroups.isGroupableFab,
+    fabGroupKey: libLaborGroups.fabGroupKey,
   });
   return { ...bound, getState: () => state };
 }
