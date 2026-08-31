@@ -91,14 +91,14 @@ Drill type. Use ONLY (blank allowed):
 Integer — number of holes on this piece. Required if `Holes` is set.
 
 ### Weld_Type
-Use ONLY (blank allowed):
+Use ONLY (blank allowed; `None` means no welding and imports as blank):
 - `Fillet`
 - `Bevel/Grind`
 - `PJP`
 - `CJP`
 
 ### Connection_Type
-Use ONLY (blank allowed):
+Use ONLY (blank allowed; `None` means no connection and imports as blank):
 - `WF Connx`
 - `C Connx`
 - `WF Moment Connx`
@@ -109,7 +109,7 @@ Use ONLY (blank allowed):
 Integer — number of connections. Defaults to 1 if blank but `Connection_Type` is set.
 
 ### Prep_Ops
-Use ONLY (blank allowed):
+Use ONLY (blank allowed; `None` means no prep and imports as blank):
 - `Ease`
 - `Splice`
 - `90's`
@@ -117,7 +117,7 @@ Use ONLY (blank allowed):
 - `Roll`
 
 ### Coating
-Use ONLY (blank allowed):
+Use ONLY (blank allowed; `None` means no coating and imports as blank):
 - `Prime Paint`
 - `Blast & Prime`
 - `Finish Paint`

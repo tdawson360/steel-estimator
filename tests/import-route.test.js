@@ -51,6 +51,22 @@ describe('parseTakeoffCSV quantity + length rules', () => {
     ]));
     expect(rawRows[0].lengthFt).toBeCloseTo(22.5, 10); // rounded, drawn ignored
   });
+  it('"None" in Weld_Type / Coating / Connection_Type / Prep_Ops imports as blank (profile v1.7 explicit no-op choice)', () => {
+    const HDR = 'Item_Number,Item_Description,Quantity,Shape_Size,Measured_Length,Weld_Type,Coating,Connection_Type,Prep_Ops,Member_Mark';
+    const { rawRows } = env.parseTakeoffCSV([
+      HDR,
+      '1,FRAMING,1,W 8 x 21,23.01,None,None,None,None,',
+      '1,FRAMING,1,W 8 x 21,23.01,Fillet,Prime Paint,WF Connx,Ease,',
+    ].join('\n'));
+    expect(rawRows[0].weldType).toBe('');
+    expect(rawRows[0].coating).toBe('');
+    expect(rawRows[0].connectionType).toBe('');
+    expect(rawRows[0].prepOps).toBe('');
+    expect(rawRows[1].weldType).toBe('Fillet');
+    expect(rawRows[1].coating).toBe('Prime Paint');
+    expect(rawRows[1].connectionType).toBe('WF Connx');
+    expect(rawRows[1].prepOps).toBe('Ease');
+  });
   it('missing required columns errors', () => {
     const { error } = env.parseTakeoffCSV('Foo,Bar\n1,2');
     expect(error).toMatch(/Missing required columns/);
