@@ -144,6 +144,23 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [focusDescMaterialId, setFocusDescMaterialId] = useState(null);
   // Freshly duplicated member whose length input should grab focus (pre-selected)
   const [focusLengthMaterialId, setFocusLengthMaterialId] = useState(null);
+
+  // Focus AFTER paint — a ref-callback focus during commit loses to the
+  // clicked button re-taking focus when rows are inserted mid-list.
+  useEffect(() => {
+    if (focusLengthMaterialId != null) {
+      const el = document.querySelector(`input[data-length-for="${focusLengthMaterialId}"]`);
+      if (el) { el.focus(); el.select(); }
+      setFocusLengthMaterialId(null);
+    }
+  }, [focusLengthMaterialId]);
+  useEffect(() => {
+    if (focusDescMaterialId != null) {
+      const el = document.querySelector(`input[data-desc-for="${focusDescMaterialId}"]`);
+      if (el) el.focus();
+      setFocusDescMaterialId(null);
+    }
+  }, [focusDescMaterialId]);
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
@@ -4128,7 +4145,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         </div>
                                       </td>
                                       <td className="border p-1"><input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)}
-                                        ref={el => { if (el && mat.id === focusLengthMaterialId) { el.focus(); el.select(); setFocusLengthMaterialId(null); } }}
+                                        data-length-for={mat.id}
                                         className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
                                       <td className="border p-1 text-right bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200 font-medium">{fmtWt(mat.fabWeight || 0)}</td>
                                       <td className="border p-1 text-center">
@@ -4502,7 +4519,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </div>
                                         </td>
                                         <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)}
-                                          ref={el => { if (el && child.id === focusDescMaterialId) { el.focus(); setFocusDescMaterialId(null); } }}
+                                          data-desc-for={child.id}
                                           className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Attachment desc" /></td>
                                         <td className="border p-1">
                                           <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
