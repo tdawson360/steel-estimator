@@ -818,11 +818,19 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, isTemplate: true }
+      select: { id: true, isTemplate: true, isArchived: true }
     });
 
     if (!existing) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Two-step protection: only archived projects can be deleted, so a delete
+    // is always a deliberate archive-then-delete and never a one-click accident.
+    if (!existing.isArchived) {
+      return NextResponse.json({
+        error: 'Archive the project first — only archived projects can be deleted.',
+      }, { status: 409 });
     }
 
     // A template whose items still back pricing cells must not be deleted —

@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown,
-  Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus, Clock,
+  Pencil, Copy, Archive, ArchiveRestore, Loader2, Plus, Clock, Trash2,
 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 import { apiFetch, SessionExpiredError } from '../../lib/api-client';
@@ -350,6 +350,24 @@ function DashboardContent() {
     }
   };
 
+  const handleDelete = async (project) => {
+    const name = project.projectName || 'this project';
+    if (!confirm(`PERMANENTLY delete "${name}"?\n\nAll items, materials, fabrication, and recap data will be erased. This cannot be undone.\n\n(To keep it recoverable, leave it archived instead.)`)) return;
+    setActionInProgress(project.id);
+    try {
+      await apiFetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+      setProjects(prev => prev.filter(p => p.id !== project.id));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        alert('Your session has expired — log back in.');
+      } else {
+        alert(err.message || 'Failed to delete project.');
+      }
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   // ── RENDER ─────────────────────────────────────────────────────────────────
 
   const sortProps = { sortCol, sortDir, onSort: handleSort };
@@ -591,6 +609,15 @@ function DashboardContent() {
                                   className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-950 rounded transition-colors"
                                 >
                                   <ArchiveRestore size={15} />
+                                </button>
+                              )}
+                              {userRole === 'ADMIN' && project.isArchived && (
+                                <button
+                                  onClick={() => handleDelete(project)}
+                                  title="Delete Permanently"
+                                  className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 rounded transition-colors"
+                                >
+                                  <Trash2 size={15} />
                                 </button>
                               )}
                             </>
