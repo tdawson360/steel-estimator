@@ -51,6 +51,14 @@ function canViewProject(user, project) {
 }
 
 function canEditProject(user, project) {
+  // Template projects (e.g. "Connx Template") feed company pricing via sync:
+  // only admins and the template's assigned estimator may edit.
+  if (project.isTemplate) {
+    if (user.role === 'ADMIN') return true;
+    return user.role === 'ESTIMATOR'
+      && project.estimatorId != null
+      && Number(project.estimatorId) === Number(user.id);
+  }
   if (user.role === 'ADMIN') return true;
   if (user.role === 'ESTIMATOR' && (project.status === 'DRAFT' || project.status === 'IN_REVIEW' || project.status === 'REOPENED')) return true;
   return false;
@@ -143,7 +151,7 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { status: true }
+      select: { status: true, isTemplate: true, estimatorId: true }
     });
 
     if (!existing) {
@@ -810,11 +818,31 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true }
+      select: { id: true, isTemplate: true }
     });
 
     if (!existing) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // A template whose items still back pricing cells must not be deleted —
+    // it would orphan the Global Pricing Data links.
+    if (existing.isTemplate) {
+      const items = await prisma.item.findMany({ where: { projectId }, select: { id: true } });
+      const itemIds = items.map(i => i.id);
+      const linkedCount = itemIds.length === 0 ? 0 : await prisma.connectionCategory.count({
+        where: {
+          OR: [
+            { boltedTemplateItemId: { in: itemIds } },
+            { weldedTemplateItemId: { in: itemIds } },
+          ],
+        },
+      });
+      if (linkedCount > 0) {
+        return NextResponse.json({
+          error: `This template backs ${linkedCount} pricing cell${linkedCount === 1 ? '' : 's'} on the Global Pricing Data page. Unlink them first, then delete.`,
+        }, { status: 409 });
+      }
     }
 
     await prisma.$transaction(async (tx) => {

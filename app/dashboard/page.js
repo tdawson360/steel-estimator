@@ -208,8 +208,11 @@ function DashboardContent() {
 
   const WORKFLOW_STATUSES = ['DRAFT', 'IN_REVIEW', 'REOPENED', 'PUBLISHED'];
 
+  const templates = useMemo(() => projects.filter(p => p.isTemplate), [projects]);
+
   const displayed = useMemo(() => {
     let r = projects.filter(p => {
+      if (p.isTemplate) return false; // pricing references live in their own section
       if (statusFilter) {
         if (WORKFLOW_STATUSES.includes(statusFilter)) {
           if (p.status !== statusFilter) return false;
@@ -599,6 +602,34 @@ function DashboardContent() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Templates — pricing reference projects, apart from the bid board */}
+        {templates.length > 0 && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
+          <div className="mt-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Templates</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              Pricing reference estimates — item totals feed Global Pricing Data via sync. Editable by admins and the assigned estimator only.
+            </p>
+            <div className="space-y-1">
+              {templates.map(t => (
+                <div key={t.id} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <div className="flex items-center gap-2">
+                    <a href={`/?projectId=${t.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+                      {t.projectName || 'Untitled Template'}
+                    </a>
+                    <span className="text-xs rounded px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium">Template</span>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {estimatorName(t) || 'Unassigned'}
+                    {userRole === 'ADMIN' && (
+                      <a href="/admin/connection-pricing" className="ml-3 text-blue-600 hover:underline">Global Pricing Data →</a>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

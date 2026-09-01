@@ -13,8 +13,15 @@ export async function GET(request) {
   const includeArchived = searchParams.get('includeArchived') === '1';
 
   try {
+    const where = includeArchived ? {} : { isArchived: false };
+    // Templates are pricing references, not bids: PM/shop roles never see them
+    // (they can't open non-published projects anyway); other roles get them
+    // flagged so the dashboard can list them apart from the bid board.
+    if (session.user.role === 'PM' || session.user.role === 'FIELD_SHOP') {
+      where.isTemplate = false;
+    }
     const projects = await prisma.project.findMany({
-      where: includeArchived ? {} : { isArchived: false },
+      where,
       select: {
         id: true,
         projectName: true,
@@ -25,6 +32,7 @@ export async function GET(request) {
         bidAmount: true,
         newOrCo: true,
         isArchived: true,
+        isTemplate: true,
         createdAt: true,
         estimator: {
           select: { id: true, firstName: true, lastName: true },

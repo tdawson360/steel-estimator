@@ -120,13 +120,15 @@ const STATUS_COLORS = {
 };
 const STATUS_LABELS = { DRAFT: 'Draft', IN_REVIEW: 'In Review', PUBLISHED: 'Published', REOPENED: 'Reopened' };
 
-const SteelEstimator = ({ projectId, userRole, userName }) => {
+const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [activeTab, setActiveTab] = useState('project');
   const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
   const [currentProjectId, setCurrentProjectId] = useState(projectId || null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [projectStatus, setProjectStatus] = useState('DRAFT');
+  const [projectIsTemplate, setProjectIsTemplate] = useState(false);
+  const [projectEstimatorId, setProjectEstimatorId] = useState(null);
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
@@ -781,6 +783,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
       const data = await apiFetch(`/api/projects/${id}`);
 
       setProjectStatus(data.status || 'DRAFT');
+      setProjectIsTemplate(!!data.isTemplate);
+      setProjectEstimatorId(data.estimatorId ?? null);
       setProjectName(data.projectName || '');
       setProjectAddress(data.projectAddress || '');
       setCustomerName(data.customerName || '');
@@ -1244,7 +1248,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
     }
   }, [currentProjectId]);
 
-  const canEdit = userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED'));
+  // Mirrors the server's canEditProject: templates are editable only by admins
+  // and the template's assigned estimator.
+  const canEdit = projectIsTemplate
+    ? (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && projectEstimatorId != null && Number(projectEstimatorId) === Number(userId)))
+    : (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED')));
   const isReadOnly = !canEdit;
 
   // ── LOAD ON MOUNT ───────────────────────────────────────────────────────────
@@ -2181,6 +2189,11 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
               updated.size = shapes.length > 0 ? shapes[0] : '';
               updated.customWeight = null;
               updated.stockLength = null; // Reset to auto-calculate for new category
+              // Hardware (bolts, anchors, fasteners) prices per each by default
+              if (value === 'Hardware') {
+                updated.priceBy = 'EA';
+                updated.customWeight = 0;
+              }
             }
             // If child material changes pieces, turn off inheritance
             if (field === 'pieces' && mat.parentMaterialId) {
@@ -3235,9 +3248,15 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Steel Estimator</h1>
             </div>
-            <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`} data-testid="text-project-status">
-              {STATUS_LABELS[projectStatus] || projectStatus}
-            </span>
+            {projectIsTemplate ? (
+              <span className="ml-2 px-2.5 py-1 rounded border text-xs font-semibold bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800" data-testid="text-project-status" title="Pricing reference — item totals feed Global Pricing Data via sync. Editable by admins and the assigned estimator only.">
+                Template
+              </span>
+            ) : (
+              <span className={`ml-2 px-2.5 py-1 rounded border text-xs font-semibold ${STATUS_COLORS[projectStatus] || 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`} data-testid="text-project-status">
+                {STATUS_LABELS[projectStatus] || projectStatus}
+              </span>
+            )}
             {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
@@ -3318,8 +3337,8 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                 </div>
               )}
             </div>
-            {/* Status transition buttons */}
-            {projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
+            {/* Status transition buttons (templates never go through review/publish) */}
+            {!projectIsTemplate && projectStatus === 'DRAFT' && (userRole === 'ADMIN' || userRole === 'ESTIMATOR') && (
               <button onClick={() => handleStatusChange('IN_REVIEW')} disabled={statusChanging}
                 className="px-3 py-2 bg-amber-500 dark:bg-amber-600 text-white rounded text-sm hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50" data-testid="button-submit-review">
                 Submit for Review
@@ -3943,12 +3962,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                       <td className="border p-1">
                                         <select value={mat.category} onChange={e => updateMaterial(item.id, mat.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                           {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                          <option value="Hardware">Hardware</option>
                                           <option value="Custom">Custom</option>
                                         </select>
                                       </td>
                                       <td className="border p-1">
-                                        {mat.category === 'Custom' ? (
-                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                        {mat.category === 'Custom' || mat.category === 'Hardware' ? (
+                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder={mat.category === 'Hardware' ? 'e.g. 3/4" A325 x 2"' : undefined} />
                                         ) : mat.category === 'Plate' ? (
                                           <div className="flex items-center gap-1">
                                             <select 
@@ -3977,7 +3997,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         )}
                                       </td>
                                       <td className="border p-1">
-                                        {mat.category === 'Custom' ? (
+                                        {mat.category === 'Custom' || mat.category === 'Hardware' ? (
                                           <input type="number" step="0.01" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                         ) : mat.category === 'Plate' ? (
                                           <span className="block text-right">{mat.weightPerFoot?.toFixed(2) || '—'}</span>
@@ -4382,12 +4402,13 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                         <td className="border p-1">
                                           <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                            <option value="Hardware">Hardware</option>
                                             <option value="Custom">Custom</option>
                                           </select>
                                         </td>
                                         <td className="border p-1">
-                                          {child.category === 'Custom' ? (
-                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                          {child.category === 'Custom' || child.category === 'Hardware' ? (
+                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder={child.category === 'Hardware' ? 'e.g. 3/4" A325 x 2"' : undefined} />
                                           ) : child.category === 'Plate' ? (
                                             <div className="flex items-center gap-1">
                                               <select 
@@ -4416,7 +4437,7 @@ const SteelEstimator = ({ projectId, userRole, userName }) => {
                                           )}
                                         </td>
                                         <td className="border p-1">
-                                          {child.category === 'Custom' ? (
+                                          {child.category === 'Custom' || child.category === 'Hardware' ? (
                                             <input type="number" step="0.01" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
                                           ) : child.category === 'Plate' ? (
                                             <span className="block text-right">{child.weightPerFoot?.toFixed(2) || '—'}</span>

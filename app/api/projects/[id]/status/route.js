@@ -26,11 +26,17 @@ export async function PATCH(request, { params }) {
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, status: true, projectName: true, estimatorId: true }
+      select: { id: true, status: true, projectName: true, estimatorId: true, isTemplate: true }
     });
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    if (project.isTemplate) {
+      return NextResponse.json({
+        error: 'Template projects are pricing references — they do not go through review or publishing.',
+      }, { status: 400 });
     }
 
     const currentStatus = project.status;

@@ -20,6 +20,7 @@ function EstimatorWithParams() {
 
   const userRole = session?.user?.role || 'PM'
   const userName = `${session?.user?.firstName || ''} ${session?.user?.lastName || ''}`.trim()
+  const userId = session?.user?.id ?? null
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -28,6 +29,7 @@ function EstimatorWithParams() {
         projectId={parseInt(projectId)}
         userRole={userRole}
         userName={userName}
+        userId={userId}
       />
     </div>
   )
