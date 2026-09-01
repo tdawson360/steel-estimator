@@ -3871,7 +3871,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               </div>
 
               {zeroWeightCount > 0 && (
-                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 rounded p-3 text-sm flex items-start gap-2" data-testid="banner-zero-weight">
+                <div className="bg-amber-50 dark:bg-amber-900/25 border border-amber-300 rounded p-3 text-sm flex items-start gap-2" data-testid="banner-zero-weight">
                   <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
                   <span className="text-amber-800 dark:text-amber-300">
                     <strong>{zeroWeightCount} material line{zeroWeightCount === 1 ? '' : 's'}</strong> {zeroWeightCount === 1 ? 'has' : 'have'} quantity but zero weight
@@ -3987,7 +3987,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                     {/* Parent row */}
                                     <tr
                                       className={isZeroWeight(mat)
-                                        ? 'bg-amber-50 dark:bg-amber-950 shadow-[inset_3px_0_0_0_#d97706]'
+                                        ? 'bg-amber-50 dark:bg-amber-900/25 shadow-[inset_3px_0_0_0_#d97706]'
                                         : 'bg-white dark:bg-gray-900'}
                                       title={isZeroWeight(mat) ? 'Zero weight with nonzero quantity — check size / custom weight' : undefined}
                                       draggable
@@ -4002,7 +4002,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           : 'inset 0 -3px 0 0 #3b82f6'
                                       } : undefined}
                                     >
-                                      <td className="border p-1 font-bold text-blue-700">
+                                      <td className="border p-1 font-bold text-blue-700 dark:text-sky-400">
                                         <div className="flex items-center gap-0.5">
                                           <GripVertical size={12} className="text-gray-400 cursor-grab flex-shrink-0" />
                                           {mat.sequence || 'A'}
@@ -4074,7 +4074,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         </div>
                                       </td>
                                       <td className="border p-1"><input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
-                                      <td className="border p-1 text-right bg-blue-50 dark:bg-blue-950">{fmtWt(mat.fabWeight || 0)}</td>
+                                      <td className="border p-1 text-right bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200 font-medium">{fmtWt(mat.fabWeight || 0)}</td>
                                       <td className="border p-1 text-center">
                                         <input type="checkbox" checked={mat.galvanized || false} 
                                           onChange={e => updateMaterial(item.id, mat.id, 'galvanized', e.target.checked)} 
@@ -4101,7 +4101,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             <select
                                               value={mat.stockLength}
                                               onChange={e => updateMaterial(item.id, mat.id, 'stockLength', parseFloat(e.target.value))}
-                                              className={`w-full p-1 border rounded text-xs dark:border-gray-600 dark:text-gray-100 ${mat.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : 'dark:bg-gray-800'}`}
+                                              className={`w-full p-1 border rounded text-xs dark:border-gray-600 dark:text-gray-100 ${mat.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-900/25 border-yellow-400' : 'dark:bg-gray-800'}`}
                                               title={mat.isManualOverride ? `Optimal: ${mat.optimalStockLength}'` : `Optimal stock length`}
                                             >
                                               {availableLengthsFor(mat.category, mat.size).map(sl => (
@@ -4134,7 +4134,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           : updateMaterial(item.id, mat.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                                         title={mat.pooled ? `Nested — rate applies to every ${mat.size} line` : undefined}
                                         className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
-                                      <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(mat.totalCost || 0)}</td>
+                                      <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-900/25">{fmtPrice(mat.totalCost || 0)}</td>
                                       <td className="border p-1">
                                         <div className="flex gap-1">
                                           <button onClick={() => addChildMaterial(item.id, mat.id)} className="text-blue-600 hover:text-blue-800" title="Add Attachment"><Plus size={12} /></button>
@@ -4154,7 +4154,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       // Labor group state for this row
                                       const grp = fab.laborGroupId != null ? groupById.get(fab.laborGroupId) : null;
                                       const gStyle = grp ? laborGroupStyle(grp.colorIndex) : null;
-                                      const fabBg = grp ? gStyle.input : 'bg-green-50 dark:bg-green-950';
+                                      const fabBg = grp ? gStyle.input : 'bg-green-50 dark:bg-green-900/25';
                                       const rowKey = !grp ? fabGroupKey(mat, fab) : null;
                                       const joinTarget = rowKey
                                         ? laborGroups.find(g => `${g.familyKey}|${g.operation}` === rowKey)
@@ -4167,7 +4167,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       return (
                                       <tr
                                         key={fab.id}
-                                        className={grp ? gStyle.row : 'bg-green-50 dark:bg-green-950'}
+                                        className={grp ? gStyle.row : 'bg-green-50 dark:bg-green-900/25'}
                                         draggable
                                         onDragStart={e => handleFabDragStart(e, item.id, mat.id, fab.id)}
                                         onDragOver={e => handleFabDragOver(e, item.id, mat.id, fab.id)}
@@ -4181,7 +4181,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         } : undefined}
                                       >
                                         {/* Seq */}
-                                        <td className={`border p-1 ${grp ? gStyle.tag : 'text-green-600'} text-center text-xs font-medium`}>
+                                        <td className={`border p-1 ${grp ? gStyle.tag : 'text-green-600 dark:text-green-400'} text-center text-xs font-medium`}>
                                           <div className="flex items-center justify-center gap-0.5">
                                             <GripVertical size={10} className={`${grp ? gStyle.tag : 'text-green-400'} cursor-grab flex-shrink-0`} />
                                             <span>{grp ? '[Grp]' : '[Fab]'}</span>
@@ -4250,7 +4250,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         {/* Wt/ft - show unit connWeight for connections (for verification) */}
                                         <td className="border p-1 text-right text-xs">
                                           {isConnection && fab.connWeight ? (
-                                            <span className="text-blue-600">{fab.connWeight}</span>
+                                            <span className="text-blue-600 dark:text-sky-400">{fab.connWeight}</span>
                                           ) : (
                                             <span className="text-gray-400">—</span>
                                           )}
@@ -4296,7 +4296,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         {/* Fab Wt - shows qty × connWeight for connections, extLen for length-based */}
                                         <td className="border p-1 text-right text-xs">
                                           {isConnection && fab.connWeight ? (
-                                            <span className="text-blue-600 font-medium">{(fab.quantity || 0) * fab.connWeight}</span>
+                                            <span className="text-blue-600 dark:text-sky-400 font-medium">{(fab.quantity || 0) * fab.connWeight}</span>
                                           ) : hasLength ? (
                                             extLen.toFixed(1)
                                           ) : (
@@ -4348,7 +4348,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             step="0.01"
                                             value={fab.unitPrice || ''}
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                            className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
+                                            className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100"
                                             placeholder="$0.00"
                                           />
                                           )}
@@ -4390,9 +4390,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                     })}
                                     {/* Auto-generated galv fab row (if any) */}
                                     {(mat.fabrication || []).filter(f => f.isAutoGalv || f.isConnGalv).map(fab => (
-                                      <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-950">
-                                        <td className="border p-1 text-yellow-600 text-center text-xs font-medium">[Galv]</td>
-                                        <td className="border p-1 text-xs text-yellow-700">{fab.description}</td>
+                                      <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-900/25">
+                                        <td className="border p-1 text-yellow-600 dark:text-yellow-400 text-center text-xs font-medium">[Galv]</td>
+                                        <td className="border p-1 text-xs text-yellow-700 dark:text-yellow-300">{fab.description}</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
@@ -4410,11 +4410,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             step="0.01" 
                                             value={fab.unitPrice || ''} 
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-950 dark:border-gray-600 dark:text-gray-100" 
+                                            className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-900/25 dark:border-gray-600 dark:text-gray-100" 
                                             placeholder="$/lb"
                                           />
                                         </td>
-                                        <td className="border p-1 text-right font-semibold text-yellow-700">{fmtPrice(fab.totalCost || 0)}</td>
+                                        <td className="border p-1 text-right font-semibold text-yellow-700 dark:text-yellow-300">{fmtPrice(fab.totalCost || 0)}</td>
                                         <td className="border p-1"></td>
                                       </tr>
                                     ))}
@@ -4423,7 +4423,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       <React.Fragment key={child.id}>
                                       <tr
                                         className={isZeroWeight(child)
-                                          ? 'bg-amber-50 dark:bg-amber-950 shadow-[inset_3px_0_0_0_#d97706]'
+                                          ? 'bg-amber-50 dark:bg-amber-900/25 shadow-[inset_3px_0_0_0_#d97706]'
                                           : 'bg-gray-50 dark:bg-gray-800'}
                                         title={isZeroWeight(child) ? 'Zero weight with nonzero quantity — check size / custom weight' : undefined}
                                         draggable
@@ -4501,7 +4501,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                               type="number" 
                                               value={child.pieces || ''} 
                                               onChange={e => updateMaterial(item.id, child.id, 'pieces', parseInt(e.target.value) || 0)} 
-                                              className={`w-10 p-1 border rounded text-xs text-center dark:border-gray-600 dark:text-gray-100 ${child.inheritPieces ? 'bg-blue-50 dark:bg-blue-950 border-blue-300' : 'bg-gray-50 dark:bg-gray-800'}`}
+                                              className={`w-10 p-1 border rounded text-xs text-center dark:border-gray-600 dark:text-gray-100 ${child.inheritPieces ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300' : 'bg-gray-50 dark:bg-gray-800'}`}
                                               title={child.inheritPieces ? 'Inherited from parent' : 'Custom quantity'}
                                             />
                                             <button 
@@ -4511,7 +4511,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </div>
                                         </td>
                                         <td className="border p-1"><input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
-                                        <td className="border p-1 text-right bg-blue-50 dark:bg-blue-950">{fmtWt(child.fabWeight || 0)}</td>
+                                        <td className="border p-1 text-right bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200 font-medium">{fmtWt(child.fabWeight || 0)}</td>
                                         <td className="border p-1 text-center">
                                           <input type="checkbox" checked={child.galvanized || false} 
                                             onChange={e => updateMaterial(item.id, child.id, 'galvanized', e.target.checked)} 
@@ -4537,7 +4537,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             <select
                                               value={child.stockLength}
                                               onChange={e => updateMaterial(item.id, child.id, 'stockLength', parseFloat(e.target.value))}
-                                              className={`w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 ${child.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-950 border-yellow-400' : ''}`}
+                                              className={`w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 ${child.isManualOverride ? 'bg-yellow-50 dark:bg-yellow-900/25 border-yellow-400' : ''}`}
                                             >
                                               {availableLengthsFor(child.category, child.size).map(sl => (
                                                 <option key={sl} value={sl}>
@@ -4565,7 +4565,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             : updateMaterial(item.id, child.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                                           title={child.pooled ? `Nested — rate applies to every ${child.size} line` : undefined}
                                           className="w-16 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
-                                        <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(child.totalCost || 0)}</td>
+                                        <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-900/25">{fmtPrice(child.totalCost || 0)}</td>
                                         <td className="border p-1">
                                           <div className="flex gap-1">
                                             <button onClick={() => addMaterialFab(item.id, child.id)} className="text-green-600 hover:text-green-800" title="Add Fabrication"><Plus size={12} className="bg-green-100 rounded" /></button>
@@ -4594,7 +4594,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         return (
                                         <tr
                                           key={fab.id}
-                                          className="bg-green-50 dark:bg-green-950"
+                                          className="bg-green-50 dark:bg-green-900/25"
                                           draggable
                                           onDragStart={e => handleFabDragStart(e, item.id, child.id, fab.id)}
                                           onDragOver={e => handleFabDragOver(e, item.id, child.id, fab.id)}
@@ -4608,7 +4608,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           } : undefined}
                                         >
                                           {/* Seq */}
-                                          <td className="border p-1 text-green-600 text-center text-xs font-medium">
+                                          <td className="border p-1 text-green-600 dark:text-green-400 text-center text-xs font-medium">
                                             <div className="flex items-center justify-center gap-0.5">
                                               <GripVertical size={10} className="text-green-400 cursor-grab flex-shrink-0" />
                                               <span>[Fab]</span>
@@ -4635,7 +4635,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 <select 
                                                   value={fab.applyTo || 'self'} 
                                                   onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'applyTo', e.target.value === 'self' ? 'self' : parseInt(e.target.value) || e.target.value)} 
-                                                  className="p-1 border rounded text-xs bg-green-50 dark:bg-green-950 w-16 dark:border-gray-600 dark:text-gray-100"
+                                                  className="p-1 border rounded text-xs bg-green-50 dark:bg-green-900/25 w-16 dark:border-gray-600 dark:text-gray-100"
                                                   title="Apply To"
                                                 >
                                                   <option value="self">Self</option>
@@ -4661,7 +4661,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                               <select
                                                 value={fab.operation}
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)}
-                                                className="flex-1 p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
+                                                className="flex-1 p-1 border rounded text-xs bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100"
                                               >
                                                 {/* Subparts get the same operation list as main members —
                                                     they get cut, drilled, and prepped too */}
@@ -4720,7 +4720,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 step="1" 
                                                 value={fab.quantity || ''} 
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'quantity', parseFloat(e.target.value) || 0)} 
-                                                className="w-10 p-1 border rounded text-xs text-center bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                                className="w-10 p-1 border rounded text-xs text-center bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100" 
                                                 placeholder="qty"
                                               />
                                               <button 
@@ -4737,7 +4737,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 step="0.1" 
                                                 value={fab.length || ''} 
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'length', parseFloat(e.target.value) || 0)} 
-                                                className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                                className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100" 
                                                 placeholder="len"
                                               />
                                             ) : (
@@ -4761,7 +4761,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             <select 
                                               value={fab.unit} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unit', e.target.value)} 
-                                              className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
+                                              className="w-full p-1 border rounded text-xs bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100"
                                             >
                                               <option value="EA">EA</option>
                                               <option value="IN">IN</option>
@@ -4778,7 +4778,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                               step="0.01" 
                                               value={fab.unitPrice || ''} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100" 
+                                              className="w-full p-1 border rounded text-xs text-right bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="$0.00"
                                             />
                                           </td>
@@ -4793,9 +4793,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       })}
                                       {/* Auto-generated galv fab row for child (if any) */}
                                       {(child.fabrication || []).filter(f => f.isAutoGalv || f.isConnGalv).map(fab => (
-                                        <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-950">
-                                          <td className="border p-1 text-yellow-600 text-center text-xs font-medium">[Galv]</td>
-                                          <td className="border p-1 text-xs text-yellow-700">{fab.description}</td>
+                                        <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-900/25">
+                                          <td className="border p-1 text-yellow-600 dark:text-yellow-400 text-center text-xs font-medium">[Galv]</td>
+                                          <td className="border p-1 text-xs text-yellow-700 dark:text-yellow-300">{fab.description}</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
@@ -4813,11 +4813,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                               step="0.01" 
                                               value={fab.unitPrice || ''} 
                                               onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                              className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-950 dark:border-gray-600 dark:text-gray-100" 
+                                              className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-900/25 dark:border-gray-600 dark:text-gray-100" 
                                               placeholder="$/lb"
                                             />
                                           </td>
-                                          <td className="border p-1 text-right font-semibold text-yellow-700">{fmtPrice(fab.totalCost || 0)}</td>
+                                          <td className="border p-1 text-right font-semibold text-yellow-700 dark:text-yellow-300">{fmtPrice(fab.totalCost || 0)}</td>
                                           <td className="border p-1"></td>
                                         </tr>
                                       ))}
@@ -4967,7 +4967,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       </select>
                                     </td>
                                     <td className="border p-1"><input type="number" step="0.01" value={fab.unitPrice || ''} onChange={e => updateFabrication(item.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-16 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="$0.00" /></td>
-                                    <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-950">{fmtPrice(fab.totalCost || 0)}</td>
+                                    <td className="border p-1 text-right font-semibold bg-green-50 dark:bg-green-900/25">{fmtPrice(fab.totalCost || 0)}</td>
                                     <td className="border p-1"><button onClick={() => deleteFabrication(item.id, fab.id)} className="text-red-600"><Trash2 size={12} /></button></td>
                                   </tr>
                                 ))}
@@ -5036,7 +5036,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                         <div className="shrink-0">
                         <div className="grid grid-cols-2 gap-y-1 text-xs">
                           <div className="text-right text-gray-600 dark:text-gray-400 pr-2">Total Fab Wt:</div>
-                          <div className="text-right text-blue-800 font-bold">
+                          <div className="text-right text-blue-800 dark:text-sky-300 font-bold">
                             {(() => {
                               const ib = engineItemBreakdown(item, taxCategory, DEFAULT_PRICING_RATES);
                               return fmtWt(ib.fabWeight + ib.connectionWeight);
@@ -5109,7 +5109,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
               {/* Totals */}
               <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded border grid grid-cols-2 md:grid-cols-7 gap-4">
-                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Total Fab Wt: </span><span className="text-lg font-bold text-blue-700">{fmtWt(totals.totalFabWeight + totals.totalConnectionWeight)} lbs</span></div>
+                <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Total Fab Wt: </span><span className="text-lg font-bold text-blue-700 dark:text-sky-300">{fmtWt(totals.totalFabWeight + totals.totalConnectionWeight)} lbs</span></div>
                 <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Stock Weight: </span><span className="text-lg font-bold">{fmtWt(totals.totalStockWeight)} lbs</span></div>
                 <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Material: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialCost)}</span></div>
                 <div className="text-right"><span className="text-xs text-gray-600 dark:text-gray-400">Mat Markup: </span><span className="text-lg font-bold">{fmtPrice(totals.totalMaterialMarkup)}</span></div>
@@ -5158,7 +5158,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 </div>
               </div>
               {rfqUploadResult && (
-                <div className={`text-sm px-3 py-2 rounded ${rfqUploadResult.error ? 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400' : 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400'}`}>
+                <div className={`text-sm px-3 py-2 rounded ${rfqUploadResult.error ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/25 text-green-700 dark:text-green-400'}`}>
                   {rfqUploadResult.error
                     ? rfqUploadResult.error
                     : <>✓ Pricing applied to {rfqUploadResult.matched} of {rfqUploadResult.total} shapes.
@@ -5259,7 +5259,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
               {/* Over-length warnings from the nest */}
               {projectNest && projectNest.groups.some(g => g.overLengthCuts.length > 0) && (
-                <div className="bg-red-50 dark:bg-red-950 border border-red-300 rounded p-3 text-sm">
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-300 rounded p-3 text-sm">
                   <p className="font-semibold text-red-700 dark:text-red-300 mb-1 flex items-center gap-1">
                     <AlertCircle size={16} /> Pieces longer than available stock — review for splice or special-order length:
                   </p>
@@ -5275,7 +5275,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
               {/* Supplier quantity shortfalls from the nest */}
               {projectNest && projectNest.groups.some(g => g.shortfallCuts.length > 0) && (
-                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 rounded p-3 text-sm">
+                <div className="bg-amber-50 dark:bg-amber-900/25 border border-amber-300 rounded p-3 text-sm">
                   <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1 flex items-center gap-1">
                     <AlertCircle size={16} /> Supplier quantities short — these cuts fit available lengths but exceed the stick counts:
                   </p>
@@ -5406,7 +5406,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       value={caps[len] ?? ''}
                                       onChange={e => setSizeLengthCap(category, size, len, e.target.value)}
                                       title={`Max ${len}' sticks this supplier can supply (blank = unlimited)`}
-                                      className={`w-9 px-0.5 py-0.5 border border-l-0 rounded-r text-[11px] text-center dark:bg-gray-800 dark:text-gray-100 ${caps[len] > 0 ? 'border-amber-400 bg-amber-50 dark:bg-amber-950 font-semibold' : 'border-blue-600 dark:border-gray-600'}`}
+                                      className={`w-9 px-0.5 py-0.5 border border-l-0 rounded-r text-[11px] text-center dark:bg-gray-800 dark:text-gray-100 ${caps[len] > 0 ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/25 font-semibold' : 'border-blue-600 dark:border-gray-600'}`}
                                     />
                                   )}
                                 </span>
@@ -5843,8 +5843,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                       <th className="border p-1 text-center text-xs">Markup %</th>
                       {customRecapColumns.map(col => (
                         <React.Fragment key={col.key}>
-                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-950">Cost</th>
-                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-950">Markup %</th>
+                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-900/30">Cost</th>
+                          <th className="border p-1 text-center text-xs bg-blue-50 dark:bg-blue-900/30">Markup %</th>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -5879,14 +5879,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                           <td className="border p-1"><input type="number" step="1" value={item.recapCosts.shipping?.markup || ''} onChange={e => updateRecapCost(item.id, 'shipping', 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" /></td>
                           {customRecapColumns.map(col => (
                             <React.Fragment key={col.key}>
-                              <td className="border p-1 bg-blue-50 dark:bg-blue-950"><input type="number" step="1" value={item.recapCosts[col.key]?.cost || ''} onChange={e => updateRecapCost(item.id, col.key, 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-950 dark:border-gray-600 dark:text-gray-100" /></td>
-                              <td className="border p-1 bg-blue-50 dark:bg-blue-950"><input type="number" step="1" value={item.recapCosts[col.key]?.markup || ''} onChange={e => updateRecapCost(item.id, col.key, 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-950 dark:border-gray-600 dark:text-gray-100" /></td>
+                              <td className="border p-1 bg-blue-50 dark:bg-blue-900/30"><input type="number" step="1" value={item.recapCosts[col.key]?.cost || ''} onChange={e => updateRecapCost(item.id, col.key, 'cost', e.target.value)} className="w-16 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-900/30 dark:border-gray-600 dark:text-gray-100" /></td>
+                              <td className="border p-1 bg-blue-50 dark:bg-blue-900/30"><input type="number" step="1" value={item.recapCosts[col.key]?.markup || ''} onChange={e => updateRecapCost(item.id, col.key, 'markup', e.target.value)} className="w-14 p-1 border rounded text-xs text-center bg-blue-50 dark:bg-blue-900/30 dark:border-gray-600 dark:text-gray-100" /></td>
                             </React.Fragment>
                           ))}
                           {taxCategory && (
-                            <td className="border p-2 text-right bg-amber-50 dark:bg-amber-950 font-medium text-amber-800">{fmtPrice(itemTax)}</td>
+                            <td className="border p-2 text-right bg-amber-50 dark:bg-amber-900/25 font-medium text-amber-800">{fmtPrice(itemTax)}</td>
                           )}
-                          <td className="border p-2 text-right font-bold bg-green-50 dark:bg-green-950">{fmtPrice(itemTotal)}</td>
+                          <td className="border p-2 text-right font-bold bg-green-50 dark:bg-green-900/25">{fmtPrice(itemTotal)}</td>
                         </tr>
                       );
                     })}
@@ -5920,20 +5920,20 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Project Mgmt</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.projectManagement?.total || 0), 0))}</p></div>
                   <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Shipping</p><p className="text-lg font-bold">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts.shipping?.total || 0), 0))}</p></div>
                   {customRecapColumns.map(col => (
-                    <div key={col.key} className="text-center bg-blue-50 dark:bg-blue-950 p-2 rounded"><p className="text-xs text-blue-700">{col.name}</p><p className="text-lg font-bold text-blue-800">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts[col.key]?.total || 0), 0))}</p></div>
+                    <div key={col.key} className="text-center bg-blue-50 dark:bg-blue-900/30 p-2 rounded"><p className="text-xs text-blue-700 dark:text-blue-300">{col.name}</p><p className="text-lg font-bold text-blue-800 dark:text-blue-200">{fmtPrice(items.reduce((s, i) => s + (i.recapCosts[col.key]?.total || 0), 0))}</p></div>
                   ))}
                   {taxCategory && (
-                    <div className="text-center bg-amber-50 dark:bg-amber-950 p-2 rounded">
+                    <div className="text-center bg-amber-50 dark:bg-amber-900/25 p-2 rounded">
                       <p className="text-xs text-amber-700">Tax ({taxCategoryDescriptions[taxCategory].label})</p>
                       <p className="text-lg font-bold text-amber-800">{fmtPrice(items.reduce((s, i) => s + calculateItemTax(i), 0))}</p>
                     </div>
                   )}
-                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Recap Total</p><p className="text-lg font-bold text-blue-700">{fmtPrice(totals.totalRecapCosts + items.reduce((s, i) => s + calculateItemTax(i), 0))}</p></div>
+                  <div className="text-center"><p className="text-xs text-gray-600 dark:text-gray-400">Recap Total</p><p className="text-lg font-bold text-blue-700 dark:text-sky-300">{fmtPrice(totals.totalRecapCosts + items.reduce((s, i) => s + calculateItemTax(i), 0))}</p></div>
                 </div>
               </div>
 
               {taxCategory && taxCategory !== 'resale' && taxCategory !== 'noTax' && (
-                <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 rounded p-4">
+                <div className="bg-amber-50 dark:bg-amber-900/25 border border-amber-200 rounded p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-amber-900 flex items-center gap-2">
                       <Calculator size={16} />
@@ -6105,9 +6105,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               </table>
 
               {/* Breakout Groups Management */}
-              <div className="bg-yellow-50 dark:bg-yellow-950 p-4 rounded border border-yellow-200">
+              <div className="bg-yellow-50 dark:bg-yellow-900/25 p-4 rounded border border-yellow-200 dark:border-yellow-900">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-semibold text-yellow-800">Breakout Groups (Alternates)</h3>
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">Breakout Groups (Alternates)</h3>
                   <button
                     onClick={addBreakoutGroup}
                     className="flex items-center gap-1 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
@@ -6117,14 +6117,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 </div>
                 
                 {breakoutGroups.length === 0 ? (
-                  <p className="text-sm text-yellow-700">No breakout groups defined. All items are included in the base bid.</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400">No breakout groups defined. All items are included in the base bid.</p>
                 ) : (
                   <div className="space-y-2">
                     {breakoutGroups.map(group => {
                       const groupItems = items.filter(i => i.breakoutGroupId === group.id);
                       const groupTotal = groupItems.reduce((s, i) => s + getItemTotal(i), 0);
                       return (
-                        <div key={group.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border">
+                        <div key={group.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border dark:border-gray-700">
                           <input
                             type="text"
                             placeholder="Group Name (e.g., Canopy, Stair #1)"
@@ -6160,8 +6160,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 )}
                 
                 {breakoutGroups.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-yellow-300 text-sm">
-                    <p className="text-yellow-800 font-medium">Quote Preview:</p>
+                  <div className="mt-3 pt-3 border-t border-yellow-300 dark:border-yellow-800 text-sm">
+                    <p className="text-yellow-800 dark:text-yellow-300 font-medium">Quote Preview:</p>
                     {(() => {
                       const breakouts = breakoutTotals;
                       return (
@@ -6171,7 +6171,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                             <div className="ml-4">
                               <p className="text-xs text-gray-600 dark:text-gray-400">DEDUCT OPTIONS:</p>
                               {breakouts.deducts.map(d => (
-                                <p key={d.id} className="text-red-700">- {d.name || 'Unnamed'}: -{fmtPrice(d.total)}</p>
+                                <p key={d.id} className="text-red-700 dark:text-red-400">- {d.name || 'Unnamed'}: -{fmtPrice(d.total)}</p>
                               ))}
                             </div>
                           )}
@@ -6179,7 +6179,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                             <div className="ml-4">
                               <p className="text-xs text-gray-600 dark:text-gray-400">ADD OPTIONS:</p>
                               {breakouts.adds.map(a => (
-                                <p key={a.id} className="text-green-700">+ {a.name || 'Unnamed'}: +{fmtPrice(a.total)}</p>
+                                <p key={a.id} className="text-green-700 dark:text-green-400">+ {a.name || 'Unnamed'}: +{fmtPrice(a.total)}</p>
                               ))}
                             </div>
                           )}
@@ -6197,7 +6197,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 const shortfall = +(GALV_MINIMUM_CHARGE - galvTotal).toFixed(2);
                 const alreadyAdded = adjustments.some(a => (a.note || a.description || '').toLowerCase().includes('galvanizing minimum'));
                 return (
-                  <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="bg-amber-50 dark:bg-amber-900/25 p-4 rounded border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
                     <p className="text-sm text-amber-800 dark:text-amber-300">
                       <AlertCircle size={14} className="inline mr-1 -mt-0.5" />
                       Galvanizing totals {fmtPrice(galvTotal)} — below the {fmtPrice(GALV_MINIMUM_CHARGE)} galvanizer minimum lot charge.
@@ -6217,9 +6217,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               })()}
 
               {/* General Adjustments */}
-              <div className="bg-yellow-50 dark:bg-yellow-950 p-4 rounded border border-yellow-200">
+              <div className="bg-yellow-50 dark:bg-yellow-900/25 p-4 rounded border border-yellow-200 dark:border-yellow-900">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-semibold text-yellow-800">General Adjustments (Internal Only)</h3>
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300">General Adjustments (Internal Only)</h3>
                   <button
                     onClick={addAdjustment}
                     className="flex items-center gap-1 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
@@ -6229,11 +6229,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 </div>
                 
                 {adjustments.length === 0 ? (
-                  <p className="text-sm text-yellow-700">No adjustments. Use for rounding, contingency, GC discounts, etc.</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400">No adjustments. Use for rounding, contingency, GC discounts, etc.</p>
                 ) : (
                   <div className="space-y-2">
                     {adjustments.map(adj => (
-                      <div key={adj.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border">
+                      <div key={adj.id} className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded border dark:border-gray-700">
                         <span className="text-sm text-gray-600 dark:text-gray-400">$</span>
                         <input
                           type="number"
@@ -6259,51 +6259,51 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                       </div>
                     ))}
                     <div className="text-right text-sm font-semibold pt-2 border-t">
-                      Total Adjustments: <span className={totals.totalAdjustments >= 0 ? 'text-green-700' : 'text-red-700'}>{fmtPrice(totals.totalAdjustments)}</span>
+                      Total Adjustments: <span className={totals.totalAdjustments >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}>{fmtPrice(totals.totalAdjustments)}</span>
                     </div>
                   </div>
                 )}
-                <p className="text-xs text-yellow-600 mt-2">* Adjustments are baked into the final total but NOT shown separately on the quote.</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">* Adjustments are baked into the final total but NOT shown separately on the quote.</p>
               </div>
 
               {/* Grand Totals */}
               <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded border">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm">Fab Weight: <span className="font-bold text-blue-700">{fmtWt(totals.totalFabWeight)} lbs</span></p>
+                    <p className="text-sm">Fab Weight: <span className="font-bold text-blue-700 dark:text-blue-300">{fmtWt(totals.totalFabWeight)} lbs</span></p>
                     <p className="text-sm">Stock Weight: <span className="font-bold">{fmtWt(totals.totalStockWeight)} lbs</span></p>
-                    <p className="text-sm">Waste: <span className="font-bold text-orange-600">{fmtWt(totals.totalStockWeight - totals.totalFabWeight)} lbs</span></p>
+                    <p className="text-sm">Waste: <span className="font-bold text-orange-600 dark:text-orange-400">{fmtWt(totals.totalStockWeight - totals.totalFabWeight)} lbs</span></p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm">Materials: {fmtPrice(totals.totalMaterialCost)}</p>
                     <p className="text-sm">Fabrication: {fmtPrice(totals.totalFabricationCost)}</p>
                     <p className="text-sm">Recap Costs: {fmtPrice(totals.totalRecapCosts)}</p>
                     {totals.totalTax > 0 && (
-                      <p className="text-sm">Tax ({taxCategoryDescriptions[taxCategory]?.label}): <span className="text-amber-700">{fmtPrice(totals.totalTax)}</span></p>
+                      <p className="text-sm">Tax ({taxCategoryDescriptions[taxCategory]?.label}): <span className="text-amber-700 dark:text-amber-400">{fmtPrice(totals.totalTax)}</span></p>
                     )}
                     {totals.totalAdjustments !== 0 && (
-                      <p className="text-sm">Adjustments: <span className={totals.totalAdjustments >= 0 ? 'text-green-700' : 'text-red-700'}>{fmtPrice(totals.totalAdjustments)}</span></p>
+                      <p className="text-sm">Adjustments: <span className={totals.totalAdjustments >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}>{fmtPrice(totals.totalAdjustments)}</span></p>
                     )}
-                    <p className="text-xl font-bold mt-2 text-green-700">TOTAL: {fmtPrice(totals.grandTotal)}</p>
+                    <p className="text-xl font-bold mt-2 text-green-700 dark:text-green-400">TOTAL: {fmtPrice(totals.grandTotal)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Exclusions & Qualifications */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-red-50 dark:bg-red-950 p-4 rounded border border-red-200">
-                  <h3 className="font-semibold text-red-800 mb-2">Exclusions</h3>
+                <div className="bg-red-50 dark:bg-red-900/30 p-4 rounded border border-red-200 dark:border-red-900">
+                  <h3 className="font-semibold text-red-800 dark:text-red-300 mb-2">Exclusions</h3>
                   <ul className="text-sm space-y-1">
                     {[...selectedExclusions, ...customExclusions].map((exc, i) => (
-                      <li key={i} className="text-red-700">- {exc}</li>
+                      <li key={i} className="text-red-700 dark:text-red-400">- {exc}</li>
                     ))}
                   </ul>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded border border-blue-200">
-                  <h3 className="font-semibold text-blue-800 mb-2">Qualifications</h3>
+                <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded border border-blue-200 dark:border-blue-900">
+                  <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">Qualifications</h3>
                   <ul className="text-sm space-y-1">
                     {[...selectedQualifications, ...customQualifications].map((qual, i) => (
-                      <li key={i} className="text-blue-700">- {qual}</li>
+                      <li key={i} className="text-blue-700 dark:text-blue-400">- {qual}</li>
                     ))}
                   </ul>
                 </div>
@@ -6461,7 +6461,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                       </div>
                       
                       {breakouts.deducts.length > 0 && (
-                        <div className="mb-4 p-3 border border-red-300 bg-red-50 dark:bg-red-950">
+                        <div className="mb-4 p-3 border border-red-300 bg-red-50 dark:bg-red-900/30">
                           <p className="font-semibold text-sm mb-2 text-red-800">DEDUCT OPTIONS:</p>
                           {breakouts.deducts.map(d => (
                             <p key={d.id} className="text-sm mb-1 flex justify-between">
@@ -6473,7 +6473,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                       )}
                       
                       {breakouts.adds.length > 0 && (
-                        <div className="mb-4 p-3 border border-green-300 bg-green-50 dark:bg-green-950">
+                        <div className="mb-4 p-3 border border-green-300 bg-green-50 dark:bg-green-900/25">
                           <p className="font-semibold text-sm mb-2 text-green-800">ADD OPTIONS:</p>
                           {breakouts.adds.map(a => (
                             <p key={a.id} className="text-sm mb-1 flex justify-between">
@@ -6562,7 +6562,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             
             <div className="p-6 space-y-4">
               {importError && (
-                <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded p-4 flex items-start gap-3">
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 rounded p-4 flex items-start gap-3">
                   <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
                   <div>
                     <p className="font-semibold text-red-800">Import Error</p>
@@ -6573,7 +6573,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               
               {importPreview && (
                 <>
-                  <div className="bg-green-50 dark:bg-green-950 border border-green-200 rounded p-4">
+                  <div className="bg-green-50 dark:bg-green-900/25 border border-green-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Check className="text-green-600" size={20} />
                       <span className="font-semibold text-green-800">Ready to Import</span>
@@ -6586,11 +6586,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   </div>
 
                   {importPreview.unmatchedSizes.length > 0 && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 rounded p-4">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/25 border border-yellow-200 dark:border-yellow-900 rounded p-4">
                       <div className="flex items-start gap-3">
                         <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
                         <div>
-                          <p className="font-semibold text-yellow-800">
+                          <p className="font-semibold text-yellow-800 dark:text-yellow-300">
                             Unmatched Sizes — {importPreview.unmatchedSizes.reduce((n, u) => n + u.rowCount, 0)} row(s) will import with ZERO weight
                           </p>
                           <p className="text-yellow-700 text-sm mb-2">These sizes could not be matched to the AISC database and will be imported as Custom with 0 lbs/ft — weight and cost will be zero until corrected:</p>
@@ -6637,7 +6637,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                     </table>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 rounded p-4 text-sm">
                     <p className="font-semibold text-blue-800 mb-1">Merge Behavior:</p>
                     <ul className="text-blue-700 space-y-1">
                       <li>- Matching material lines: Quantity will be replaced</li>
@@ -6674,7 +6674,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
             <div className="p-6 space-y-4">
               {takeoffError && (
-                <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded p-4 flex items-start gap-3">
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 rounded p-4 flex items-start gap-3">
                   <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
                   <div>
                     <p className="font-semibold text-red-800">Import Error</p>
@@ -6685,7 +6685,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
               {takeoffPreview && (
                 <>
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Check className="text-blue-600" size={20} />
                       <span className="font-semibold text-blue-800">Ready to Import</span>
@@ -6698,8 +6698,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   </div>
 
                   {(takeoffPreview.unmatchedSizes || []).length > 0 && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-300 rounded p-4 text-sm">
-                      <p className="font-semibold text-yellow-800 mb-1">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/25 border border-yellow-300 rounded p-4 text-sm">
+                      <p className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">
                         Unmatched Sizes — {takeoffPreview.unmatchedSizes.reduce((n, u) => n + u.rowCount, 0)} member(s) will import with ZERO weight
                       </p>
                       <p className="text-yellow-700 mb-2">These sizes could not be matched to the AISC database and will import as Custom with 0 lbs/ft — weight and cost will be zero until corrected:</p>
@@ -6715,8 +6715,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   )}
 
                   {takeoffPreview.items.some(i => i.coatingMixed) && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-300 rounded p-4 text-sm">
-                      <p className="font-semibold text-yellow-800 mb-1">Mixed Coating Warning</p>
+                    <div className="bg-yellow-50 dark:bg-yellow-900/25 border border-yellow-300 rounded p-4 text-sm">
+                      <p className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Mixed Coating Warning</p>
                       <p className="text-yellow-700 mb-2">The following items have rows with different or missing coating values. No item-level coating operation will be added — review manually:</p>
                       <ul className="list-disc list-inside text-yellow-700 space-y-0.5">
                         {takeoffPreview.items.filter(i => i.coatingMixed).map(i => (
@@ -6779,7 +6779,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                     </table>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 rounded p-4 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 rounded p-4 text-sm">
                     <p className="font-semibold text-blue-800 mb-1">Import Behavior:</p>
                     <ul className="text-blue-700 space-y-1">
                       <li>- Each member mark becomes a material line (parents + children)</li>
