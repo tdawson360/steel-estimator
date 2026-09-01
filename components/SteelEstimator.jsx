@@ -6327,7 +6327,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               <div className="quote-printable">
                 {/* Company Header */}
                 <div className="border-b-2 border-gray-800 pb-4 mb-4">
-                  <img src={COMPANY_LOGO} alt="Company Logo" style={{ height: '60px' }} />
+                  {/* White in dark mode on screen; print always gets the black original */}
+                  <img src={COMPANY_LOGO} alt="Company Logo" style={{ height: '60px' }} className="dark:brightness-0 dark:invert print:brightness-100 print:invert-0" />
                   <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 text-center mt-2">QUOTATION</h1>
                 </div>
 

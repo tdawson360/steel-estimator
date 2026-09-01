@@ -117,7 +117,8 @@ export default function AppHeader() {
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between" data-testid="app-header">
       <div className="flex items-center gap-3">
         <a href="/dashboard" data-testid="link-dashboard">
-          <img src={COMPANY_LOGO} alt="Berger Iron Works" className="h-8 w-auto" />
+          {/* Black logo goes solid white in dark mode (flatten to black, then invert) */}
+          <img src={COMPANY_LOGO} alt="Berger Iron Works" className="h-8 w-auto dark:brightness-0 dark:invert" />
         </a>
         <span className="text-xs text-gray-400 hidden sm:inline">Steel Estimator</span>
         <nav className="flex items-center gap-1 ml-2">

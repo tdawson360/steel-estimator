@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ground color behind every page (covers overscroll and unstyled edges) */
+body {
+  @apply bg-gray-100 dark:bg-gray-900;
+}
+
 /* Custom scrollbar for better UX */
 ::-webkit-scrollbar {
   width: 8px;
