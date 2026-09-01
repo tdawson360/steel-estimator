@@ -1,340 +1,85 @@
-# Steel Estimator - Project Context
+# Steel Estimator — Project Context
 
-## Project Overview
+**Company:** Berger Iron Works (Houston, TX) — structural steel fabrication and ornamental metals
+**Owner:** Todd Dawson (admin). Lead estimator: Samantha Neil.
 
-**Company:** Berger Iron Works (Houston, TX)  
-**Industry:** Structural steel fabrication and ornamental metals  
-**Project Owner:** Todd (Contract review, project management, estimating)
-
-This is a web-based Steel Estimator application built with Next.js that processes steel fabrication takeoffs from our vendor Neilsoft and generates detailed material and labor estimates.
-
-**Current Status:**
-- Phase 0: Frontend UI - COMPLETE
-- Phase 1: Backend API & CSV Importer - IN PROGRESS
-- Using Replit for development, deploying to production environment TBD
+Internal web app for steel estimating: Bluebeam takeoffs import as structured CSV, the app builds material + labor estimates with real pricing, and projects move through a draft → review → publish workflow on the bid board.
 
 ---
 
-## Architecture
+## Tech Stack & Running
 
-**Tech Stack:**
-- Next.js 14+ (App Router)
-- React
-- TypeScript
-- API routes for backend logic
+- Next.js 14 (App Router) + React, JavaScript (not TS)
+- Prisma + SQLite (`prisma/dev.db`) — **this is real company data**, not test data. Daily noon backup task mirrors verified snapshots to OneDrive (`scripts/backup-db.mjs`).
+- NextAuth credentials login; roles: ADMIN, ESTIMATOR, PM, FIELD_SHOP
+- Tests: `npx vitest run` (characterization suite — keep it green; run before committing)
 
-**Key Features:**
-- Item-based estimating with hierarchical material selection
-- Configurable labor components
-- CSV import from Neilsoft takeoff data
-- Material weight calculations based on AISC steel database
-- Labor rate lookup and cost extensions
-
----
-
-## CSV Importer Specification
-
-### Overview
-Import steel takeoff data from Neilsoft in CSV format. Each row represents one piece. The app aggregates rows by Item_Number and generates material + labor line items.
-
-### Input CSV Structure (19 Columns)
-
-#### Core Identification
-1. **Item_Number** - Bid item number (e.g., "1", "2", "3")
-2. **Item_Description** - Description of work package (e.g., "STRUCTURAL FRAMING")
-3. **Member_Mark** - Unique piece mark with parent/child logic (e.g., "45", "45.1", "45.2")
-4. **Part_Label** - Member type (e.g., "BEAM", "COLUMN", "CLIP ANGLE", "END PLATE")
-5. **Drawing_Ref** - Drawing reference (e.g., "S-502", "A-102")
-
-#### Material Data
-6. **Shape_Size** - Steel shape and size (e.g., "W 16 x 26", "HSS 4 x 4 x 1/4", "L 3 x 3 x 1/4", "PL 3/8 x 6")
-7. **Quantity** - Number of pieces (integer)
-8. **Length_Ft** - Length in feet (decimal)
-
-#### Labor Modifiers
-9. **End_1_Labor** - First end preparation (dropdown values below)
-10. **End_2_Labor** - Second end preparation (dropdown values below)
-11. **Holes** - Hole type (dropdown values below)
-12. **Hole_Qty** - Number of holes (integer)
-13. **Weld_Type** - Welding type (dropdown values below)
-14. **Connection_Type** - Connection assembly type (dropdown values below)
-15. **Connection_Qty** - Number of connections (integer)
-16. **Prep_Ops** - Prep operations (dropdown values below)
-17. **Coating** - Coating type (dropdown values below)
-18. **Galvanized** - Yes/No (triggers galv weight tracking in app)
-
-#### Notes
-19. **Notes** - Free text field
-
----
-
-## Labor Operation Mapping
-
-### End Labor (End_1_Labor / End_2_Labor)
-**Template Values → App Operations:**
-- "Straight" → "Cut- Straight"
-- "Miter" → "Cut- Miter"
-- "Double Miter" → "Cut- Double Miter"
-- "Single Cope" → "Cut- Single Cope End"
-- "Double Cope" → "Cut- Double Cope End"
-- "Profile" → "Cut- Profile"
-- **"Single Cope + Miter"** → generates TWO operations: "Cut- Single Cope End" + "Cut- Miter"
-- **"Double Cope + Miter"** → generates TWO operations: "Cut- Double Cope End" + "Cut- Miter"
-
-**Parsing Rule:** If End_Labor contains " + ", split on " + " and create separate operations for each.
-
-**Quantity:** Each operation gets Qty = 1
-
----
-
-### Drilling Operations (Holes)
-**Template Values → App Operations:**
-- "Drill" → "Drill Holes"
-- "Drill & C'sink" → "Drill & C'sink Holes"
-- "Drill & Tap" → "Drill & Tap Holes"
-- "Drill Thru" → "Drill Thru Holes"
-
-**Quantity:** Use Hole_Qty from template
-
----
-
-### Welding Operations (Weld_Type)
-**Template Values → App Operations:**
-- "Fillet" → "Welding- Fillet"
-- "Bevel/Grind" → "Welding- Bevel/Grind"
-- "PJP" → "Welding- PJP"
-- "CJP" → "Welding- CJP"
-
-**Quantity:** Qty = 1 (flat per piece)
-
----
-
-### Prep Operations (Prep_Ops)
-**Template Values → App Operations:**
-- "Ease" → "Ease"
-- "Splice" → "Splice"
-- "90's" → "90's"
-
-**Quantity:** Qty = 1 (flat per piece)
-
----
-
-### Connection Operations (Connection_Type)
-**Template Values → App Operations:**
-- "WF Connx" → "WF Connx"
-- "C Connx" → "C Connx"
-- "WF Moment Connx" → "WF Moment Connx" *(NEW - needs to be added to app)*
-- "C Moment Connx" → "C Moment Connx" *(NEW - needs to be added to app)*
-- "Loose" → "Loose" *(NEW - needs to be added to app)*
-
-**Quantity:** Use Connection_Qty from template
-
----
-
-### Coating Operations (Coating)
-**Template Values → App Operations:**
-- "Prime Paint" → "Prime Paint"
-- "Blast & Prime" → "Blast & Prime"
-- "Finish Paint" → "Finish Paint"
-- "TNEMEC" → "TNEMEC"
-- "Std. Shop Coat" → "Std. Shop Coat"
-- "Speciality Coating" → "Speciality Coating"
-- "Powder Coat" → "Powder Coat"
-- "Anodized" → "Anodized"
-- "Glass Bead Blast" → "Glass Bead Blast"
-
-**CRITICAL AGGREGATION LOGIC:**
-- **IF** all rows within an Item_Number have the same Coating value → Create ONE coating operation at the Item level (not per piece)
-- **IF** rows have different Coatings or some are blank → Create separate operations or flag for review
-
-**Quantity:** Qty = 1 (item-level application when aggregated)
-
----
-
-### Galvanized
-**Template Value:** "Yes" / "No"
-
-**App Behavior:**
-- When "Yes" → Trigger existing galv checkbox in app
-- App creates weight-tracking line (NOT a labor operation)
-- Used for material sourcing and outsourced galvanizing cost tracking
-
----
-
-## NOT Captured in Template (Estimator-Only)
-
-### Finishes (primarily ornamental work)
-- #4 Satin
-- #8 Mirror
-- Non-Directional
-- Speciality Finish
-
-### Handling Operations
-- Handling
-- Fit up/Assembly
-- Shop Inspection
-- Shop Load-out
-- Hotshot
-
-**These are added manually by the estimator in the app, not captured during Neilsoft takeoff.**
-
----
-
-## Parent/Child Member Logic
-
-**Member_Mark Pattern:**
-- Parent member: "45" (main beam/column)
-- Child connections: "45.1", "45.2" (connection plates, angles, etc.)
-
-**Example from Sample Data:**
-```
-Item 1 - STRUCTURAL FRAMING
-├─ Member 45.0 (W 16 x 26 beam)
-│   ├─ Material: W 16 x 26, Length 57.17', Qty 1
-│   ├─ Labor: Cut- Straight (Qty 2) - both ends
-│   ├─ Labor: Drill Holes (Qty 4)
-│   ├─ Labor: WF Connx (Qty 2)
-│   └─ Labor: Prime Paint (item-level if uniform)
-├─ Member 45.1 (L 3 x 3 x 1/4 clip angle)
-│   ├─ Material: L 3 x 3 x 1/4, Length 0.75', Qty 2
-│   ├─ Labor: Cut- Straight (Qty 2)
-│   ├─ Labor: Drill Holes (Qty 3)
-│   └─ Labor: Welding- Fillet (Qty 1)
-└─ Member 45.2 (PL 3/8 x 6 end plate)
-    ├─ Material: PL 3/8 x 6, Length 0.83', Qty 1
-    ├─ Labor: Drill Holes (Qty 4)
-    └─ Labor: Welding- Fillet (Qty 1)
-```
-
-**App Display:** All members nest under their Item_Number. All costs roll up to Item total.
-
----
-
-## Material Weight Calculation
-
-**App Handles Automatically:**
-1. Parse Shape_Size to determine shape type and dimensions
-2. Lookup weight per foot from AISC steel database
-3. Calculate total weight: `Weight_Per_Ft × Length_Ft × Quantity`
-4. Extend material cost: `Total_Weight × Material_Rate_Per_Lb`
-
-**Steel Grades:** Default to A36 unless estimator overrides. Grade affects material rate lookup.
-
-**DO NOT include weight columns in CSV** - the app calculates this.
-
----
-
-## Labor Rate Database
-
-**Separate spreadsheet (coming soon)** will define:
-- Labor operation rates ($/hour or $/occurrence)
-- Complexity modifiers
-- Shop overhead factors
-
-**For now:** Importer generates labor line items with Qty. Rates can be filled in manually or via lookup.
-
----
-
-## Import Workflow
-
-1. **Upload CSV** → Parse 19 columns
-2. **Group by Item_Number** → Aggregate rows
-3. **For each row:**
-   - Create material line item (Shape_Size, Length, Qty)
-   - Parse labor modifiers and generate labor operations
-   - Handle compound operations (split on " + ")
-   - Apply coating aggregation logic
-   - Trigger galv checkbox if needed
-4. **Calculate weights** → Lookup from steel database
-5. **Display in app** → Nested by Item_Number with parent/child structure
-6. **Apply labor rates** → From separate database or manual entry
-7. **Extend costs** → Material + Labor = Item Total
-
----
-
-## Sample CSV Data (from Rothko project)
-
-```csv
-Item #,Item Description,Qty,(Non-Flat) Mat Size,Page Label,Part Label,Fab Length
-4,CANOPY SUPPORT FRAMING,1,W 8 x 21,S-100,COLUMN,24.75
-4,CANOPY SUPPORT FRAMING,1,HSS 4 x 4 x 1/4,A-102,HORIZ,3.58
-4,CANOPY SUPPORT FRAMING,1,HSS 4 x 4 x 1/4,A-102,HORIZ,7.33
-3,PARAPET SUPPORT POSTS,1,HSS 6 x 2 x 3/8,A-102,POST,3.17
-```
-
-**This is the OLD format (7 columns).** The new Neilsoft template has 19 columns with labor modifiers.
-
----
-
-## Next Steps (Phase 1 Backend)
-
-1. **Build CSV Importer API Route**
-   - `/api/import-csv` endpoint
-   - Parse 19-column CSV
-   - Validate data
-   - Generate material + labor line items
-
-2. **Implement Labor Operation Parsing**
-   - Compound operation splitting logic
-   - Prefix/suffix transformation (Cut-, Welding-, etc.)
-   - Coating aggregation by Item_Number
-
-3. **Weight Calculation Service**
-   - AISC steel database lookup
-   - Shape parsing (W, HSS, L, PL, etc.)
-   - Weight per foot calculation
-
-4. **Labor Rate Integration**
-   - Prepare for separate rate database
-   - Apply rates to labor operations
-   - Cost extension logic
-
-5. **Data Model Updates**
-   - Item → Material → Labor hierarchy
-   - Parent/child member relationships
-   - Galvanized tracking
-
----
-
-## Important Notes
-
-- **One row = one piece** in the CSV
-- **The app aggregates** by Item_Number and shape
-- **Labor rates are separate** from the import (coming in separate database)
-- **Material grade defaults to A36** unless specified
-- **Build files (.next/) should NOT be committed** to git
-- **Branch structure:** `main` (original), `replit-phase1` (current work)
-
----
-
-## Contact & Context
-
-**Project Lead:** Todd  
-**Company:** Berger Iron Works  
-**Vendor:** Neilsoft (provides takeoff data)  
-**Goal:** Automate steel estimating by importing structured takeoff data and applying intelligent labor/material calculations
-
----
-
-## Development Environment
-
-**Current Setup:**
-- Developed in Replit
-- Pushed to GitHub: `https://github.com/tdawson360/steel-estimator`
-- Working branch: `replit-phase1`
-- Local development with Claude Code
-
-**To Run Locally:**
 ```bash
-npm install
-npm run dev
+npm run dev            # dev server on :5000
+npm run build && npm start   # production build — preferred for real estimating sessions (dev mode is slow on large estimates)
 ```
 
-**To Build:**
-```bash
-npm run build
-```
+Server binds 0.0.0.0:5000 so office-LAN users can reach it. Deployment to an office server is planned; until then it runs on Todd's machine.
+
+**Branches:** `main` is canonical. Work happens on `calc-extraction`; pushes fast-forward both (`git push origin calc-extraction && git push origin calc-extraction:main`).
 
 ---
 
-*Last Updated: February 2026*
+## Architecture Map
+
+- `components/SteelEstimator.jsx` — the estimator UI (large single component). **Careful renaming top-level `const` declarations**: the test harness (`tests/helpers/extract.js`) slices function source out of this file by marker text.
+- `lib/estimating/*` — the pure calculation engine (material calc, fab costs, totals, nesting, labor groups, galv rules, connection pricing, importers). No React/Prisma in these modules.
+- `lib/estimating/recompute.js` + `lib/recompute-server.js` — server-authoritative totals: every PUT re-runs the engine and persists the SERVER's numbers; client/server drift is logged (`mismatch.log`). **Any pricing-rule change must land in both the UI path and the engine**, or drift alarms fire.
+- `app/api/projects/[id]/route.js` — GET/PUT with differential updates; materials are a **flat array with `parentMaterialId`** linking subparts to parents.
+- `app/admin/connection-pricing/` — the **Global Pricing Data** page: rate drivers, operation rates, custom ops, connection categories (WF + C/MC), Connx Template sync.
+- `app/dashboard/` — bid board (projects, statuses, archive; templates listed separately).
+
+---
+
+## Takeoff Pipeline (Bluebeam)
+
+Takeoffs are done in-house with Bluebeam Revu; Todd shares the profile/toolkit with whoever is helping.
+
+- Canonical files (repo root): `Steel_Estimator_Takeoff_v1.7.bpx` (profile: 23 custom columns, choice lists, Allow Custom Text on the op columns + Shape_Size) and `BIW_Steel_Tool_Kit_v1.7.btx` (22 measurement tools, clean presets).
+- **Version the internal names** when shipping new files (profile `Name`, toolkit `Title`) — Revu will not replace a loaded same-named profile/tool set, and hand-edited column XML is ignored on import. The reliable loop: fix columns in Revu's UI → export → that export is the new canonical bpx.
+- Markups list → CSV export → **Import CSV** in the app (`/api/import-csv`, logic in `lib/estimating/import-takeoff.js`).
+
+### CSV contract (essentials)
+
+One row = one piece. Grouped by `Item_Number`; `Member_Mark` parent/child dotting ("45", "45.1") nests subparts under members. `Length_Ft` (typed) OR `Measured_Length` (measured) suffices; drawn dimension strings are parsed and reconciled to the nearest inch. `Page_Label` and `Drawing_Ref` merge into the item's Dwg Ref.
+
+Dropdown → operation mappings (see `import-takeoff.js` maps; `None` imports as blank everywhere):
+
+- **End_1/End_2**: Straight/Miter/Double Miter/Single Cope/Double Cope/Profile, plus compounds ("Single Cope + Miter" splits into two ops)
+- **Holes** + `Hole_Qty`: Drill / Drill & C'sink / Drill & Tap / Drill Thru
+- **Weld_Type**: Fillet / Bevel\/Grind / PJP / CJP
+- **Connection_Type** + `Connection_Qty`: `WF Bolted`, `WF Welded`, `WF CJP`, `C Bolted`, `C Welded`, `C CJP`, `Loose` (legacy `WF/C Connx` and `Moment Connx` still accepted; CJP maps to Moment pricing)
+- **Prep_Ops**: Ease / Splice / 90's / Camber / Roll
+- **Coating**: aggregates at ITEM level when uniform across rows; mixed values are flagged
+- **Galvanized**: Yes → galv weight lines (see galv rules below)
+
+Unmapped op values are silently dropped — keep takeoff values on the list.
+
+---
+
+## Estimating Model — Key Rules
+
+- **Hierarchy**: Item → materials (flat, `parentMaterialId` for subparts) → per-material fab ops; plus item-level General Fab and Recap costs.
+- **Coatings, finishes, handling are item-scope**: they exist only on the General Fab tab, never on material rows (legacy rows render under a "Legacy" group).
+- **Cutting ops default to the member's piece count** when added; subpart piece counts inherit from the parent until edited.
+- **Labor groups**: fab rows on same shape-family parents sharing an operation price once at a group rate (`lib/estimating/labor-groups.js`); collapsed groups print as a single line. Children and galv lines never group.
+- **Galvanizing = one dipped assembly, one line, one rate** (`lib/estimating/galv.js`): a galvanized parent's auto-galv line carries its own weight + galvanized subparts + galvanized connection weights; covered subparts/conn-ops get no separate lines. Rates vary by shape, so each assembly line's rate is editable. Projects under the **$300 galvanizer minimum** get a Summary-tab banner with a one-click shortfall adjustment. `normalizeGalvLines` is the single reconciler — call it after any mutation that touches materials/fabs.
+- **Connection pricing**: per-each by depth category on Global Pricing Data. `Bolted $` / `Welded $` are all-in prices synced from the **Connx Template** project (each linked template item = one connection taken off line by line; its shop total is the price). Sync is snapshot-based with preview; applying reprices DRAFT/REOPENED estimates (IN_REVIEW opt-in, PUBLISHED never). `Moment/CJP $` and cut costs work as before.
+- **Template projects** (`Project.isTemplate`): editable only by admins + the assigned estimator; never publish/review; can't be deleted while pricing cells link to their items; listed under "Templates" on the dashboard, not the bid board.
+- **Hardware category**: free-text description (e.g. `3/4" A325 x 2"`), priced per-each — used for bolts in the Connx Template.
+- **Statuses**: DRAFT → IN_REVIEW → PUBLISHED (+ REOPENED). PUBLISHED is the frozen record of what was quoted. Archived projects can be permanently deleted by admins (archive-first is enforced server-side).
+
+---
+
+## Conventions
+
+- Never commit `.next/` or `prisma/dev.db`.
+- Money math discrepancies: check `mismatch.log` ([TOTALS-MISMATCH]) before assuming the client is right — the server recompute is authoritative.
+- Schema changes: `npx prisma migrate dev` (stop the running server first — it locks the query engine DLL on Windows).
+
+*Last updated: September 2026*
