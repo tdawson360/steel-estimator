@@ -4,10 +4,14 @@
 //   (an online-consistent snapshot; read-only against the source).
 // - Verifies the copy: PRAGMA integrity_check must return "ok" and the Project
 //   row count must match the source exactly.
-// - Prunes backups older than RETENTION_DAYS.
+// - Mirrors the verified snapshot into MIRROR_DIR (a OneDrive-synced folder),
+//   so every backup leaves the machine — a dead disk can't take the database
+//   and all its backups together.
+// - Prunes backups older than RETENTION_DAYS in both locations.
 // - Appends one line per run to backup.log in BACKUP_DIR.
-// - Exits nonzero (and logs FAIL) on any error, so Task Scheduler records the
-//   run as failed.
+// - Exits nonzero (and logs FAIL) on any error — a mirror failure included,
+//   because a silently broken mirror defeats its purpose — so Task Scheduler
+//   records the run as failed.
 //
 // Intended to run via Windows Task Scheduler; see the schtasks registration
 // command in the repo docs / commit message. Paths are derived from this
@@ -21,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DB = path.resolve(SCRIPT_DIR, '..', 'prisma', 'dev.db');
 const BACKUP_DIR = 'C:\\Projects\\steel-estimator-db-backups';
+const MIRROR_DIR = 'C:\\Users\\tdawson\\OneDrive - Berger Iron Works\\SteelEstimator-DB-Backups';
 const LOG_FILE = path.join(BACKUP_DIR, 'backup.log');
 const RETENTION_DAYS = 60;
 
@@ -71,20 +76,30 @@ async function main() {
     throw new Error(`row count mismatch: source Project=${sourceCount}, backup Project=${backupCount} (${backupPath})`);
   }
 
-  // 3. Prune old backups
+  // 3. Mirror the verified snapshot off-machine (OneDrive syncs it to the cloud)
+  fs.mkdirSync(MIRROR_DIR, { recursive: true });
+  const mirrorPath = path.join(MIRROR_DIR, path.basename(backupPath));
+  fs.copyFileSync(backupPath, mirrorPath);
+  if (fs.statSync(mirrorPath).size !== fs.statSync(backupPath).size) {
+    throw new Error(`mirror size mismatch: ${mirrorPath}`);
+  }
+
+  // 4. Prune old backups in both locations
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const pruned = [];
-  for (const name of fs.readdirSync(BACKUP_DIR)) {
-    if (!name.startsWith('dev.db.backup-')) continue;
-    const full = path.join(BACKUP_DIR, name);
-    if (fs.statSync(full).mtimeMs < cutoff) {
-      fs.unlinkSync(full);
-      pruned.push(name);
+  for (const dir of [BACKUP_DIR, MIRROR_DIR]) {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith('dev.db.backup-')) continue;
+      const full = path.join(dir, name);
+      if (fs.statSync(full).mtimeMs < cutoff) {
+        fs.unlinkSync(full);
+        pruned.push(name);
+      }
     }
   }
 
   const size = fs.statSync(backupPath).size;
-  log(`OK backup=${path.basename(backupPath)} size=${size}B projects=${backupCount} integrity=ok pruned=[${pruned.join(', ')}]`);
+  log(`OK backup=${path.basename(backupPath)} size=${size}B projects=${backupCount} integrity=ok mirrored=${path.basename(mirrorPath)} pruned=[${pruned.join(', ')}]`);
 }
 
 main().catch((err) => {
