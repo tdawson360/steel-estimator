@@ -83,6 +83,10 @@ model Project {
   // Tax category: null, "newConstruction", "resale", "fob", "noTax"
   taxCategory      String?
 
+  // Template project: not a bid — a living reference estimate (e.g. "Connx
+  // Template") whose item totals feed pricing lookups via sync.
+  isTemplate       Boolean   @default(false)
+
   // Cross-item stock nesting: pool cut lengths across items onto shared sticks
   nestingEnabled   Boolean   @default(false)
   nestKerfIn       Float     @default(0.25)  // saw kerf per cut, inches
@@ -611,6 +615,16 @@ model ConnectionCategory {
   providesTakeoffCost  Boolean  @default(false)
   connxCost            Float?
   momentConnxCost      Float?
+
+  // All-in per-connection prices (replace connxCost in the UI; connxCost stays
+  // for legacy "WF Connx"/"C Connx" ops). Sourced from linked Connx Template
+  // items via sync, or entered manually. momentConnxCost doubles as the CJP price.
+  boltedConnxCost       Float?
+  weldedConnxCost       Float?
+  boltedTemplateItemId  Int?
+  weldedTemplateItemId  Int?
+  boltedSyncedAt        DateTime?
+  weldedSyncedAt        DateTime?
   singleCopeCost       Float
   doubleCopeCost       Float
   straightCutCost      Float

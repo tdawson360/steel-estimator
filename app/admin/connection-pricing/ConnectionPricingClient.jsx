@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import AppHeader from '../../../components/AppHeader';
 import {
   updatePricingRates,
@@ -10,6 +10,10 @@ import {
   createCustomOp,
   updateCustomOp,
   deleteCustomOp,
+  getTemplateItems,
+  linkTemplateItem,
+  previewTemplateSync,
+  applyTemplateSync,
 } from './actions';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -117,7 +121,7 @@ function RatesEditor({ rates }) {
 
 // ─── Section 2 & 3: Category Table ────────────────────────────────────────────
 
-function CategoryTable({ categories, shapeType, shopLaborRate = 65 }) {
+function CategoryTable({ categories, shapeType, shopLaborRate = 65, onLinkTemplate }) {
   const [editing, setEditing] = useState({}); // id → field → value
   const [saving, setSaving] = useState(null);
   const [saved, setSaved] = useState(null);
@@ -218,8 +222,9 @@ function CategoryTable({ categories, shapeType, shopLaborRate = 65 }) {
             <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Shapes</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Labor Hrs</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Connx Wt</th>
-            <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Connx $</th>
-            <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Moment $</th>
+            <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Bolted $</th>
+            <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Welded $</th>
+            <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Moment/CJP $</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Single Cope</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Straight Cut</th>
             <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">Miter Cut</th>
@@ -241,7 +246,10 @@ function CategoryTable({ categories, shapeType, shopLaborRate = 65 }) {
                 <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{cat.laborHours.toFixed(4)}</td>
                 <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{cat.connxWeightLbs} lbs</td>
                 <td className="px-3 py-2 text-right">
-                  <EditableCell id={cat.id} field="connxCost" value={cat.connxCost} provideTO={cat.providesTakeoffCost} computedVal={getComputedConnxCost(cat, false)} />
+                  <TemplateCostCell cat={cat} kind="bolted" editing={editing} startEdit={startEdit} handleChange={handleChange} handleSave={handleSave} cancelEdit={cancelEdit} onLinkTemplate={onLinkTemplate} />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <TemplateCostCell cat={cat} kind="welded" editing={editing} startEdit={startEdit} handleChange={handleChange} handleSave={handleSave} cancelEdit={cancelEdit} onLinkTemplate={onLinkTemplate} />
                 </td>
                 <td className="px-3 py-2 text-right">
                   <EditableCell id={cat.id} field="momentConnxCost" value={cat.momentConnxCost} provideTO={cat.providesTakeoffCost} computedVal={getComputedConnxCost(cat, true)} />
@@ -749,12 +757,265 @@ function CustomOpsEditor({ initialOps }) {
   );
 }
 
+// ─── Bolted/Welded cost cell (editable + template link) ───────────────────────
+
+function TemplateCostCell({ cat, kind, editing, startEdit, handleChange, handleSave, cancelEdit, onLinkTemplate }) {
+  const field = kind === 'bolted' ? 'boltedConnxCost' : 'weldedConnxCost';
+  const linkedId = cat[`${kind}TemplateItemId`];
+  const syncedAt = cat[`${kind}SyncedAt`];
+  const value = cat[field];
+  const isEditing = editing[cat.id] && field in editing[cat.id];
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {isEditing ? (
+        <input
+          type="number"
+          step="0.01"
+          autoFocus
+          className="w-20 px-1 py-0.5 border border-blue-400 rounded text-xs dark:bg-gray-800 dark:text-gray-100 focus:outline-none"
+          value={editing[cat.id][field]}
+          onChange={e => handleChange(cat.id, field, e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave(cat.id); if (e.key === 'Escape') cancelEdit(cat.id); }}
+        />
+      ) : (
+        <span
+          className="cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950 px-1 rounded"
+          onClick={() => startEdit(cat.id, field, value)}
+          title={syncedAt
+            ? `Synced from Connx Template ${new Date(syncedAt).toLocaleDateString()}. Click to override manually.`
+            : 'Click to edit'}
+        >
+          {fmt(value)}
+        </span>
+      )}
+      <button
+        onClick={() => onLinkTemplate?.(cat, kind)}
+        className={`text-[10px] leading-none px-1 rounded ${linkedId
+          ? 'text-blue-600 dark:text-blue-400 hover:underline'
+          : 'text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:underline'}`}
+        title={linkedId
+          ? 'Linked to a Connx Template item — click to change or unlink'
+          : 'Link a Connx Template item so sync prices this cell'}
+      >
+        {linkedId ? 'linked ✓' : 'link…'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Template link picker modal ────────────────────────────────────────────────
+
+function TemplateLinkPicker({ target, onClose }) {
+  const [items, setItems] = useState(null);
+  const [selected, setSelected] = useState(target.cat[`${target.kind}TemplateItemId`] ?? null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    getTemplateItems()
+      .then(setItems)
+      .catch(e => setError(e.message));
+  }, []);
+
+  const save = async (itemId) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await linkTemplateItem(target.cat.id, target.kind, itemId);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+            Link template item — {target.cat.name} · {target.kind === 'bolted' ? 'Bolted' : 'Welded'}
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            The linked item's shop total (materials + fab, no recap) becomes this cell's price on sync. Build each template item as ONE connection.
+          </p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {error && <p className="text-sm text-red-600 dark:text-red-400 mb-2">{error}</p>}
+          {!items && !error && <p className="text-sm text-gray-500 dark:text-gray-400">Loading template items…</p>}
+          {items && items.length === 0 && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              No template items found. Create a project flagged as a template (e.g. "Connx Template") with one item per connection scenario.
+            </p>
+          )}
+          {items && items.map(it => (
+            <label key={it.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm">
+              <input
+                type="radio"
+                name="templateItem"
+                checked={selected === it.id}
+                onChange={() => setSelected(it.id)}
+              />
+              <span className="flex-1 text-gray-800 dark:text-gray-200">
+                {it.itemNumber} — {it.itemName}
+                <span className="text-gray-400 dark:text-gray-500"> · {it.projectName}</span>
+              </span>
+              <span className="text-gray-600 dark:text-gray-400 tabular-nums">{fmt(it.total)}</span>
+            </label>
+          ))}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between gap-2">
+          <button
+            onClick={() => save(null)}
+            disabled={saving}
+            className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+          >
+            Unlink
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:underline">Cancel</button>
+            <button
+              onClick={() => save(selected)}
+              disabled={saving || selected == null}
+              className="px-4 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Linking…' : 'Link'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Template sync panel ───────────────────────────────────────────────────────
+
+function TemplateSyncPanel() {
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [includeInReview, setIncludeInReview] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const loadPreview = async () => {
+    setLoading(true);
+    setResult(null);
+    setError(null);
+    try {
+      setPreview(await previewTemplateSync());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const apply = async () => {
+    setApplying(true);
+    setError(null);
+    try {
+      const r = await applyTemplateSync({ includeInReview });
+      setResult(r);
+      setPreview(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const changedRows = preview?.rows?.filter(r => r.bolted?.changed || r.welded?.changed) ?? [];
+
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={loadPreview}
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? 'Reading template…' : 'Preview Sync'}
+        </button>
+        {result && (
+          <span className="text-sm text-green-600 dark:text-green-400">
+            ✓ {result.categoriesUpdated} categor{result.categoriesUpdated === 1 ? 'y' : 'ies'} updated · {result.updatedRows} estimate line{result.updatedRows === 1 ? '' : 's'} repriced across {result.projectsTouched} project{result.projectsTouched === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {preview && (
+        <div className="mt-4 space-y-4">
+          {preview.rows.length === 0 ? (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              No categories are linked to template items yet. Use the "link…" control under a Bolted/Welded cell below.
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-700">
+                      <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Category</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Column</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Template item</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Current</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">New</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.flatMap(r => ['bolted', 'welded'].filter(k => r[k]).map(k => (
+                      <tr key={`${r.categoryId}-${k}`} className={`border-t border-gray-100 dark:border-gray-700 ${r[k].changed ? '' : 'opacity-50'}`}>
+                        <td className="px-3 py-1.5 text-gray-800 dark:text-gray-200 whitespace-nowrap">{r.name}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400 capitalize">{k}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{r[k].itemName}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">{fmt(r[k].current)}</td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${r[k].changed ? 'text-blue-700 dark:text-blue-400' : 'text-gray-500'}`}>{fmt(r[k].next)}</td>
+                      </tr>
+                    )))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                <p>
+                  Repricing on apply: <strong>{preview.affected.DRAFT.rows}</strong> line{preview.affected.DRAFT.rows === 1 ? '' : 's'} in {preview.affected.DRAFT.projects} draft project{preview.affected.DRAFT.projects === 1 ? '' : 's'}, <strong>{preview.affected.REOPENED.rows}</strong> in {preview.affected.REOPENED.projects} reopened. Published projects are never touched.
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={includeInReview} onChange={e => setIncludeInReview(e.target.checked)} className="rounded" />
+                  <span>Also reprice in-review projects ({preview.affected.IN_REVIEW.rows} line{preview.affected.IN_REVIEW.rows === 1 ? '' : 's'} in {preview.affected.IN_REVIEW.projects} project{preview.affected.IN_REVIEW.projects === 1 ? '' : 's'})</span>
+                </label>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Repriced lines take their new totals immediately; project roll-ups refresh when a project is next opened or saved. Grouped fab lines keep their labor-group rate.
+                </p>
+              </div>
+              <button
+                onClick={apply}
+                disabled={applying || changedRows.length === 0}
+                className="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+              >
+                {applying ? 'Applying…' : `Apply Sync (${changedRows.length} categor${changedRows.length === 1 ? 'y' : 'ies'} changed)`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
 export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps }) {
+  const [linkTarget, setLinkTarget] = useState(null); // { cat, kind } | null
+  const openLinkPicker = (cat, kind) => setLinkTarget({ cat, kind });
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader />
+      {linkTarget && <TemplateLinkPicker target={linkTarget} onClose={() => setLinkTarget(null)} />}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Global Pricing Data</h1>
@@ -790,6 +1051,15 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <CustomOpsEditor initialOps={customOps} />
         </section>
 
+        {/* Section 3.5: Connx Template Sync */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Connx Template Sync</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Bolted/Welded prices come from the "Connx Template" project — each linked item is one connection taken off line by line, and its shop total is the all-in per-each price. Preview shows old → new before anything is applied.
+          </p>
+          <TemplateSyncPanel />
+        </section>
+
         {/* Section 4: WF Categories */}
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -798,7 +1068,7 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             13 categories covering W4–W44. W44 and W40 costs are "Provide Takeoff" — entered manually per project.
           </p>
-          <CategoryTable categories={wfCategories} shapeType="WF" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
+          <CategoryTable categories={wfCategories} shapeType="WF" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} onLinkTemplate={openLinkPicker} />
         </section>
 
         {/* Section 5: C/MC Categories */}
@@ -809,7 +1079,7 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             6 categories covering C3–C15 and MC3–MC18.
           </p>
-          <CategoryTable categories={cCategories} shapeType="C" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} />
+          <CategoryTable categories={cCategories} shapeType="C" shopLaborRate={rates?.shopLaborRatePerHr ?? 65} onLinkTemplate={openLinkPicker} />
         </section>
 
         {/* Section 6: Beam Lookup */}

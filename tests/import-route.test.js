@@ -2,7 +2,7 @@
 // — quantity handling, length tolerance, labor-op generation, consolidation.
 
 import { describe, it, expect } from 'vitest';
-import { routeEnv } from './helpers/extract.js';
+import { routeEnv, makeRouteEnrichOp } from './helpers/extract.js';
 
 const env = routeEnv();
 
@@ -245,6 +245,40 @@ describe('aggregateTakeoffData member keying and coating', () => {
     const agg3 = env.aggregateTakeoffData(rowsPartial);
     expect(agg3.items[0].coatingUniform).toBeNull();
     expect(agg3.items[0].coatingMixed).toBe(true);
+  });
+});
+
+describe('all-in standard connections (Bolted / Welded / CJP)', () => {
+  it('importer maps new takeoff values; CJP lands on Moment pricing', () => {
+    expect(env.CONNECTION_MAP['WF Bolted']).toBe('WF Bolted');
+    expect(env.CONNECTION_MAP['WF Welded']).toBe('WF Welded');
+    expect(env.CONNECTION_MAP['WF CJP']).toBe('WF Moment Connx');
+    expect(env.CONNECTION_MAP['C CJP']).toBe('C Moment Connx');
+    // legacy values still map
+    expect(env.CONNECTION_MAP['WF Connx']).toBe('WF Connx');
+  });
+  it('full row generates the op with Connection_Qty', () => {
+    const ops = env.generateRowFabOps({ connectionType: 'C Bolted', connectionQty: 2 });
+    expect(ops).toEqual([{ operation: 'C Bolted', quantity: 2, unit: 'EA' }]);
+  });
+  it('CONN_PRICING routes bolted/welded to all-in cost fields', () => {
+    expect(env.CONN_PRICING['WF Bolted']).toMatchObject({ costField: 'boltedConnxCost', allIn: true });
+    expect(env.CONN_PRICING['C Welded']).toMatchObject({ costField: 'weldedConnxCost', allIn: true });
+  });
+  it('enrichOp prices all-in ops from the row, falls back to category, no laborHours fallback', () => {
+    const enrich = makeRouteEnrichOp({ rates: null, shopLaborRate: 65 });
+    // beam row with category fallback
+    const beamRow = { connxWeightLbs: 20, laborHours: 1.5, category: { boltedConnxCost: 210, weldedConnxCost: 180 } };
+    expect(enrich({ operation: 'WF Bolted', quantity: 2, unit: 'EA' }, beamRow))
+      .toMatchObject({ rate: 210, connWeight: 20 });
+    expect(enrich({ operation: 'WF Welded', quantity: 1, unit: 'EA' }, beamRow))
+      .toMatchObject({ rate: 180 });
+    // explicit row value wins over category
+    expect(enrich({ operation: 'WF Bolted', quantity: 1, unit: 'EA' }, { ...beamRow, boltedConnxCost: 195 }))
+      .toMatchObject({ rate: 195 });
+    // unpriced: laborHours must NOT produce a rate for all-in ops
+    const unpriced = enrich({ operation: 'WF Bolted', quantity: 1, unit: 'EA' }, { laborHours: 1.5, connxWeightLbs: 20 });
+    expect(unpriced.rate).toBeUndefined();
   });
 });
 

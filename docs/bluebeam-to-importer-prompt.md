@@ -99,10 +99,16 @@ Use ONLY (blank allowed; `None` means no welding and imports as blank):
 
 ### Connection_Type
 Use ONLY (blank allowed; `None` means no connection and imports as blank):
-- `WF Connx`
-- `C Connx`
-- `WF Moment Connx`
-- `C Moment Connx`
+- `WF Bolted` — all-in standard bolted connection (priced per each from Global Pricing Data)
+- `WF Welded` — all-in standard shear-tab connection
+- `WF CJP` — imports as `WF Moment Connx` (CJP/moment pricing)
+- `C Bolted`
+- `C Welded`
+- `C CJP` — imports as `C Moment Connx`
+- `WF Connx` (legacy)
+- `C Connx` (legacy)
+- `WF Moment Connx` (legacy)
+- `C Moment Connx` (legacy)
 - `Loose`
 
 ### Connection_Qty
