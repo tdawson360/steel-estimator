@@ -140,6 +140,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [projectStatus, setProjectStatus] = useState('DRAFT');
   const [projectIsTemplate, setProjectIsTemplate] = useState(false);
   const [projectEstimatorId, setProjectEstimatorId] = useState(null);
+  // Newly added attachment whose description input should grab focus
+  const [focusDescMaterialId, setFocusDescMaterialId] = useState(null);
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
@@ -2196,17 +2198,20 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       if (!parent) return item;
       
       const nextSeq = getNextChildSequence(item.materials, parentMaterialId);
+      const newId = Date.now() + Math.random();
+      setFocusDescMaterialId(newId); // cursor lands in the new row's description
       const newMaterial = {
-        id: Date.now() + Math.random(),
+        id: newId,
         sequence: nextSeq,
         parentMaterialId: parentMaterialId,
         description: '',
         category: 'Plate',
         size: '',
-        plateThickness: 0.5,
-        plateWidth: 6,
-        thickness: 0.5,
-        width: 6,
+        // Dimensions start blank — the estimator types the real plate, not PL 1/2 x 6
+        plateThickness: null,
+        plateWidth: null,
+        thickness: null,
+        width: null,
         customWeight: null,
         pieces: parent.pieces || 1, // Inherit from parent
         inheritPieces: true, // Flag to inherit piece count
@@ -4449,7 +4454,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             {child.sequence}
                                           </div>
                                         </td>
-                                        <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Attachment desc" /></td>
+                                        <td className="border p-1"><input type="text" value={child.description || ''} onChange={e => updateMaterial(item.id, child.id, 'description', e.target.value)}
+                                          ref={el => { if (el && child.id === focusDescMaterialId) { el.focus(); setFocusDescMaterialId(null); } }}
+                                          className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Attachment desc" /></td>
                                         <td className="border p-1">
                                           <select value={child.category} onChange={e => updateMaterial(item.id, child.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
