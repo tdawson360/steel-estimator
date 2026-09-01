@@ -10,7 +10,7 @@ import COMPANY_LOGO from '../lib/logo.js';
 import { DEFAULT_PRICING_RATES } from '../lib/estimating/rates';
 import { steelDatabase, categories } from '../lib/estimating/aisc-shapes';
 import {
-  OP_PRICING_FIELD, OP_WEIGHT_FIELD, OP_DEFAULT_UNIT,
+  OP_PRICING_FIELD, OP_WEIGHT_FIELD, OP_DEFAULT_UNIT, LEGACY_OP_RENAMES,
   fabricationOperations, allFabOperations, CONNECTION_WEIGHT_OPS,
   wfConnectionWeights, cConnectionWeights, getConnectionWeight,
 } from '../lib/estimating/fab-operations';
@@ -914,7 +914,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 const isGalv = f.isGalvLine || false;
                 return {
                   id: f.id,
-                  operation: f.operation || '',
+                  operation: LEGACY_OP_RENAMES[f.operation] ?? (f.operation || ''),
                   quantity: f.quantity || 0,
                   unit: f.unit || 'ea',
                   rate: derivedRate,
@@ -962,7 +962,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   const isGalv = f.isGalvLine || false;
                   return {
                     id: f.id,
-                    operation: f.operation || '',
+                    operation: LEGACY_OP_RENAMES[f.operation] ?? (f.operation || ''),
                     quantity: f.quantity || 0,
                     unit: f.unit || 'ea',
                     rate: derivedRate,
@@ -2555,7 +2555,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     const currentItem = items.find(i => i.id === itemId);
     const material = currentItem?.materials.find(m => m.id === materialId);
     const isChild = !!material?.parentMaterialId;
-    const defaultOp = isChild ? 'Welding- Fillet' : 'Cut- Straight';
+    const defaultOp = isChild ? 'Apply- Fillet Weld' : 'Cut- Straight';
 
     // Fetch pricing for the default op (covers drilling/prep/welding global rates too)
     const pricing = material?.size ? await getPricingForSize(material.size) : null;
@@ -2639,6 +2639,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           // Handle operation change — apply DB pricing for the new operation
           if (field === 'operation') {
             const newOp = value;
+            // Switching TO a cutting op: default quantity to the piece count
+            // (every piece gets the cut) — parents and attachments alike.
+            if (typeof newOp === 'string' && newOp.startsWith('Cut-') && !(fab.operation || '').startsWith('Cut-')) {
+              updated.quantity = mat.pieces || 1;
+            }
             const isConnOp = CONNECTION_WEIGHT_OPS.has(newOp);
             const pricingField = OP_PRICING_FIELD[newOp];
             const rate = pricingField
@@ -4216,8 +4221,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             <optgroup label="Prep">
                                               {fabricationOperations.prep.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
-                                            <optgroup label="Welding">
-                                              {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
+                                            <optgroup label="Apply">
+                                              {fabricationOperations.apply.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
                                             <optgroup label="Connections">
                                               {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
@@ -4586,11 +4591,6 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         const hasLength = (fab.unit === 'IN' || fab.unit === 'LF') && fab.length;
                                         const extLen = hasLength ? (fab.quantity || 0) * (fab.length || 0) : null;
                                         
-                                        // Available operations based on applyTo
-                                        const availableOps = isApplyToSelf 
-                                          ? [...fabricationOperations.cutting, ...fabricationOperations.drilling, ...fabricationOperations.prep, ...fabricationOperations.welding, ...fabricationOperations.coatings, ...fabricationOperations.finishes, ...fabricationOperations.handling]
-                                          : fabricationOperations.welding;
-                                        
                                         return (
                                         <tr
                                           key={fab.id}
@@ -4655,7 +4655,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                     className="flex-1 p-1 border border-orange-300 rounded text-xs bg-orange-50"
                                                     autoFocus
                                                   />
-                                                  <button onClick={() => updateMaterialFab(item.id, child.id, fab.id, 'operation', 'Welding- Fillet')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
+                                                  <button onClick={() => updateMaterialFab(item.id, child.id, fab.id, 'operation', 'Apply- Fillet Weld')} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">↩</button>
                                                 </div>
                                               ) : (
                                               <select
@@ -4674,8 +4674,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 <optgroup label="Prep">
                                                   {fabricationOperations.prep.map(op => <option key={op} value={op}>{op}</option>)}
                                                 </optgroup>
-                                                <optgroup label="Welding">
-                                                  {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
+                                                <optgroup label="Apply">
+                                                  {fabricationOperations.apply.map(op => <option key={op} value={op}>{op}</option>)}
                                                 </optgroup>
                                                 <optgroup label="Connections">
                                                   {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
@@ -4950,8 +4950,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         <optgroup label="Prep">
                                           {fabricationOperations.prep.map(op => <option key={op} value={op}>{op}</option>)}
                                         </optgroup>
-                                        <optgroup label="Welding">
-                                          {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
+                                        <optgroup label="Apply">
+                                          {fabricationOperations.apply.map(op => <option key={op} value={op}>{op}</option>)}
                                         </optgroup>
                                         <optgroup label="Other">
                                           <option value="Custom">— Custom —</option>

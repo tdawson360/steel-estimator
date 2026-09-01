@@ -166,7 +166,7 @@ describe('FINDINGS #9 fix: length-based fab lines survive persistence', () => {
   it('an IN-unit fab line round-trips its length and stays qty × len × rate', async () => {
     const beam = mat({ size: 'W16x26', category: 'W Shape', pieces: 2, length: 24, priceBy: 'LB', unitPrice: 0.85 });
     beam.fabrication = [
-      fab({ operation: 'Welding- Fillet', quantity: 3, unit: 'IN', length: 12, unitPrice: 1.5 }), // 3 × 12 × 1.5 = 54
+      fab({ operation: 'Apply- Fillet Weld', quantity: 3, unit: 'IN', length: 12, unitPrice: 1.5 }), // 3 × 12 × 1.5 = 54
     ];
     const payload = {
       projectName: 'Length Fixture',

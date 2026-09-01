@@ -456,12 +456,14 @@ const OP_RATE_GROUPS = [
     ],
   },
   {
-    label: 'Welding ($/in of weld)',
+    label: 'Apply ($/in of weld)',
     fields: [
-      { key: 'weldFilletRate', label: 'Fillet' },
-      { key: 'weldBevelRate',  label: 'Bevel/Grind' },
-      { key: 'weldPjpRate',   label: 'PJP' },
-      { key: 'weldCjpRate',   label: 'CJP' },
+      { key: 'weldFilletRate', label: 'Fillet Weld' },
+      { key: 'weldBevelRate',  label: 'Bevel/Weld/Grind' },
+      { key: 'weldPjpRate',   label: 'PJP Weld' },
+      { key: 'weldCjpRate',   label: 'CJP Weld' },
+      { key: 'preheatWeldRate',      label: 'Preheat/Weld' },
+      { key: 'preheatWeldGrindRate', label: 'Preheat/Weld/Grind' },
     ],
   },
 ];
@@ -539,7 +541,7 @@ function OpRatesEditor({ rates }) {
 
 // ─── Section 6: Custom Fab Operations ─────────────────────────────────────────
 
-const CATEGORY_OPTIONS = ['Cutting', 'Drilling', 'Prep', 'Welding', 'Coating', 'Finishing', 'Handling', 'Other'];
+const CATEGORY_OPTIONS = ['Cutting', 'Drilling', 'Prep', 'Apply', 'Coating', 'Finishing', 'Handling', 'Other'];
 const UNIT_OPTIONS = ['EA', 'IN', 'LF', 'SQFT', 'HR', 'LB', 'LS'];
 
 function CustomOpsEditor({ initialOps }) {

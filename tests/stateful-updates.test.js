@@ -11,7 +11,7 @@ const baseItems = () => {
   const m = mat({ size: 'W12x26', category: 'W Shape', pieces: 2, length: 20, priceBy: 'LB', unitPrice: 0.85 });
   m.fabrication = [
     fab({ id: 501, operation: 'WF Connx', quantity: 2, unit: 'EA', unitPrice: 85, connWeight: 30 }),
-    fab({ id: 502, operation: 'Welding- Fillet', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25 }),
+    fab({ id: 502, operation: 'Apply- Fillet Weld', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25 }),
     fab({ id: 503, operation: 'Handling', quantity: 1, unit: 'EA', unitPrice: 40 }),
   ];
   return [item({ id: 900, itemNumber: '001', materials: [m], fabrication: [fab({ id: 601, operation: 'Shop Load-out', quantity: 2, unit: 'LS', unitPrice: 175 })], recapCosts: emptyRecap() })];

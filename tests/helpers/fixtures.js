@@ -126,7 +126,7 @@ export function standardFixture() {
   const beam = mat({ size: 'W12x26', category: 'W Shape', pieces: 4, length: 32, priceBy: 'LB', unitPrice: 0.85 });
   beam.fabrication = [
     fab({ operation: 'WF Connx', quantity: 2, unit: 'EA', unitPrice: 85, connWeight: 30 }),           // 2 × 85 = 170
-    fab({ operation: 'Welding- Fillet', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25 }),        // 2 × 8 × 1.25 = 20
+    fab({ operation: 'Apply- Fillet Weld', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25 }),        // 2 × 8 × 1.25 = 20
   ];
   const childPlate = mat({
     parentMaterialId: beam.id, sequence: 'Aa', category: 'Plate',

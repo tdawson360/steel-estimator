@@ -601,11 +601,13 @@ model PricingRates {
   camberRate                 Float?
   rollRate                   Float?
 
-  // Welding rates ($/in of weld)
+  // Apply (welding) rates ($/in of weld)
   weldFilletRate             Float?
   weldBevelRate              Float?
   weldPjpRate                Float?
   weldCjpRate                Float?
+  preheatWeldRate            Float?
+  preheatWeldGrindRate       Float?
 
   updatedAt                  DateTime @updatedAt
   updatedBy                  String?

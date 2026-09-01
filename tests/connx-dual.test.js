@@ -130,7 +130,7 @@ describe('enrichOp (route): rate/weight attachment rules', () => {
   it('global op rates apply regardless of pricing row', () => {
     expect(enrichOp({ operation: 'Drill Holes', quantity: 4, unit: 'EA' }, null))
       .toEqual({ operation: 'Drill Holes', quantity: 4, unit: 'EA', rate: 4.5 });
-    expect(enrichOp({ operation: 'Welding- Fillet', quantity: 1, unit: 'EA' }, pricingRow).rate).toBe(1.25);
+    expect(enrichOp({ operation: 'Apply- Fillet Weld', quantity: 1, unit: 'EA' }, pricingRow).rate).toBe(1.25);
   });
   it('cut ops read the beam-specific field', () => {
     expect(enrichOp({ operation: 'Cut- Straight', quantity: 2, unit: 'EA' }, pricingRow).rate).toBe(18);

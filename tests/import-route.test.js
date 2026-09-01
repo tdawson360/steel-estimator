@@ -119,7 +119,7 @@ describe('generateEndLabor / generateRowFabOps', () => {
       { operation: 'Cut- Straight', quantity: 1, unit: 'EA' },
       { operation: 'Cut- Double Cope End', quantity: 1, unit: 'EA' },
       { operation: 'Drill Holes', quantity: 4, unit: 'EA' },
-      { operation: 'Welding- Fillet', quantity: 1, unit: 'EA' },
+      { operation: 'Apply- Fillet Weld', quantity: 1, unit: 'EA' },
       { operation: 'WF Connx', quantity: 2, unit: 'EA' },
       { operation: "90's", quantity: 1, unit: 'EA' },
     ]);
@@ -135,12 +135,12 @@ describe('mergeFabOps', () => {
     const b = [
       { operation: 'Cut- Straight', quantity: 1, unit: 'EA' },
       { operation: 'Drill Holes', quantity: 3, unit: 'EA' },
-      { operation: 'Welding- Fillet', quantity: 1, unit: 'EA' },
+      { operation: 'Apply- Fillet Weld', quantity: 1, unit: 'EA' },
     ];
     expect(env.mergeFabOps(a, b)).toEqual([
       { operation: 'Cut- Straight', quantity: 1, unit: 'EA' },   // deduped, NOT summed
       { operation: 'Drill Holes', quantity: 7, unit: 'EA' },     // accumulated
-      { operation: 'Welding- Fillet', quantity: 1, unit: 'EA' },
+      { operation: 'Apply- Fillet Weld', quantity: 1, unit: 'EA' },
     ]);
   });
 });

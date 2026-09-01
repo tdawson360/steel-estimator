@@ -101,7 +101,7 @@ function groupedItem() {
   const beamB = mat({ size: 'W12x14', category: 'W Shape', pieces: 1, length: 22, priceBy: 'LB', unitPrice: 0.85 });
   beamB.fabrication = [
     fab({ operation: 'Cut- Single Cope End', quantity: 1, unit: 'EA', unitPrice: 999, laborGroupId: 501 }),
-    fab({ operation: 'Welding- Fillet', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25, laborGroupId: 999 }), // dangling group
+    fab({ operation: 'Apply- Fillet Weld', quantity: 2, unit: 'IN', length: 8, unitPrice: 1.25, laborGroupId: 999 }), // dangling group
   ];
   const hss = mat({ size: 'HSS4x4x1/4', category: 'HSS Square', pieces: 1, length: 10, priceBy: 'LB', unitPrice: 1.1 });
   hss.fabrication = [fab({ operation: 'Cut- Miter', quantity: 2, unit: 'EA', unitPrice: 6 })];

@@ -43,7 +43,7 @@ describe('line-item breakdowns reconcile to project totals', () => {
     const beam = items[0].materials[0]; // W12x26 with WF Connx + fillet weld
     const b = materialBreakdown(beam);
     expect(b.materialCost).toBeCloseTo(beam.totalCost, 10);
-    expect(b.fabLines.map(f => f.operation)).toEqual(['WF Connx', 'Welding- Fillet']);
+    expect(b.fabLines.map(f => f.operation)).toEqual(['WF Connx', 'Apply- Fillet Weld']);
     expect(b.fabCost).toBeCloseTo(170 + 20, 10);
     expect(b.connectionWeight).toBe(60); // 2 × 30 lb
     expect(b.lineTotal).toBeCloseTo(b.materialCost + b.fabCost, 10);
