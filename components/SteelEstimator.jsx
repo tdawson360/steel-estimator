@@ -15,6 +15,16 @@ import {
   wfConnectionWeights, cConnectionWeights, getConnectionWeight,
 } from '../lib/estimating/fab-operations';
 import { plateThicknesses, calcPlateWeightPerFoot } from '../lib/estimating/plates';
+
+// Coatings, finishes, and handling are ITEM-scope work (you paint and handle
+// the assembly, not a material line) — they live on the General Fab tab only.
+// Material rows that already carry one render it under a "Legacy" group so old
+// estimates stay legible, but new rows can't pick them here.
+const ITEM_LEVEL_ONLY_OPS = new Set([
+  ...fabricationOperations.coatings,
+  ...fabricationOperations.finishes,
+  ...fabricationOperations.handling,
+]);
 import { getStockLengthsForCategory } from '../lib/estimating/stock-lengths';
 import { roundCustom, fmtWt, fmtPrice, fmtRate, fmtQuotePrice } from '../lib/estimating/format';
 import { normalizeShapeSize, translateSizeToAISC } from '../lib/estimating/sizes';
@@ -4209,18 +4219,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             <optgroup label="Welding">
                                               {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
-                                            <optgroup label="Coatings">
-                                              {fabricationOperations.coatings.map(op => <option key={op} value={op}>{op}</option>)}
-                                            </optgroup>
-                                            <optgroup label="Finishes">
-                                              {fabricationOperations.finishes.map(op => <option key={op} value={op}>{op}</option>)}
-                                            </optgroup>
-                                            <optgroup label="Handling">
-                                              {fabricationOperations.handling.map(op => <option key={op} value={op}>{op}</option>)}
-                                            </optgroup>
                                             <optgroup label="Connections">
                                               {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
+                                            {ITEM_LEVEL_ONLY_OPS.has(fab.operation) && (
+                                              <optgroup label="Legacy (move to General Fab)">
+                                                <option value={fab.operation}>{fab.operation}</option>
+                                              </optgroup>
+                                            )}
                                             {Object.entries(
                                               customOps.reduce((acc, op) => {
                                                 (acc[op.category] = acc[op.category] || []).push(op);
@@ -4657,33 +4663,26 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)}
                                                 className="flex-1 p-1 border rounded text-xs bg-green-50 dark:bg-green-950 dark:border-gray-600 dark:text-gray-100"
                                               >
-                                                {isApplyToSelf ? (
-                                                  <>
-                                                    <optgroup label="Cutting">
-                                                      {fabricationOperations.cutting.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Drilling">
-                                                      {fabricationOperations.drilling.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Prep">
-                                                      {fabricationOperations.prep.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Welding">
-                                                      {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Coatings">
-                                                      {fabricationOperations.coatings.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Finishes">
-                                                      {fabricationOperations.finishes.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                    <optgroup label="Handling">
-                                                      {fabricationOperations.handling.map(op => <option key={op} value={op}>{op}</option>)}
-                                                    </optgroup>
-                                                  </>
-                                                ) : (
-                                                  <optgroup label="Welding">
-                                                    {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
+                                                {/* Subparts get the same operation list as main members —
+                                                    they get cut, drilled, and prepped too */}
+                                                <optgroup label="Cutting">
+                                                  {fabricationOperations.cutting.map(op => <option key={op} value={op}>{op}</option>)}
+                                                </optgroup>
+                                                <optgroup label="Drilling">
+                                                  {fabricationOperations.drilling.map(op => <option key={op} value={op}>{op}</option>)}
+                                                </optgroup>
+                                                <optgroup label="Prep">
+                                                  {fabricationOperations.prep.map(op => <option key={op} value={op}>{op}</option>)}
+                                                </optgroup>
+                                                <optgroup label="Welding">
+                                                  {fabricationOperations.welding.map(op => <option key={op} value={op}>{op}</option>)}
+                                                </optgroup>
+                                                <optgroup label="Connections">
+                                                  {fabricationOperations.connections.map(op => <option key={op} value={op}>{op}</option>)}
+                                                </optgroup>
+                                                {ITEM_LEVEL_ONLY_OPS.has(fab.operation) && (
+                                                  <optgroup label="Legacy (move to General Fab)">
+                                                    <option value={fab.operation}>{fab.operation}</option>
                                                   </optgroup>
                                                 )}
                                                 {Object.entries(
