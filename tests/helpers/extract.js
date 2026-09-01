@@ -102,6 +102,7 @@ import * as libRevu from '../../lib/estimating/import-revu.js';
 import * as libRfq from '../../lib/estimating/import-rfq.js';
 import * as libFabCosts from '../../lib/estimating/fab-costs.js';
 import * as libLaborGroups from '../../lib/estimating/labor-groups.js';
+import * as libGalv from '../../lib/estimating/galv.js';
 import { parseCSVLine as libParseCSVLine } from '../../lib/estimating/import-takeoff.js';
 
 // Everything the tests need from the former component module scope now lives
@@ -188,6 +189,7 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
     recapEntryTotal: libTotals.recapEntryTotal,
     isGroupableFab: libLaborGroups.isGroupableFab,
     fabGroupKey: libLaborGroups.fabGroupKey,
+    normalizeGalvLines: libGalv.normalizeGalvLines,
   });
   return { ...bound, getState: () => state };
 }

@@ -33,6 +33,7 @@ import {
   computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
   sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT,
 } from '../lib/estimating/labor-groups';
+import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE } from '../lib/estimating/galv';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
 import {
@@ -876,6 +877,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             recapCosts: recapObj,
             materials: (item.materials || []).map(mat => ({
               id: mat.id,
+              parentMaterialId: mat.parentMaterialId ?? null,
               category: mat.category || '',
               shape: mat.shape || '',
               size: mat.shape || '',
@@ -1004,13 +1006,15 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         setItems(loadedItems.map(item => {
           const calcItem = {
             ...item,
-            materials: resequenceMaterials(item.materials).map(mat => {
+            // Galv normalize after calc: folds any legacy per-piece galv lines
+            // into the one-assembly-one-line model on load.
+            materials: normalizeGalvLines(resequenceMaterials(item.materials).map(mat => {
               const calcMat = calculateMaterial(mat);
               return {
                 ...calcMat,
                 children: (calcMat.children || []).map(c => calculateMaterial(c)),
               };
-            }),
+            })),
           };
           // Labor groups: re-stamp member rates from the group and refresh the
           // affected line totals so any DB drift self-heals on load.
@@ -1422,7 +1426,33 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         return (gradeOrder[a.split(' ')[2]] ?? 99) - (gradeOrder[b.split(' ')[2]] ?? 99);
       });
     }
-    return shapes;
+    // All other categories: smallest size first — the shop reaches for small
+    // members far more often than deep ones. Parse each x-separated dimension
+    // (mixed fractions included: "1-1/2" → 1.5, "3/16" → 0.1875) and compare
+    // dimension by dimension.
+    const parseMixed = (s) => {
+      const frac = (t) => {
+        const slash = t.indexOf('/');
+        if (slash === -1) return parseFloat(t);
+        return parseFloat(t.slice(0, slash)) / parseFloat(t.slice(slash + 1));
+      };
+      const dash = s.indexOf('-');
+      if (dash > 0 && s.includes('/')) return parseFloat(s.slice(0, dash)) + frac(s.slice(dash + 1));
+      return frac(s);
+    };
+    const dims = (name) => name.replace(/^[A-Za-z]+\s*/, '').split(/x/i).map(d => parseMixed(d.trim()));
+    return shapes.sort((a, b) => {
+      const da = dims(a), db = dims(b);
+      const len = Math.max(da.length, db.length);
+      for (let i = 0; i < len; i++) {
+        const va = da[i], vb = db[i];
+        const aBad = va === undefined || Number.isNaN(va);
+        const bBad = vb === undefined || Number.isNaN(vb);
+        if (aBad || bBad) return aBad && bBad ? a.localeCompare(b) : (aBad ? 1 : -1);
+        if (va !== vb) return va - vb;
+      }
+      return 0;
+    });
   };
 
   // Calculate material values
@@ -1805,6 +1835,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       for (const member of importItem.members) {
         processMember(member, null);
       }
+      // Fold imported galv lines into the one-assembly-one-line model
+      // (galvanized subparts ride their parent's dip)
+      flatMaterials.splice(0, flatMaterials.length, ...normalizeGalvLines(flatMaterials));
 
       // Build item-level fabrication (uniform coating)
       const itemFab = [];
@@ -2333,8 +2366,10 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             return mat;
           });
         }
-        
-        return { ...item, materials: updatedMaterials };
+
+        // Galv assembly rule is authoritative last: one line per dipped
+        // assembly (parent + galvanized children + galv connection weights).
+        return { ...item, materials: normalizeGalvLines(updatedMaterials) };
       }
       return item;
     }));
@@ -2351,7 +2386,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         idsToDelete.push(...childIds);
 
         const remaining = item.materials.filter(m => !idsToDelete.includes(m.id));
-        return pruneEmptyLaborGroups({ ...item, materials: resequenceMaterials(remaining) });
+        return pruneEmptyLaborGroups({ ...item, materials: normalizeGalvLines(resequenceMaterials(remaining)) });
       }
       return item;
     }));
@@ -2524,24 +2559,27 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         ? item.materials.find(m => m.id === mat.parentMaterialId)
         : null;
 
+      // Cutting ops default to the member's piece count (every piece gets the
+      // cut); everything else starts at 1.
+      const defaultQty = defaultOp.startsWith('Cut-') ? (mat.pieces || 1) : 1;
       const newFab = isChild ? {
         id: Date.now(),
         applyTo: parent ? parent.id : 'self',
         operation: defaultOp,
-        quantity: 1,
+        quantity: defaultQty,
         length: null,
         unit: OP_DEFAULT_UNIT[defaultOp] ?? 'IN',
         unitPrice: rate,
-        totalCost: rate, // qty=1 × rate
+        totalCost: defaultQty * rate,
       } : {
         id: Date.now(),
         applyTo: null,
         operation: defaultOp,
-        quantity: 1,
+        quantity: defaultQty,
         length: null,
         unit: 'EA',
         unitPrice: rate,
-        totalCost: rate, // qty=1 × rate
+        totalCost: defaultQty * rate,
         connWeight: null,
       };
 
@@ -2716,7 +2754,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         }
       }
 
-      return nextItem;
+      // Galv assembly rule last: folds/creates galv lines to match the
+      // one-assembly-one-line model after any fab mutation.
+      return { ...nextItem, materials: normalizeGalvLines(nextItem.materials) };
     }));
   };
 
@@ -2732,7 +2772,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         ) };
       });
 
-      return pruneEmptyLaborGroups({ ...item, materials: updatedMaterials });
+      return pruneEmptyLaborGroups({ ...item, materials: normalizeGalvLines(updatedMaterials) });
     }));
   };
 
@@ -6150,6 +6190,32 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   </div>
                 )}
               </div>
+
+              {/* Galvanizer minimum-charge check */}
+              {(() => {
+                const galvTotal = projectGalvTotal(items);
+                if (!(galvTotal > 0 && galvTotal < GALV_MINIMUM_CHARGE)) return null;
+                const shortfall = +(GALV_MINIMUM_CHARGE - galvTotal).toFixed(2);
+                const alreadyAdded = adjustments.some(a => (a.note || a.description || '').toLowerCase().includes('galvanizing minimum'));
+                return (
+                  <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      <AlertCircle size={14} className="inline mr-1 -mt-0.5" />
+                      Galvanizing totals {fmtPrice(galvTotal)} — below the {fmtPrice(GALV_MINIMUM_CHARGE)} galvanizer minimum lot charge.
+                    </p>
+                    {alreadyAdded ? (
+                      <span className="text-xs text-amber-700 dark:text-amber-400">Minimum-charge adjustment added below.</span>
+                    ) : (
+                      <button
+                        onClick={() => setAdjustments([...adjustments, { id: Date.now(), amount: shortfall, note: `Galvanizing minimum charge (to ${fmtPrice(GALV_MINIMUM_CHARGE)})` }])}
+                        className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700"
+                      >
+                        Add {fmtPrice(shortfall)} adjustment
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* General Adjustments */}
               <div className="bg-yellow-50 dark:bg-yellow-950 p-4 rounded border border-yellow-200">

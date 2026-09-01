@@ -170,6 +170,7 @@ export async function PUT(request, { params }) {
         items: {
           include: {
             materials: {
+              orderBy: { sortOrder: 'asc' },
               include: {
                 fabrication: true,
                 children: { include: { fabrication: true } }
@@ -382,6 +383,10 @@ export async function PUT(request, { params }) {
         const curMatMap = new Map((curItem?.materials || []).map(m => [m.id, m]));
         const incomingMats = item.materials || [];
         const matDiff = diffList(incomingMats, existingMatIds);
+        // payload id → DB id, for resolving subpart parent links (children
+        // follow their parent in array order, so the parent is always mapped
+        // by the time its subpart is processed)
+        const matIdMap = new Map();
 
         // Delete removed materials (and their nested children/fab)
         for (const matId of matDiff.toDelete) {
@@ -424,6 +429,12 @@ export async function PUT(request, { params }) {
             galvRate: mat.galvRate || 0,
             width: mat.width || null,
             thickness: mat.thickness || null,
+            // Subpart linkage: resolve through this save's temp→DB map first,
+            // else accept an existing DB id; anything unresolvable is top-level.
+            parentMaterialId: mat.parentMaterialId != null
+              ? (matIdMap.get(mat.parentMaterialId)
+                 ?? (isExistingId(mat.parentMaterialId, existingMatIds) ? Number(mat.parentMaterialId) : null))
+              : null,
           };
 
           let activeMatId;
@@ -437,6 +448,7 @@ export async function PUT(request, { params }) {
             activeMatId = Number(mat.id);
             await tx.material.update({ where: { id: activeMatId }, data: matData });
           }
+          matIdMap.set(mat.id, activeMatId);
 
           // ── 3b. Diff material fabrication ──────────────────────────────
           const curMat = curMatMap.get(activeMatId);

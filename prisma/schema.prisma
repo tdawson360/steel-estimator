@@ -257,14 +257,22 @@ model Material {
   // Parent relationship
   itemId         Int
   item           Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
+
+  // Subpart linkage (the client's flat model): a clip angle welded to a beam
+  // is a Material row pointing at its parent Material. Null = top-level member.
+  parentMaterialId Int?
+  parentMaterial   Material?  @relation("MaterialSubparts", fields: [parentMaterialId], references: [id], onDelete: SetNull)
+  subparts         Material[] @relation("MaterialSubparts")
+
   // Fab operations on this material (welding, connections, coatings, etc.)
   fabrication    MaterialFabrication[]
 
-  // Sub-materials (embedded items like clips, stiffeners within this material)
+  // Sub-materials (legacy nested model — unused; the flat parentMaterialId
+  // linkage above is what the app persists)
   children       ChildMaterial[]
 
   @@index([itemId, sortOrder])
+  @@index([parentMaterialId])
 }
 
 // =============================================================================

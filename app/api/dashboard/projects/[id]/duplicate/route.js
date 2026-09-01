@@ -39,6 +39,9 @@ export async function POST(request, { params }) {
             laborGroups: true,
             snapshots: true,
             materials: {
+              // Parents must precede their subparts so parentMaterialId
+              // remapping resolves in one pass
+              orderBy: { sortOrder: 'asc' },
               include: {
                 fabrication: true,
                 children: {
@@ -259,10 +262,15 @@ export async function POST(request, { params }) {
 
         // Materials (must be sequential — each material needs its returned ID
         // for children and material-level fabrication)
+        const matIdMap = new Map(); // old material id → new, for subpart links
         for (const [mIdx, mat] of item.materials.entries()) {
           const rMat = rItem?.materials?.[mIdx];
           const newMat = await tx.material.create({
             data: {
+              // Subpart linkage: parents precede their subparts in sortOrder,
+              // so the map already holds the new parent id.
+              parentMaterialId: mat.parentMaterialId != null
+                ? (matIdMap.get(mat.parentMaterialId) ?? null) : null,
               sortOrder: mat.sortOrder, category: mat.category, shape: mat.shape,
               description: mat.description, length: mat.length, pieces: mat.pieces,
               stockLength: mat.stockLength, stocksRequired: mat.stocksRequired,
@@ -277,6 +285,7 @@ export async function POST(request, { params }) {
               itemId: newItem.id,
             },
           });
+          matIdMap.set(mat.id, newMat.id);
 
           // Batch-create material fab ops (flat, no returned IDs needed)
           const matFabPromise = mat.fabrication.length > 0
