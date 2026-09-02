@@ -42,7 +42,7 @@ import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch
 import {
   familyKeyForSize, fabGroupKey, isGroupableFab, applyGroupRates,
   computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
-  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT,
+  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize,
 } from '../lib/estimating/labor-groups';
 import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE } from '../lib/estimating/galv';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
@@ -706,6 +706,23 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       }
     }
   ]);
+  // A save reconcile swaps a new row's temp id for its DB id; the row's key
+  // changes, React remounts it, and whatever the user was typing into loses
+  // focus (~3 s after a Duplicate, when autosave fires). handleSave records
+  // the focused length/description input here under its NEW id; this
+  // refocuses it after the reconciled tree paints, caret preserved.
+  const refocusAfterReconcileRef = useRef(null);
+  useEffect(() => {
+    const r = refocusAfterReconcileRef.current;
+    if (!r) return;
+    refocusAfterReconcileRef.current = null;
+    const el = document.querySelector(`input[${r.attr}="${r.id}"]`);
+    if (!el || document.activeElement === el) return;
+    el.focus();
+    if (r.selStart != null) {
+      try { el.setSelectionRange(r.selStart, r.selEnd ?? r.selStart); } catch { /* number inputs */ }
+    }
+  }, [items]);
 
   // CSV Import State (Revu)
   const [showImportModal, setShowImportModal] = useState(false);
@@ -1050,7 +1067,10 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           // Labor groups: re-stamp member rates from the group and refresh the
           // affected line totals so any DB drift self-heals on load.
           if (!(calcItem.laborGroups || []).length) return calcItem;
-          const stamped = applyGroupRates(calcItem);
+          // Groups are exact-size only: split any legacy family-keyed group
+          // that spans sizes (same rate on every piece, so totals hold).
+          const split = splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() });
+          const stamped = applyGroupRates(split);
           return {
             ...stamped,
             materials: stamped.materials.map(mat => ({
@@ -1189,10 +1209,31 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         setBreakoutGroups(prev => prev === breakoutGroups ? applyIdMap(prev, bgMap) : prev);
         setAdjustments(prev => prev === adjustments ? applyIdMap(prev, adjMap) : prev);
         let itemsReconciled = false;
+        // Remember which row input has focus so the remount can't steal it
+        const active = typeof document !== 'undefined' ? document.activeElement : null;
+        const focusAttr = ['data-length-for', 'data-desc-for'].find(a => active?.hasAttribute?.(a)) || null;
         setItems(prev => {
           if (prev !== items) return prev;
           itemsReconciled = true;
-          return reconcileItems(prev, saved.items, bgMap);
+          const next = reconcileItems(prev, saved.items, bgMap);
+          if (focusAttr) {
+            const oldId = active.getAttribute(focusAttr);
+            outer: for (let i = 0; i < prev.length; i++) {
+              const mats = prev[i].materials || [];
+              for (let mi = 0; mi < mats.length; mi++) {
+                if (String(mats[mi].id) !== oldId) continue;
+                const newId = next[i]?.materials?.[mi]?.id;
+                if (newId != null && String(newId) !== oldId) {
+                  refocusAfterReconcileRef.current = {
+                    attr: focusAttr, id: newId,
+                    selStart: active.selectionStart ?? null, selEnd: active.selectionEnd ?? null,
+                  };
+                }
+                break outer;
+              }
+            }
+          }
+          return next;
         });
         // Expansion state is keyed by item ID — remap keys when the reconcile
         // swaps temp IDs for DB IDs, or newly saved items snap shut.
@@ -3997,7 +4038,10 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                     <div className="p-3 space-y-4">
                       {/* Materials */}
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        {/* Sticky with the header row (top-10 below): Add Material
+                            and the sort/merge/group controls stay reachable on
+                            long items instead of scrolling back to the top. */}
+                        <div className="sticky top-0 z-20 h-10 flex justify-between items-center mb-2 px-1 -mx-1 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                           <h3 className="font-semibold text-gray-800 dark:text-gray-200">Materials</h3>
                           <div className="flex items-center gap-2">
                             <select
@@ -4037,11 +4081,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                         {item.materials.length > 0 && (
                           <div style={{ overflowX: 'clip' }}>
                             <table className="w-full text-xs border-collapse">
-                              <thead className="sticky top-0 z-10">
+                              <thead className="sticky top-10 z-10">
                                 <tr className="bg-gray-100 dark:bg-gray-700">
                                   <th className="border p-1 text-center w-12">Seq</th>
                                   <th className="border p-1 text-center">Description</th>
-                                  <th className="border p-1 text-center w-28">Category</th>
+                                  <th className="border p-1 text-center w-40 min-w-[10rem]">Category</th>
                                   <th className="border p-1 text-center w-32">Size</th>
                                   <th className="border p-1 text-center w-12">Wt/ft</th>
                                   <th className="border p-1 text-center w-14">Qty</th>

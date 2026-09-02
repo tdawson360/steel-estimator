@@ -1,9 +1,13 @@
-// Labor groups engine: family keys, rate application, summaries,
-// auto-grouping, and family sort. Pure-module tests, no DB.
+// Labor groups engine: size/family keys, rate application, summaries,
+// auto-grouping, exact-size split, and family sort. Pure-module tests, no DB.
+// Group identity is the EXACT size since 2026-09-02 (a cope on a C3x5 is not
+// a cope on a C6x8.2); the family key only orders the display.
 
 import { describe, it, expect } from 'vitest';
 import {
   familyKeyForSize,
+  sizeKeyForSize,
+  splitGroupsBySize,
   fabGroupKey,
   isGroupableFab,
   applyGroupRates,
@@ -70,19 +74,81 @@ describe('familyKeyForSize', () => {
 
 describe('fabGroupKey / isGroupableFab', () => {
   const beam = mat({ size: 'W12x26', category: 'W Shape' });
-  it('keys family|operation and excludes galv rows by flags', () => {
-    expect(fabGroupKey(beam, fab({ operation: 'Cut- Straight' }))).toBe('W12|Cut- Straight');
+  it('keys size|operation and excludes galv rows by flags', () => {
+    expect(fabGroupKey(beam, fab({ operation: 'Cut- Straight' }))).toBe('W12x26|Cut- Straight');
     expect(fabGroupKey(beam, { operation: 'Galvanizing', isAutoGalv: true })).toBe(null);
     expect(fabGroupKey(beam, { operation: 'Galvanizing', isConnGalv: true, id: 'galv-123' })).toBe(null);
     expect(fabGroupKey(beam, { operation: 'X', isGalvLine: true })).toBe(null);
     expect(isGroupableFab({ operation: 'WF Connx' })).toBe(true);
   });
   it('custom operations key on customOperation', () => {
-    expect(fabGroupKey(beam, fab({ operation: 'Custom', customOperation: 'Bend' }))).toBe('W12|Bend');
+    expect(fabGroupKey(beam, fab({ operation: 'Custom', customOperation: 'Bend' }))).toBe('W12x26|Bend');
   });
   it('plate materials produce no key', () => {
     const plate = mat({ category: 'Plate', size: 'PL 1/2 x 6', plateThickness: 0.5, plateWidth: 6 });
     expect(fabGroupKey(plate, fab({ operation: 'Drill Holes' }))).toBe(null);
+  });
+  it('different sizes in one family never share a key', () => {
+    const c3 = mat({ size: 'C3x5', category: 'Channel' });
+    const c6 = mat({ size: 'C6x8.2', category: 'Channel' });
+    expect(fabGroupKey(c3, fab({ operation: 'Drill Holes' }))).toBe('C3x5|Drill Holes');
+    expect(fabGroupKey(c6, fab({ operation: 'Drill Holes' }))).toBe('C6x8.2|Drill Holes');
+    expect(familyKeyForSize('Channel', 'C3x5')).toBe(familyKeyForSize('Channel', 'C3x6')); // family still equal
+  });
+});
+
+describe('sizeKeyForSize', () => {
+  it('normalizes spacing/case/× but keeps every dimension', () => {
+    expect(sizeKeyForSize('W Shape', 'W12x26')).toBe('W12x26');
+    expect(sizeKeyForSize('W Shape', 'w 12 × 26')).toBe('W12x26');
+    expect(sizeKeyForSize('Channel', 'C 6 x 8.2')).toBe('C6x8.2');
+    expect(sizeKeyForSize('Angle', 'L3x3x1/4')).toBe('L3x3x1/4');
+    expect(sizeKeyForSize('Angle', 'L3x3x3/8')).not.toBe(sizeKeyForSize('Angle', 'L3x3x1/4'));
+    expect(sizeKeyForSize('HSS Square', 'HSS4x4x1/4')).toBe('HSS4x4x1/4');
+    expect(sizeKeyForSize('Pipe', 'PIPE 4 STD')).toBe('PIPE 4 STD');
+    expect(sizeKeyForSize('Pipe', 'PIPE 4 XS')).not.toBe(sizeKeyForSize('Pipe', 'PIPE 4 STD'));
+  });
+  it('plate / custom / flats / blank never key', () => {
+    expect(sizeKeyForSize('Plate', 'PL 1/2 x 6')).toBe(null);
+    expect(sizeKeyForSize('Custom', 'BENT PL')).toBe(null);
+    expect(sizeKeyForSize('Flats', 'FL 1/2x3')).toBe(null);
+    expect(sizeKeyForSize('W Shape', '')).toBe(null);
+  });
+});
+
+describe('splitGroupsBySize (load-time reconcile of legacy family groups)', () => {
+  let seq = 7000;
+  const makeId = () => ++seq;
+
+  it('splits a group spanning W12x26 + W12x14 into one per size at the same rate', () => {
+    const it1 = groupedItem(); // g1 spans beamA (W12x26) + beamB (W12x14); g2 is beamA only
+    const out = splitGroupsBySize(it1, { makeId });
+    const [a, b] = out.materials;
+    expect(out.laborGroups).toHaveLength(3);
+    const g1 = out.laborGroups.find(g => g.id === 501);
+    const g2 = out.laborGroups.find(g => g.id === 502);
+    const g1b = out.laborGroups.find(g => g.id > 7000);
+    expect(g1.familyKey).toBe('W12x26');              // first size keeps the id, relabelled
+    expect(g2.familyKey).toBe('W12x26');              // single-size group just relabelled
+    expect(g1b).toMatchObject({ familyKey: 'W12x14', operation: 'Cut- Single Cope End', rate: 8.5, unit: 'EA' });
+    expect(a.fabrication[0].laborGroupId).toBe(501);
+    expect(b.fabrication[0].laborGroupId).toBe(g1b.id);
+    expect(b.fabrication[1].laborGroupId).toBe(999);  // dangling id untouched
+    // Same rate on both pieces → recomputed totals are identical
+    const before = recomputeEstimate({ items: [applyGroupRates(it1)], adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    const after = recomputeEstimate({ items: [applyGroupRates(out)], adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    expect(after.totals.grandTotal).toBeCloseTo(before.totals.grandTotal, 6);
+  });
+
+  it('is identity-preserving when every group is already exact-size', () => {
+    const it1 = groupedItem();
+    const once = splitGroupsBySize(it1, { makeId });
+    expect(splitGroupsBySize(once, { makeId })).toBe(once);
+  });
+
+  it('leaves items without groups untouched', () => {
+    const plain = item({ materials: [mat({ size: 'W12x26', category: 'W Shape' })] });
+    expect(splitGroupsBySize(plain, { makeId })).toBe(plain);
   });
 });
 
@@ -184,17 +250,21 @@ describe('familyBlocks / groupAnchors', () => {
     const w2 = mat({ id: 3, size: 'W12x14', category: 'W Shape' });
     const hss = mat({ id: 4, size: 'HSS4x4x1/4', category: 'HSS Square' });
     const blocks = familyBlocks([w1, child, w2, hss]);
-    expect(blocks.map(b => b.familyKey)).toEqual(['W12', 'HSS 4x4']);
-    expect(blocks[0].parentIds).toEqual([1, 3]);
+    expect(blocks.map(b => b.familyKey)).toEqual(['W12x26', 'W12x14', 'HSS4x4x1/4']);
+    expect(blocks[0].parentIds).toEqual([1]);
+    expect(blocks[1].parentIds).toEqual([3]);
   });
 
   it('anchors each group to the LAST matching parent in array order', () => {
     const w1 = mat({ id: 1, size: 'W12x26', category: 'W Shape' });
     const hss = mat({ id: 4, size: 'HSS4x4x1/4', category: 'HSS Square' });
     const w2 = mat({ id: 3, size: 'W12x14', category: 'W Shape' });
-    const g = { id: 501, familyKey: 'W12', operation: 'Cut- Straight' };
-    const anchors = groupAnchors([w1, hss, w2], [g]);
-    expect(anchors.get(501)).toBe(3);
+    const w26b = mat({ id: 5, size: 'W12x26', category: 'W Shape' });
+    const g = { id: 501, familyKey: 'W12x26', operation: 'Cut- Straight' };
+    const legacy = { id: 502, familyKey: 'W12', operation: 'Cut- Straight' };
+    const anchors = groupAnchors([w1, hss, w2, w26b], [g, legacy]);
+    expect(anchors.get(501)).toBe(5);      // last W12x26, not the W12x14
+    expect(anchors.get(502)).toBe(null);   // legacy family key matches nothing
   });
 });
 
@@ -208,7 +278,7 @@ describe('buildAutoGroups', () => {
       fab({ operation: 'Cut- Single Cope End', quantity: 2, unit: 'EA', unitPrice: 8.5 }),
       fab({ operation: 'Drill Holes', quantity: 4, unit: 'EA', unitPrice: 2.5 }),
     ];
-    const beamB = mat({ size: 'W12x14', category: 'W Shape' });
+    const beamB = mat({ size: 'W12x26', category: 'W Shape' });   // same exact size as beamA
     beamB.fabrication = [
       fab({ operation: 'Cut- Single Cope End', quantity: 1, unit: 'EA', unitPrice: rateB }),
     ];
@@ -224,7 +294,7 @@ describe('buildAutoGroups', () => {
     const { groups, assignments } = buildAutoGroups(materials, [], { makeId });
     expect(groups.length).toBe(1);
     const g = groups[0];
-    expect(g.familyKey).toBe('W12');
+    expect(g.familyKey).toBe('W12x26');
     expect(g.operation).toBe('Cut- Single Cope End');
     expect(g.rate).toBe(8.5); // uniform → prefilled
     expect(assignments.get(beamA.fabrication[0].id)).toBe(g.id);
@@ -243,12 +313,22 @@ describe('buildAutoGroups', () => {
   });
 
   it('rows matching an existing group join it instead of forming a new one', () => {
-    const existing = { id: 700, familyKey: 'W12', operation: 'Cut- Single Cope End', rate: 7, colorIndex: 0 };
+    const existing = { id: 700, familyKey: 'W12x26', operation: 'Cut- Single Cope End', rate: 7, colorIndex: 0 };
     const { beamA, beamB, materials } = importShapedMaterials();
     const { groups, assignments } = buildAutoGroups(materials, [existing], { makeId });
     expect(groups.length).toBe(0);
     expect(assignments.get(beamA.fabrication[0].id)).toBe(700);
     expect(assignments.get(beamB.fabrication[0].id)).toBe(700);
+  });
+
+  it('a W12x26 and a W12x14 with the same op do NOT auto-group', () => {
+    const a = mat({ size: 'W12x26', category: 'W Shape' });
+    a.fabrication = [fab({ operation: 'Cut- Single Cope End', quantity: 2, unit: 'EA', unitPrice: 8.5 })];
+    const b = mat({ size: 'W12x14', category: 'W Shape' });
+    b.fabrication = [fab({ operation: 'Cut- Single Cope End', quantity: 1, unit: 'EA', unitPrice: 8.5 })];
+    const { groups, assignments } = buildAutoGroups([a, b], [], { makeId });
+    expect(groups.length).toBe(0);
+    expect(assignments.size).toBe(0);
   });
 
   it('already-grouped and galv rows are skipped', () => {

@@ -337,7 +337,7 @@ model LaborGroup {
   sortOrder    Int     @default(0)
 
   operation    String  @default("")       // "WF Connx", "Cut- Single Cope End", ...
-  familyKey    String  @default("")       // "W12", "HSS 4x4", "L 3x3", ...
+  familyKey    String  @default("")       // Exact size key: "W12x26", "C3x5", "HSS4x4x1/4" (pre-2026-09-02 rows hold family keys like "W12"; split on load)
   unit         String  @default("ea")
   rate         Float   @default(0)        // The single group rate
   collapsed    Boolean @default(false)    // Persisted UI collapse state
