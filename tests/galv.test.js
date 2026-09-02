@@ -116,6 +116,6 @@ describe('projectGalvTotal + minimum', () => {
       { fabrication: [{ isConnGalv: true, totalCost: 30 }] },
     ]}];
     expect(projectGalvTotal(items)).toBe(150);
-    expect(GALV_MINIMUM_CHARGE).toBe(300);
+    expect(GALV_MINIMUM_CHARGE).toBe(325); // AZZ Houston, eff. 10/01/2025
   });
 });
