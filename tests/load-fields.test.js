@@ -28,6 +28,14 @@ describe('materialCalcInputsFromDb', () => {
     expect(inputs.plateWidth).toBe(6);
   });
 
+  it('the size string beats stale importer columns (San Esteban rows: cols 1/2×6, size 1/2×9)', () => {
+    const inputs = materialCalcInputsFromDb({ category: 'Plate', thickness: 0.5, width: 6, shape: 'PL 1/2" × 9"' });
+    expect(inputs).toMatchObject({ plateThickness: 0.5, plateWidth: 9 });
+    // Columns only matter when the size string is not the calculator's format
+    expect(materialCalcInputsFromDb({ category: 'Plate', thickness: 0.25, width: 4, shape: 'Gusset' }))
+      .toMatchObject({ plateThickness: 0.25, plateWidth: 4 });
+  });
+
   it('maps weightPerFt back to customWeight for Custom/Hardware only', () => {
     expect(materialCalcInputsFromDb({ category: 'Custom', weightPerFt: 500 }).customWeight).toBe(500);
     expect(materialCalcInputsFromDb({ category: 'Hardware', weightPerFt: 0 }).customWeight).toBe(0);
