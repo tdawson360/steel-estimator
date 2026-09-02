@@ -6140,18 +6140,20 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                     <th className="border p-2 text-right">Fab Wt</th>
                     <th className="border p-2 text-right">Material</th>
                     <th className="border p-2 text-right">Fabrication</th>
+                    <th className="border p-2 text-right">Markup</th>
                     <th className="border p-2 text-right">Recap</th>
                     <th className="border p-2 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map(item => {
-                    const matCost = item.materials.reduce((s, m) => s + (m.totalCost || 0), 0);
-                    const matFabCost = item.materials.reduce((s, m) => s + ((m.fabrication || []).reduce((fs, f) => fs + (f.totalCost || 0), 0)), 0);
-                    const itemFabCost = item.fabrication.reduce((s, f) => s + (f.totalCost || 0), 0);
-                    const fabCost = matFabCost + itemFabCost;
+                    // Engine breakdown so the row sums to the same item total the
+                    // breakout groups and grand total use (markup included).
+                    const bd = getItemCostBreakdown(item);
+                    const markupAmt = bd.matMarkupAmt + bd.fabMarkupAmt;
+                    const matPct = item.materialMarkup || 0;
+                    const fabPct = item.fabMarkup || 0;
                     const fabWt = item.materials.reduce((s, m) => s + (m.fabWeight || 0), 0);
-                    const recapCost = Object.values(item.recapCosts).reduce((s, c) => s + (c.total || 0), 0);
                     const group = breakoutGroups.find(g => g.id === item.breakoutGroupId);
                     return (
                       <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
@@ -6171,10 +6173,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                           </select>
                         </td>
                         <td className="border p-2 text-right">{fmtWt(fabWt)} lbs</td>
-                        <td className="border p-2 text-right">{fmtPrice(matCost)}</td>
-                        <td className="border p-2 text-right">{fmtPrice(fabCost)}</td>
-                        <td className="border p-2 text-right">{fmtPrice(recapCost)}</td>
-                        <td className="border p-2 text-right font-bold">{fmtPrice(matCost + fabCost + recapCost)}</td>
+                        <td className="border p-2 text-right">{fmtPrice(bd.material)}</td>
+                        <td className="border p-2 text-right">{fmtPrice(bd.fabrication)}</td>
+                        <td className="border p-2 text-right" title={`Material ${matPct}% = ${fmtPrice(bd.matMarkupAmt)} · Fab ${fabPct}% = ${fmtPrice(bd.fabMarkupAmt)}`}>
+                          {fmtPrice(markupAmt)}
+                          <span className="block text-[11px] text-gray-500 dark:text-gray-400">{matPct}% mat · {fabPct}% fab</span>
+                        </td>
+                        <td className="border p-2 text-right">{fmtPrice(bd.recapCost)}</td>
+                        <td className="border p-2 text-right font-bold">{fmtPrice(bd.total)}</td>
                       </tr>
                     );
                   })}
@@ -6354,6 +6360,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   <div className="text-right">
                     <p className="text-sm">Materials: {fmtPrice(totals.totalMaterialCost)}</p>
                     <p className="text-sm">Fabrication: {fmtPrice(totals.totalFabricationCost)}</p>
+                    <p className="text-sm">Markup: {fmtPrice(totals.totalMarkup)}
+                      <span className="text-xs text-gray-500 dark:text-gray-400"> (mat {fmtPrice(totals.totalMaterialMarkup)} · fab {fmtPrice(totals.totalFabMarkup)})</span>
+                    </p>
                     <p className="text-sm">Recap Costs: {fmtPrice(totals.totalRecapCosts)}</p>
                     {totals.totalTax > 0 && (
                       <p className="text-sm">Tax ({taxCategoryDescriptions[taxCategory]?.label}): <span className="text-amber-700 dark:text-amber-400">{fmtPrice(totals.totalTax)}</span></p>
