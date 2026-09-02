@@ -125,11 +125,12 @@ describe('galv labor groups', () => {
     expect(joinGalvGroups(out)).toBe(out); // identity-preserving
   });
 
-  it('anchors a class group at the last member, not by size', () => {
+  it('anchors a galv group at the item\'s last parent (galv lines read last)', () => {
     const it1 = galvItem();
     const g = { id: 501, operation: 'Galvanizing', familyKey: 'KDS', unit: 'LB', rate: 0.27 };
     const joined = joinGalvGroups({ ...it1, laborGroups: [g] });
-    expect(groupAnchors(joined.materials, [g]).get(501)).toBe(joined.materials[1].id); // the L3x3
+    // members are the W12 and the L3x3 (indices 0, 1); the tube (index 2) is last
+    expect(groupAnchors(joined.materials, [g]).get(501)).toBe(joined.materials[2].id);
   });
 
   it('splitGroupsBySize keys galv members by class, not size', () => {

@@ -42,9 +42,9 @@ import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch
 import {
   familyKeyForSize, fabGroupKey, isGroupableFab, applyGroupRates,
   computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
-  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize, joinGalvGroups,
+  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize, joinGalvGroups, seedGalvGroupRates,
 } from '../lib/estimating/labor-groups';
-import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE, configureGalvClasses } from '../lib/estimating/galv';
+import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE, configureGalvClasses, getConfiguredGalvClasses } from '../lib/estimating/galv';
 import { DEFAULT_GALV_CLASSES, galvClassRatePerLb, galvClassLabel } from '../lib/estimating/galv-classes';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
@@ -1082,7 +1082,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           if (!(calcItem.laborGroups || []).length) return calcItem;
           // Groups are exact-size only: split any legacy family-keyed group
           // that spans sizes (same rate on every piece, so totals hold).
-          const split = joinGalvGroups(splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() }));
+          const split = seedGalvGroupRates(
+            joinGalvGroups(splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() })),
+            getConfiguredGalvClasses());
           const stamped = applyGroupRates(split);
           return {
             ...stamped,
@@ -1814,6 +1816,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   // blocks so each group line lands under its run of like material.
   const autoGroupImportedItem = (itemLike) => {
     const { groups, assignments } = buildAutoGroups(itemLike.materials, itemLike.laborGroups || [], {
+      galvClasses: getConfiguredGalvClasses(),   // $0 galv groups seed from the class table
       minMembers: 2,
       makeId: () => Date.now() + Math.random(),
     });
@@ -3042,7 +3045,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         operation,
         familyKey,
         unit: fab.unit || 'EA',
-        rate: fab.unitPrice || 0,
+        rate: (fab.unitPrice || 0)
+          || (operation === 'Galvanizing' ? (galvClassRatePerLb(galvClasses, familyKey) || 0) : 0),
         collapsed: true,   // read as one summary line; members expand on demand
         colorIndex: nextColorIndex(groups),
         sortOrder: groups.length,
@@ -5130,7 +5134,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           {/* Qty: sum of member quantities */}
-                                          <td className="border p-1 text-center text-xs font-semibold">{g.totalQty}</td>
+                                          <td className="border p-1 text-center text-xs font-semibold">{g.operation === 'Galvanizing' ? fmtWt(g.totalQty) : g.totalQty}</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
