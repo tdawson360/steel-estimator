@@ -296,6 +296,15 @@ model MaterialFabrication {
   
   // Galvanizing auto-generated line
   isGalvLine   Boolean @default(false)    // True if auto-created for galvanizing
+  // Which kind of galv line this is: "auto" (the material/assembly dip line)
+  // or "conn" (a galvanized connection op on a NON-galvanized member, which
+  // dips alone). Null on ordinary ops. Legacy rows have isGalvLine=true and
+  // galvKind=null; the loaders infer the kind from the owning material.
+  galvKind     String?
+  // For galvKind="conn": the connection op (same material) this line galvanizes.
+  // (plain int, no FK: SQLite would rebuild the whole table for a self-relation;
+  // the loaders drop a line whose parent op no longer exists.)
+  parentFabId  Int?
 
   // Per-op length in inches/feet for IN/LF-unit ops (qty × length × rate)
   length       Float?

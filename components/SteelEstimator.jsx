@@ -15,6 +15,7 @@ import {
   wfConnectionWeights, cConnectionWeights, getConnectionWeight,
 } from '../lib/estimating/fab-operations';
 import { plateThicknesses, calcPlateWeightPerFoot } from '../lib/estimating/plates';
+import { materialCalcInputsFromDb, galvLineFieldsFromDb } from '../lib/estimating/load-fields';
 
 // Coatings, finishes, and handling are ITEM-scope work (you paint and handle
 // the assembly, not a material line) — they live on the General Fab tab only.
@@ -930,9 +931,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               galvRate: mat.galvRate || 0,
               width: mat.width || null,
               thickness: mat.thickness || null,
+              // Plate dims / typed weight live in DB columns under other names
+              ...materialCalcInputsFromDb(mat),
               fabrication: (mat.fabrication || []).map(f => {
                 const derivedRate = f.rate || (f.quantity > 0 && f.totalCost > 0 ? f.totalCost / f.quantity : 0);
-                const isGalv = f.isGalvLine || false;
+                const isGalv = !!(f.isGalvLine || f.galvKind);
                 return {
                   id: f.id,
                   operation: LEGACY_OP_RENAMES[f.operation] ?? (f.operation || ''),
@@ -948,11 +951,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   galvWeight: (typeof f.galvWeight === 'number' && isFinite(f.galvWeight)) ? f.galvWeight : null,
                   applyTo: f.applyTo ?? null,
                   laborGroupId: f.laborGroupId ?? null,
-                  ...(isGalv ? {
-                    isAutoGalv: true,
-                    description: f.operation === 'Galvanizing' ? `Galv - ${mat.description || mat.shape}` : (f.operation || ''),
-                    multiplyByPieces: false,
-                  } : {}),
+                  // auto vs conn galv line (+ parentFabId); legacy rows inferred
+                  ...galvLineFieldsFromDb(f, mat, mat.fabrication || []),
                 };
               }),
               children: (mat.children || []).map(child => ({
@@ -6360,9 +6360,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                   <div className="text-right">
                     <p className="text-sm">Materials: {fmtPrice(totals.totalMaterialCost)}</p>
                     <p className="text-sm">Fabrication: {fmtPrice(totals.totalFabricationCost)}</p>
-                    <p className="text-sm">Markup: {fmtPrice(totals.totalMarkup)}
-                      <span className="text-xs text-gray-500 dark:text-gray-400"> (mat {fmtPrice(totals.totalMaterialMarkup)} · fab {fmtPrice(totals.totalFabMarkup)})</span>
-                    </p>
+                    <p className="text-sm">Markup: {fmtPrice(totals.totalMarkup)}</p>
                     <p className="text-sm">Recap Costs: {fmtPrice(totals.totalRecapCosts)}</p>
                     {totals.totalTax > 0 && (
                       <p className="text-sm">Tax ({taxCategoryDescriptions[taxCategory]?.label}): <span className="text-amber-700 dark:text-amber-400">{fmtPrice(totals.totalTax)}</span></p>

@@ -427,8 +427,12 @@ export async function PUT(request, { params }) {
             totalCost: (rMat ? rMat.totalCost : mat.totalCost) || 0,
             galvanized: mat.galvanized || false,
             galvRate: mat.galvRate || 0,
-            width: mat.width || null,
-            thickness: mat.thickness || null,
+            // Plate dims come from the UI's plateThickness/plateWidth (the
+            // importer is the only writer of thickness/width); the loaders
+            // read them back through materialCalcInputsFromDb.
+            width: (mat.plateWidth ?? mat.width) || null,
+            thickness: (mat.plateThickness != null && mat.plateThickness !== ''
+              ? parseFloat(mat.plateThickness) : mat.thickness) || null,
             // Subpart linkage: resolve through this save's temp→DB map first,
             // else accept an existing DB id; anything unresolvable is top-level.
             parentMaterialId: mat.parentMaterialId != null
@@ -461,10 +465,20 @@ export async function PUT(request, { params }) {
               where: { id: { in: matFabDiff.toDelete } },
             });
           }
-          for (let fi = 0; fi < incomingMatFabs.length; fi++) {
-            const fab = incomingMatFabs[fi];
+          // Two passes: ordinary ops and auto-galv lines first, so a conn-galv
+          // line (pass 2) can resolve parentFabId through this save's temp→DB
+          // map when its connection op is new in the same payload.
+          const fabIdMap = new Map();
+          const isConnLine = (f) => !!(f.isConnGalv || f.galvKind === 'conn');
+          const indexedFabs = incomingMatFabs.map((f, fi) => [f, fi]);
+          const fabPasses = [
+            indexedFabs.filter(([f]) => !isConnLine(f)),
+            indexedFabs.filter(([f]) => isConnLine(f)),
+          ];
+          for (const pass of fabPasses) for (const [fab, fi] of pass) {
             const fabIsNew = !isExistingId(fab.id, existingMatFabIds);
             const rFab = rMat?.fabrication?.[fi];
+            const conn = isConnLine(fab);
             const fabData = {
               sortOrder: fi,
               operation: fab.operation || '',
@@ -475,6 +489,11 @@ export async function PUT(request, { params }) {
               totalCost: (rFab ? rFab.totalCost : fab.totalCost) || 0,
               connWeight: fab.connWeight || 0,
               isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
+              galvKind: fab.isAutoGalv ? 'auto' : (conn ? 'conn' : (fab.galvKind ?? null)),
+              parentFabId: (conn && fab.parentFabId != null)
+                ? (fabIdMap.get(fab.parentFabId)
+                   ?? (isExistingId(fab.parentFabId, existingMatFabIds) ? Number(fab.parentFabId) : null))
+                : null,
               length: (typeof fab.length === 'number' && isFinite(fab.length)) ? fab.length : null,
               galvanized: fab.galvanized || false,
               galvWeight: (typeof fab.galvWeight === 'number' && isFinite(fab.galvWeight)) ? fab.galvWeight : null,
@@ -483,15 +502,19 @@ export async function PUT(request, { params }) {
               // this payload (deleted) nulls out rather than dangling.
               laborGroupId: fab.laborGroupId != null ? (laborGroupMap[fab.laborGroupId] ?? null) : null,
             };
+            let activeFabId;
             if (fabIsNew) {
-              await tx.materialFabrication.create({
+              const createdFab = await tx.materialFabrication.create({
                 data: { ...fabData, materialId: activeMatId },
               });
+              activeFabId = createdFab.id;
             } else {
+              activeFabId = Number(fab.id);
               await tx.materialFabrication.update({
-                where: { id: Number(fab.id) }, data: fabData,
+                where: { id: activeFabId }, data: fabData,
               });
             }
+            fabIdMap.set(fab.id, activeFabId);
           }
 
           // ── 3c. Diff child materials ───────────────────────────────────

@@ -287,23 +287,43 @@ export async function POST(request, { params }) {
           });
           matIdMap.set(mat.id, newMat.id);
 
-          // Batch-create material fab ops (flat, no returned IDs needed)
-          const matFabPromise = mat.fabrication.length > 0
-            ? tx.materialFabrication.createMany({
-                data: mat.fabrication.map((fab, fi) => ({
-                  sortOrder: fab.sortOrder, operation: fab.operation,
-                  quantity: rMat?.fabrication?.[fi]?.quantity ?? fab.quantity,
-                  unit: fab.unit, rate: fab.rate,
-                  totalCost: rMat?.fabrication?.[fi]?.totalCost ?? fab.totalCost,
-                  connWeight: fab.connWeight,
-                  isGalvLine: fab.isGalvLine,
-                  length: fab.length, galvanized: fab.galvanized,
-                  galvWeight: fab.galvWeight, applyTo: fab.applyTo,
-                  laborGroupId: fab.laborGroupId != null ? (lgIdMap.get(fab.laborGroupId) ?? null) : null,
-                  materialId: newMat.id,
-                })),
-              })
-            : Promise.resolve();
+          // Material fab ops: batch-created unless a conn-galv line needs its
+          // parentFabId pointed at the copied connection op's new id.
+          const fabRows = mat.fabrication.map((fab, fi) => ({
+            sortOrder: fab.sortOrder, operation: fab.operation,
+            quantity: rMat?.fabrication?.[fi]?.quantity ?? fab.quantity,
+            unit: fab.unit, rate: fab.rate,
+            totalCost: rMat?.fabrication?.[fi]?.totalCost ?? fab.totalCost,
+            connWeight: fab.connWeight,
+            isGalvLine: fab.isGalvLine,
+            galvKind: fab.galvKind ?? null,
+            parentFabId: null,
+            length: fab.length, galvanized: fab.galvanized,
+            galvWeight: fab.galvWeight, applyTo: fab.applyTo,
+            laborGroupId: fab.laborGroupId != null ? (lgIdMap.get(fab.laborGroupId) ?? null) : null,
+            materialId: newMat.id,
+          }));
+          const connFabIdx = mat.fabrication
+            .map((fab, fi) => (fab.parentFabId != null ? fi : -1))
+            .filter(fi => fi >= 0);
+          const matFabPromise = (async () => {
+            if (fabRows.length === 0) return;
+            if (connFabIdx.length === 0) {
+              await tx.materialFabrication.createMany({ data: fabRows });
+              return;
+            }
+            const fabIdMap = new Map();
+            for (let fi = 0; fi < fabRows.length; fi++) {
+              if (connFabIdx.includes(fi)) continue;
+              const created = await tx.materialFabrication.create({ data: fabRows[fi] });
+              fabIdMap.set(mat.fabrication[fi].id, created.id);
+            }
+            for (const fi of connFabIdx) {
+              await tx.materialFabrication.create({
+                data: { ...fabRows[fi], parentFabId: fabIdMap.get(mat.fabrication[fi].parentFabId) ?? null },
+              });
+            }
+          })();
 
           // Child materials (must be sequential — each child needs its ID
           // for child fabrication, but children are independent of mat fab)

@@ -10,6 +10,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { recomputeEstimate } from '../lib/estimating/recompute.js';
+import { normalizeGalvLines } from '../lib/estimating/galv.js';
 import { DEFAULT_PRICING_RATES } from '../lib/estimating/rates.js';
 import { standardFixture, mat, fab, item, recap, withGalv, id } from './helpers/fixtures.js';
 
@@ -451,5 +452,51 @@ describe('duplicate test: the copy is engine-correct immediately', () => {
     expectEngineNumbers(await loadStored(copyId), stableEngine);
     expect(warn.mock.calls.filter(c => c[0] === '[TOTALS-MISMATCH]')).toEqual([]);
     warn.mockRestore();
+  });
+});
+
+// Persistence round trip (review 2026-09-02): plate dims, the Custom typed
+// weight, and conn-galv identity must survive PUT → DB → loader → engine.
+// Before: plates/Custom reloaded at 0 lb and conn-galv lines lost their rate.
+describe('round trip: plate dims, custom weight, conn-galv identity', () => {
+  it('reloads with the same weights and keeps the conn-galv line, parent, and rate', async () => {
+    const plate = mat({ category: 'Plate', size: '', description: '', plateThickness: '0.5', plateWidth: 6, pieces: 2, length: 10, priceBy: 'LB', unitPrice: 1 });
+    const custom = mat({ category: 'Custom', size: 'BENT PL 10GA', customWeight: 500, pieces: 1, length: 1, priceBy: 'LB', unitPrice: 0.9 });
+    const opId = id();
+    const beam = mat({ galvanized: false });
+    beam.fabrication = [
+      fab({ id: opId, operation: 'WF Bolted', quantity: 2, unit: 'EA', unitPrice: 100, galvanized: true, galvWeight: 40 }),
+      { id: 'galv-' + opId, operation: 'Galvanizing', description: 'Galv - WF Bolted', quantity: 40, unit: 'LB', unitPrice: 0.55, totalCost: 22, isConnGalv: true, parentFabId: opId },
+    ];
+    const payload = basePayload();
+    payload.items = [item({ materials: [plate, custom, beam] })];
+    const res = await PUT(putRequest(payload), { params: { id: String(projectId) } });
+    expect(res.status).toBe(200);
+
+    // Stored columns
+    const stored = await loadStored(projectId);
+    const [sPlate, sCustom, sBeam] = stored.items[0].materials;
+    expect(sPlate.thickness).toBe(0.5);
+    expect(sPlate.width).toBe(6);
+    expect(sCustom.weightPerFt).toBe(500);
+    const sOp = sBeam.fabrication.find(x => x.operation === 'WF Bolted');
+    const sGalv = sBeam.fabrication.find(x => x.operation === 'Galvanizing');
+    expect(sGalv).toMatchObject({ galvKind: 'conn', parentFabId: sOp.id, rate: 0.55, isGalvLine: true });
+
+    // Loader (mirrors the client) → galv reconcile → engine
+    const tree = dbProjectToEngineTree(stored);
+    const [lPlate, lCustom, lBeam] = tree.items[0].materials;
+    expect(lPlate).toMatchObject({ plateThickness: 0.5, plateWidth: 6 });
+    expect(lCustom.customWeight).toBe(500);
+    expect(lBeam.fabrication.find(x => x.isConnGalv)).toMatchObject({ parentFabId: sOp.id, unitPrice: 0.55 });
+    const [nBeam] = normalizeGalvLines([lBeam]);
+    const connLines = nBeam.fabrication.filter(x => x.isConnGalv);
+    expect(connLines).toHaveLength(1);
+    expect(connLines[0]).toMatchObject({ parentFabId: sOp.id, quantity: 40, unitPrice: 0.55, totalCost: 22 });
+
+    const re = recomputeEstimate({ items: tree.items, adjustments: [], taxCategory: 'fob' }, DEFAULT_PRICING_RATES);
+    const [rPlate, rCustom] = re.items[0].materials;
+    expect(rPlate.fabWeight).toBeCloseTo(204.2, 0);   // 2 pc × 10 ft × 10.21 lb/ft
+    expect(rCustom.fabWeight).toBe(500);
   });
 });
