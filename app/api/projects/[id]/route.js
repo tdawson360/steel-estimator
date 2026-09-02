@@ -776,6 +776,11 @@ export async function PUT(request, { params }) {
         where: { id: projectId },
         include: FULL_PROJECT_INCLUDE
       });
+    }, {
+      // Large estimates issue hundreds of sequential writes; Prisma's 5 s
+      // default rolled the whole save back with a generic failure.
+      maxWait: 10_000,
+      timeout: 60_000,
     });
 
     // The persisted tree already holds the server's numbers; serverTotals
@@ -790,16 +795,46 @@ export async function PUT(request, { params }) {
   }
 }
 
+// Bid-board pipeline values (mirrors DASHBOARD_STATUSES in app/dashboard/page.js
+// and the schema comment on Project.dashboardStatus).
+const DASHBOARD_STATUSES = new Set([
+  'Bidding',
+  'Quoted - Pending Award from GC',
+  'Quoted - Budget Only',
+  'Awarded to BIW',
+  'Redesign omitted scope',
+]);
+
 export async function PATCH(request, { params }) {
   try {
     const user = await getUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (user.role !== 'ADMIN' && user.role !== 'ESTIMATOR') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { id } = await params;
     const projectId = parseInt(id);
+    if (!Number.isInteger(projectId)) {
+      return NextResponse.json({ error: 'Invalid project id' }, { status: 400 });
+    }
     const { dashboardStatus } = await request.json();
+    if (dashboardStatus != null && dashboardStatus !== '' && !DASHBOARD_STATUSES.has(dashboardStatus)) {
+      return NextResponse.json({ error: 'Invalid dashboard status' }, { status: 400 });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, isTemplate: true },
+    });
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+    if (project.isTemplate) {
+      return NextResponse.json({ error: 'Template projects are not on the bid board' }, { status: 400 });
+    }
 
     const updated = await prisma.project.update({
       where: { id: projectId },

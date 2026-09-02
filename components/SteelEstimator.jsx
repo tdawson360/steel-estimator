@@ -1100,9 +1100,19 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     }
   }, [applyStashPayload]);
 
+  // Mirrors the server's canEditProject: templates are editable only by admins
+  // and the template's assigned estimator. Computed here (ahead of save) so the
+  // save path and the autosave effect can refuse writes the server would 403.
+  const canEdit = projectIsTemplate
+    ? (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && projectEstimatorId != null && Number(projectEstimatorId) === Number(userId)))
+    : (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED')));
+  const isReadOnly = !canEdit;
+  const canEditRef = useRef(canEdit);
+  canEditRef.current = canEdit;
+
   // ── SAVE PROJECT TO DATABASE ────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!currentProjectId) return;
+    if (!currentProjectId || !canEditRef.current) return;
     const payload = {
         projectName,
         projectAddress,
@@ -1231,6 +1241,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   // local stash write instead of a network request, so this keeps running.
   useEffect(() => {
     if (!isLoadedRef.current) return;
+    // Read-only viewers (PM/shop, or an estimator on a PUBLISHED estimate) can
+    // still change local state; never mark dirty or PUT on their behalf.
+    if (!canEditRef.current) return;
     setIsDirty(true);
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
@@ -1282,13 +1295,6 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       setStatusChanging(false);
     }
   }, [currentProjectId]);
-
-  // Mirrors the server's canEditProject: templates are editable only by admins
-  // and the template's assigned estimator.
-  const canEdit = projectIsTemplate
-    ? (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && projectEstimatorId != null && Number(projectEstimatorId) === Number(userId)))
-    : (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED')));
-  const isReadOnly = !canEdit;
 
   // ── LOAD ON MOUNT ───────────────────────────────────────────────────────────
   useEffect(() => {

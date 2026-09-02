@@ -145,6 +145,20 @@ describe('mergeFabOps', () => {
   });
 });
 
+describe('mergeFabOps — all-in connection types accumulate', () => {
+  // Regression: ACCUMULATE_OPS was a hand list that never picked up the
+  // WF/C Bolted + Welded values, so a member spread across two takeoff rows
+  // kept only the first row's connection count.
+  it('sums WF/C Bolted and Welded across rows like the legacy Connx ops', () => {
+    for (const op of ['WF Bolted', 'WF Welded', 'C Bolted', 'C Welded', 'WF Connx', 'WF Moment Connx', 'Loose']) {
+      const merged = env.mergeFabOps(
+        [{ operation: op, quantity: 2, unit: 'EA' }],
+        [{ operation: op, quantity: 2, unit: 'EA' }],
+      );
+      expect(merged, op).toEqual([{ operation: op, quantity: 4, unit: 'EA' }]);
+    }
+  });
+});
 describe('consolidateMembers', () => {
   const member = (mark, pieces, fabrication = [], extras = {}) => ({
     mark, isParent: true, base: mark, description: 'HORIZ', size: 'W 8 x 21',
