@@ -4085,7 +4085,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                 <tr className="bg-gray-100 dark:bg-gray-700">
                                   <th className="border p-1 text-center w-12">Seq</th>
                                   <th className="border p-1 text-center">Description</th>
-                                  <th className="border p-1 text-center w-40 min-w-[10rem]">Category</th>
+                                  <th className="border p-1 text-center w-[6.5rem] min-w-[6.5rem]">Category</th>
                                   <th className="border p-1 text-center w-32">Size</th>
                                   <th className="border p-1 text-center w-12">Wt/ft</th>
                                   <th className="border p-1 text-center w-14">Qty</th>
