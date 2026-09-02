@@ -2941,6 +2941,16 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     }));
   };
 
+  // Expand specific groups (the "N grouped" tag on a member row)
+  const expandLaborGroups = (itemId, groupIds) => {
+    const ids = new Set(groupIds);
+    setItems(prev => prev.map(item => item.id !== itemId ? item : {
+      ...item,
+      laborGroups: (item.laborGroups || []).map(g =>
+        ids.has(g.id) && g.collapsed ? { ...g, collapsed: false } : g),
+    }));
+  };
+
   const toggleLaborGroupCollapsed = (itemId, groupId) => {
     setItems(prev => prev.map(item => item.id !== itemId ? item : {
       ...item,
@@ -2980,7 +2990,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         familyKey,
         unit: fab.unit || 'EA',
         rate: fab.unitPrice || 0,
-        collapsed: false,
+        collapsed: true,   // read as one summary line; members expand on demand
         colorIndex: nextColorIndex(groups),
         sortOrder: groups.length,
       };
@@ -4129,7 +4139,28 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           {mat.sequence || 'A'}
                                         </div>
                                       </td>
-                                      <td className="border p-1"><input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" /></td>
+                                      <td className="border p-1">
+                                        {(() => {
+                                          // Ops on this member hidden inside collapsed groups
+                                          const hiddenFabs = (mat.fabrication || []).filter(f =>
+                                            f.laborGroupId != null && isGroupableFab(f) && groupById.get(f.laborGroupId)?.collapsed);
+                                          const hiddenGroupIds = [...new Set(hiddenFabs.map(f => f.laborGroupId))];
+                                          const hiddenOps = [...new Set(hiddenFabs.map(f => groupById.get(f.laborGroupId)?.operation || f.operation))];
+                                          return (
+                                            <div className="flex items-center gap-1">
+                                              <input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="flex-1 min-w-0 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" />
+                                              {hiddenFabs.length > 0 && (
+                                                <button type="button"
+                                                  onClick={() => expandLaborGroups(item.id, hiddenGroupIds)}
+                                                  title={`Priced in a group: ${hiddenOps.join(', ')} — click to show the row${hiddenFabs.length > 1 ? 's' : ''}`}
+                                                  className="flex-shrink-0 text-[10px] leading-4 px-1 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:hover:bg-purple-900/60 whitespace-nowrap">
+                                                  {hiddenFabs.length} grouped
+                                                </button>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
+                                      </td>
                                       <td className="border p-1">
                                         <select value={mat.category} onChange={e => updateMaterial(item.id, mat.id, 'category', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
                                           {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
