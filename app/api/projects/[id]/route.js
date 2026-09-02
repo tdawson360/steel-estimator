@@ -490,6 +490,7 @@ export async function PUT(request, { params }) {
               connWeight: fab.connWeight || 0,
               isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
               galvKind: fab.isAutoGalv ? 'auto' : (conn ? 'conn' : (fab.galvKind ?? null)),
+              galvClass: fab.galvClass ?? null,
               parentFabId: (conn && fab.parentFabId != null)
                 ? (fabIdMap.get(fab.parentFabId)
                    ?? (isExistingId(fab.parentFabId, existingMatFabIds) ? Number(fab.parentFabId) : null))

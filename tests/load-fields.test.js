@@ -51,7 +51,8 @@ describe('galvLineFieldsFromDb', () => {
   it('auto line: isAutoGalv with the owner description', () => {
     const f = { id: 8, isGalvLine: true, galvKind: 'auto', quantity: 100 };
     expect(galvLineFieldsFromDb(f, { galvanized: true, description: 'W12x26' }, [f]))
-      .toEqual({ isAutoGalv: true, description: 'Galv - W12x26', multiplyByPieces: false });
+      .toEqual({ isAutoGalv: true, description: 'Galv - W12x26', multiplyByPieces: false, galvClass: null });
+    expect(galvLineFieldsFromDb({ ...f, galvClass: 'KDS' }, { galvanized: true, description: 'W12x26' }, [f]).galvClass).toBe('KDS');
   });
 
   it('conn line: isConnGalv, parentFabId, parent op name', () => {

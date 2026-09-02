@@ -264,6 +264,28 @@ export async function updateCustomOp(id, data) {
   return { success: true };
 }
 
+// ── Galvanizing rate classes ────────────────────────────────────────────────
+export async function updateGalvClass(id, data) {
+  await requireAdmin();
+  const patch = {};
+  if (typeof data?.name === 'string' && data.name.trim()) patch.name = data.name.trim();
+  if (data?.ratePerCwt != null && Number.isFinite(Number(data.ratePerCwt))) patch.ratePerCwt = Math.max(0, Number(data.ratePerCwt));
+  if (typeof data?.active === 'boolean') patch.active = data.active;
+  if (Object.keys(patch).length === 0) return { success: false };
+  await prisma.galvRateClass.update({ where: { id: Number(id) }, data: patch });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}
+
+export async function updateGalvMinimum(value) {
+  const user = await requireAdmin();
+  const v = Number(value);
+  if (!Number.isFinite(v) || v < 0) throw new Error('Invalid minimum');
+  await prisma.pricingRates.update({ where: { id: 1 }, data: { galvMinimumCharge: v, updatedBy: user.id } });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}
+
 export async function deleteCustomOp(id) {
   await requireAdmin();
   await prisma.customFabOperation.delete({ where: { id } });

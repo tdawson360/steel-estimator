@@ -42,9 +42,10 @@ import { computeFabLineTotal, pooledLineCost, stockRowEstCost, roundLengthToInch
 import {
   familyKeyForSize, fabGroupKey, isGroupableFab, applyGroupRates,
   computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
-  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize,
+  sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize, joinGalvGroups,
 } from '../lib/estimating/labor-groups';
-import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE } from '../lib/estimating/galv';
+import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE, configureGalvClasses } from '../lib/estimating/galv';
+import { DEFAULT_GALV_CLASSES, galvClassRatePerLb, galvClassLabel } from '../lib/estimating/galv-classes';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
 import {
@@ -740,6 +741,18 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [customOps, setCustomOps] = useState([]);
   useEffect(() => { getCustomOps().then(setCustomOps).catch(() => {}); }, []);
 
+  // Galvanizer rate classes + minimum charge (Global Pricing Data → Galvanizing).
+  // configureGalvClasses lets every normalizeGalvLines call site seed a new
+  // galv line's rate from its class without threading the list through.
+  const [galvClasses, setGalvClasses] = useState(null);
+  const [galvMinimum, setGalvMinimum] = useState(GALV_MINIMUM_CHARGE);
+  useEffect(() => {
+    apiFetch('/api/galv-classes').then(d => {
+      if (Array.isArray(d?.classes)) { setGalvClasses(d.classes); configureGalvClasses(d.classes); }
+      if (d?.minimumCharge > 0) setGalvMinimum(d.minimumCharge);
+    }).catch(() => {});
+  }, []);
+
   const customOpRateMap = useMemo(() => {
     const m = {};
     for (const op of customOps) m[op.name] = { rate: op.rate, unit: op.defaultUnit };
@@ -1069,7 +1082,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           if (!(calcItem.laborGroups || []).length) return calcItem;
           // Groups are exact-size only: split any legacy family-keyed group
           // that spans sizes (same rate on every piece, so totals hold).
-          const split = splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() });
+          const split = joinGalvGroups(splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() }));
           const stamped = applyGroupRates(split);
           return {
             ...stamped,
@@ -2330,7 +2343,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       materials.splice(lastIdx + 1, 0, newParent, ...newChildren);
 
       setFocusLengthMaterialId(newParentId);
-      return { ...item, materials: normalizeGalvLines(resequenceMaterials(materials)) };
+      return joinGalvGroups({ ...item, materials: normalizeGalvLines(resequenceMaterials(materials)) });
     }));
   };
 
@@ -2363,29 +2376,13 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             let matFab = [...(updated.fabrication || [])];
             
             if (field === 'galvanized') {
-              const galvFabIndex = matFab.findIndex(f => f.isAutoGalv);
-              
-              if (value === true) {
-                // Add galvanizing fabrication to this material
-                if (galvFabIndex === -1) {
-                  matFab.push({
-                    id: Date.now(),
-                    operation: 'Galvanizing',
-                    connectTo: 'apply',
-                    description: `Galv - ${updated.description || updated.size}`,
-                    quantity: updated.fabWeight || 0,
-                    unit: 'LB',
-                    unitPrice: 0,
-                    multiplyByPieces: false, // Weight already includes pieces
-                    totalCost: 0,
-                    isAutoGalv: true
-                  });
-                }
-              } else {
-                // Remove galvanizing fabrication
-                if (galvFabIndex !== -1) {
-                  matFab.splice(galvFabIndex, 1);
-                }
+              // The assembly galv line is created (with its rate class and the
+              // class rate) and removed by normalizeGalvLines below — nothing
+              // to hand-build here. (A hand-built $0 line used to pre-empt the
+              // class seeding.)
+              if (value !== true) {
+                const galvFabIndex = matFab.findIndex(f => f.isAutoGalv);
+                if (galvFabIndex !== -1) matFab.splice(galvFabIndex, 1);
               }
             } else if (['pieces', 'length', 'size', 'customWeight', 'category', 'description', 'plateThickness', 'plateWidth'].includes(field)) {
               // Update galvanizing qty if material weight changes and galv is enabled
@@ -2492,7 +2489,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
         // Galv assembly rule is authoritative last: one line per dipped
         // assembly (parent + galvanized children + galv connection weights).
-        return { ...item, materials: normalizeGalvLines(updatedMaterials) };
+        return joinGalvGroups({ ...item, materials: normalizeGalvLines(updatedMaterials) });
       }
       return item;
     }));
@@ -2937,6 +2934,62 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         });
         return changed ? { ...m, fabrication } : m;
       });
+      return { ...item, laborGroups, materials };
+    }));
+  };
+
+  // Galvanizing rate class on one assembly line. Leaving a group of another
+  // class detaches the line; it then takes the new class's rate and joins that
+  // class's group if the item has one.
+  const setGalvLineClass = (itemId, materialId, fabId, code) => {
+    if (!code) return;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const groups = item.laborGroups || [];
+      const classRate = galvClassRatePerLb(galvClasses, code);
+      const materials = item.materials.map(m => {
+        if (m.id !== materialId) return m;
+        return {
+          ...m,
+          fabrication: (m.fabrication || []).map(f => {
+            if (f.id !== fabId) return f;
+            const grp = f.laborGroupId != null ? groups.find(g => g.id === f.laborGroupId) : null;
+            const leaving = grp && grp.familyKey !== code;
+            const next = { ...f, galvClass: code, ...(leaving ? { laborGroupId: null } : {}) };
+            if (next.laborGroupId == null && classRate != null) { next.unitPrice = classRate; next.rate = classRate; }
+            return { ...next, totalCost: computeFabLineTotal(next) };
+          }),
+        };
+      });
+      return pruneEmptyLaborGroups(joinGalvGroups({ ...item, materials }));
+    }));
+  };
+
+  // Re-class a whole galv group: every member takes the class and the class
+  // rate; if the item already has a group for that class the members merge
+  // into it.
+  const setGalvGroupClass = (itemId, groupId, code) => {
+    if (!code) return;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const groups = item.laborGroups || [];
+      const g = groups.find(x => x.id === groupId);
+      if (!g || g.familyKey === code) return item;
+      const existing = groups.find(x => x.id !== groupId && x.operation === 'Galvanizing' && x.familyKey === code);
+      const classRate = galvClassRatePerLb(galvClasses, code);
+      const target = existing || { ...g, familyKey: code, rate: classRate != null ? classRate : g.rate };
+      const rate = target.rate || 0;
+      const materials = item.materials.map(m => {
+        let changed = false;
+        const fabrication = (m.fabrication || []).map(f => {
+          if (f.laborGroupId !== groupId) return f;
+          changed = true;
+          const next = { ...f, galvClass: code, laborGroupId: target.id, unitPrice: rate, rate };
+          return { ...next, totalCost: computeFabLineTotal(next) };
+        });
+        return changed ? { ...m, fabrication } : m;
+      });
+      const laborGroups = existing ? groups.filter(x => x.id !== groupId) : groups.map(x => x.id === groupId ? target : x);
       return { ...item, laborGroups, materials };
     }));
   };
@@ -4543,11 +4596,43 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       </tr>
                                       );
                                     })}
-                                    {/* Auto-generated galv fab row (if any) */}
-                                    {(mat.fabrication || []).filter(f => f.isAutoGalv || f.isConnGalv).map(fab => (
-                                      <tr key={fab.id} className="bg-yellow-50 dark:bg-yellow-900/25">
-                                        <td className="border p-1 text-yellow-600 dark:text-yellow-400 text-center text-xs font-medium">[Galv]</td>
-                                        <td className="border p-1 text-xs text-yellow-700 dark:text-yellow-300">{fab.description}</td>
+                                    {/* Galv rows: the assembly dip line (class-priced, groupable by
+                                        class) and any standalone connection dips. A collapsed group's
+                                        members are hidden — the member row shows the "N grouped" tag. */}
+                                    {(mat.fabrication || [])
+                                      .filter(f => (f.isAutoGalv || f.isConnGalv) &&
+                                        !(f.laborGroupId != null && groupById.get(f.laborGroupId)?.collapsed))
+                                      .map(fab => {
+                                      const grp = fab.laborGroupId != null ? groupById.get(fab.laborGroupId) : null;
+                                      const gStyle = grp ? laborGroupStyle(grp.colorIndex) : null;
+                                      const rowKey = (!grp && fab.isAutoGalv) ? fabGroupKey(mat, fab) : null;
+                                      const joinTarget = rowKey
+                                        ? laborGroups.find(g => `${g.familyKey}|${g.operation}` === rowKey)
+                                        : null;
+                                      const canGroupSimilar = rowKey && !joinTarget && item.materials.some(m2 =>
+                                        !m2.parentMaterialId && (m2.fabrication || []).some(f2 =>
+                                          f2.id !== fab.id && f2.laborGroupId == null &&
+                                          isGroupableFab(f2) && fabGroupKey(m2, f2) === rowKey));
+                                      const classList = galvClasses || DEFAULT_GALV_CLASSES;
+                                      return (
+                                      <tr key={fab.id} className={grp ? gStyle.row : 'bg-yellow-50 dark:bg-yellow-900/25'}>
+                                        <td className={`border p-1 text-center text-xs font-medium ${grp ? gStyle.tag : 'text-yellow-600 dark:text-yellow-400'}`}>{grp ? '[Grp]' : '[Galv]'}</td>
+                                        <td className="border p-1 text-xs text-yellow-700 dark:text-yellow-300">
+                                          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 min-w-0">
+                                            <span className="truncate" title={fab.description}>{fab.description}</span>
+                                            {fab.isAutoGalv && (
+                                              <select
+                                                value={fab.galvClass || ''}
+                                                onChange={e => setGalvLineClass(item.id, mat.id, fab.id, e.target.value)}
+                                                title="Galvanizer rate class (Global Pricing Data → Galvanizing)"
+                                                className="ml-auto min-w-0 max-w-[8.5rem] p-0.5 border rounded text-[10px] bg-yellow-50 dark:bg-yellow-900/25 dark:border-gray-600 dark:text-gray-100"
+                                              >
+                                                {!fab.galvClass && <option value="">Class…</option>}
+                                                {classList.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                              </select>
+                                            )}
+                                          </div>
+                                        </td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         <td className="border p-1 text-center text-gray-400">—</td>
@@ -4560,19 +4645,45 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         <td className="border p-1 text-center text-gray-400">—</td>
                                         <td className="border p-1 text-xs text-center">LB</td>
                                         <td className="border p-1">
-                                          <input 
-                                            type="number" 
-                                            step="0.01" 
-                                            value={fab.unitPrice || ''} 
-                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)} 
-                                            className="w-full p-1 border rounded text-xs text-right bg-yellow-50 dark:bg-yellow-900/25 dark:border-gray-600 dark:text-gray-100" 
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            value={fab.unitPrice || ''}
+                                            disabled={!!grp}
+                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                            className={`w-full p-1 border rounded text-xs text-right dark:border-gray-600 dark:text-gray-100 ${grp ? `${gStyle.input} opacity-70` : 'bg-yellow-50 dark:bg-yellow-900/25'}`}
                                             placeholder="$/lb"
+                                            title={grp ? 'Priced by the group — edit the rate on the group line' : 'Rate per lb'}
                                           />
                                         </td>
-                                        <td className="border p-1 text-right font-semibold text-yellow-700 dark:text-yellow-300">{fmtPrice(fab.totalCost || 0)}</td>
-                                        <td className="border p-1"></td>
+                                        <td className={`border p-1 text-right font-semibold ${grp ? gStyle.total : 'text-yellow-700 dark:text-yellow-300'}`}>{fmtPrice(fab.totalCost || 0)}</td>
+                                        <td className="border p-1 text-center">
+                                          <div className="flex items-center justify-center gap-1">
+                                            {grp && (
+                                              <button onClick={() => detachFabFromGroup(item.id, mat.id, fab.id)}
+                                                className={gStyle.tag} title="Detach from group — price this assembly individually (starts at the group rate)">
+                                                <Unlink size={12} />
+                                              </button>
+                                            )}
+                                            {joinTarget && (
+                                              <button onClick={() => joinFabToGroup(item.id, mat.id, fab.id, joinTarget.id)}
+                                                className={laborGroupStyle(joinTarget.colorIndex).tag}
+                                                title={`Join group: Galvanizing — ${galvClassLabel(classList, joinTarget.familyKey)}`}>
+                                                <Link2 size={12} />
+                                              </button>
+                                            )}
+                                            {canGroupSimilar && (
+                                              <button onClick={() => groupSimilarFabs(item.id, mat.id, fab.id)}
+                                                className="text-violet-600 hover:text-violet-800"
+                                                title="Group similar — price every assembly in this rate class with one rate">
+                                                <Layers size={12} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
                                       </tr>
-                                    ))}
+                                      );
+                                    })}
                                     {/* Child rows (attachments) */}
                                     {getChildMaterials(item.materials, mat.id).map(child => (
                                       <React.Fragment key={child.id}>
@@ -4995,8 +5106,25 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </td>
                                           {/* Description */}
                                           <td className={`border p-1 text-xs font-semibold ${gs.tag}`}>
-                                            {g.operation} — {g.familyKey}
-                                            <span className="ml-1 font-normal text-gray-500 dark:text-gray-400">({g.memberCount} row{g.memberCount === 1 ? '' : 's'})</span>
+                                            {g.operation === 'Galvanizing' ? (
+                                              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 min-w-0">
+                                                <span>Galvanizing —</span>
+                                                <select
+                                                  value={g.familyKey || ''}
+                                                  onChange={e => setGalvGroupClass(item.id, g.id, e.target.value)}
+                                                  title="Galvanizer rate class for every assembly in this group"
+                                                  className="min-w-0 max-w-[8.5rem] p-0.5 border rounded text-[10px] font-normal bg-transparent dark:border-gray-600 dark:text-gray-100"
+                                                >
+                                                  {(galvClasses || DEFAULT_GALV_CLASSES).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                                </select>
+                                                <span className="font-normal text-gray-500 dark:text-gray-400">({g.memberCount} assembl{g.memberCount === 1 ? 'y' : 'ies'})</span>
+                                              </div>
+                                            ) : (
+                                              <>
+                                                {g.operation} — {g.familyKey}
+                                                <span className="ml-1 font-normal text-gray-500 dark:text-gray-400">({g.memberCount} row{g.memberCount === 1 ? '' : 's'})</span>
+                                              </>
+                                            )}
                                           </td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
                                           <td className="border p-1 text-center text-gray-400">—</td>
@@ -6351,20 +6479,20 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               {/* Galvanizer minimum-charge check */}
               {(() => {
                 const galvTotal = projectGalvTotal(items);
-                if (!(galvTotal > 0 && galvTotal < GALV_MINIMUM_CHARGE)) return null;
-                const shortfall = +(GALV_MINIMUM_CHARGE - galvTotal).toFixed(2);
+                if (!(galvTotal > 0 && galvTotal < galvMinimum)) return null;
+                const shortfall = +(galvMinimum - galvTotal).toFixed(2);
                 const alreadyAdded = adjustments.some(a => (a.note || a.description || '').toLowerCase().includes('galvanizing minimum'));
                 return (
                   <div className="bg-amber-50 dark:bg-amber-900/25 p-4 rounded border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
                     <p className="text-sm text-amber-800 dark:text-amber-300">
                       <AlertCircle size={14} className="inline mr-1 -mt-0.5" />
-                      Galvanizing totals {fmtPrice(galvTotal)} — below the {fmtPrice(GALV_MINIMUM_CHARGE)} galvanizer minimum lot charge.
+                      Galvanizing totals {fmtPrice(galvTotal)} — below the {fmtPrice(galvMinimum)} galvanizer minimum lot charge.
                     </p>
                     {alreadyAdded ? (
                       <span className="text-xs text-amber-700 dark:text-amber-400">Minimum-charge adjustment added below.</span>
                     ) : (
                       <button
-                        onClick={() => setAdjustments([...adjustments, { id: Date.now(), amount: shortfall, note: `Galvanizing minimum charge (to ${fmtPrice(GALV_MINIMUM_CHARGE)})` }])}
+                        onClick={() => setAdjustments([...adjustments, { id: Date.now(), amount: shortfall, note: `Galvanizing minimum charge (to ${fmtPrice(galvMinimum)})` }])}
                         className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700"
                       >
                         Add {fmtPrice(shortfall)} adjustment

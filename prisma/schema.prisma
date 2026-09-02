@@ -305,6 +305,9 @@ model MaterialFabrication {
   // (plain int, no FK: SQLite would rebuild the whole table for a self-relation;
   // the loaders drop a line whose parent op no longer exists.)
   parentFabId  Int?
+  // Galvanizing rate class code (GalvRateClass.code) on auto-galv lines;
+  // defaulted from the main member, overridable per line / group.
+  galvClass    String?
 
   // Per-op length in inches/feet for IN/LF-unit ops (qty × length × rate)
   length       Float?
@@ -618,6 +621,9 @@ model PricingRates {
   preheatWeldRate            Float?
   preheatWeldGrindRate       Float?
 
+  // Galvanizer minimum charge per lot (AZZ Houston: $325 eff. 10/01/2025)
+  galvMinimumCharge          Float    @default(325)
+
   updatedAt                  DateTime @updatedAt
   updatedBy                  String?
 }
@@ -775,4 +781,18 @@ model CustomerActivity {
   @@index([customerId, activityDate])
   @@index([followUpDate])
   @@index([createdById])
+}
+
+// Galvanizer rate classes (Global Pricing Data → Galvanizing). Seeded from the
+// AZZ Houston sheet (docs/galv-rate-sheet.pdf); Berger edits ratePerCwt to its
+// all-in number (environmental fee, handling, etc. baked in). Galv labor groups
+// key on the class code; the line rate is ratePerCwt / 100 per lb.
+model GalvRateClass {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique          // KDS, MSC, FPIP5, FTUB3, ... MLT
+  name       String
+  ratePerCwt Float    @default(0)
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
 }

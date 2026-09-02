@@ -297,6 +297,7 @@ export async function POST(request, { params }) {
             connWeight: fab.connWeight,
             isGalvLine: fab.isGalvLine,
             galvKind: fab.galvKind ?? null,
+            galvClass: fab.galvClass ?? null,
             parentFabId: null,
             length: fab.length, galvanized: fab.galvanized,
             galvWeight: fab.galvWeight, applyTo: fab.applyTo,

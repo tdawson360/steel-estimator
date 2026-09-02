@@ -14,6 +14,8 @@ import {
   linkTemplateItem,
   previewTemplateSync,
   applyTemplateSync,
+  updateGalvClass,
+  updateGalvMinimum,
 } from './actions';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -114,6 +116,121 @@ function RatesEditor({ rates }) {
           <li>Over 20 pieces: −{rates?.quantityDiscountOver20Pct ?? 5}%</li>
           <li>Over 100 pieces: −{rates?.quantityDiscountOver100Pct ?? 7.5}%</li>
         </ul>
+      </div>
+    </div>
+  );
+}
+
+// ─── Galvanizing rate classes ──────────────────────────────────────────────────
+// One row per galvanizer class (codes match the AZZ sheet). Rate is Berger's
+// ALL-IN $/cwt — environmental fee, handling on/off the truck, etc. baked in.
+// The estimator prices a galv line at rate / 100 per lb and groups galv lines
+// by class.
+function GalvClassesEditor({ initialClasses, initialMinimum }) {
+  const [classes, setClasses] = useState(initialClasses || []);
+  const [editing, setEditing] = useState({}); // id → string value
+  const [minimum, setMinimum] = useState(initialMinimum ?? 325);
+  const [minSaved, setMinSaved] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const saveRate = (cls) => {
+    const val = editing[cls.id];
+    if (val === undefined) return;
+    const ratePerCwt = val === '' ? 0 : parseFloat(val);
+    if (!Number.isFinite(ratePerCwt)) return;
+    startTransition(async () => {
+      try {
+        await updateGalvClass(cls.id, { ratePerCwt });
+        setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, ratePerCwt } : c));
+        setEditing(prev => { const n = { ...prev }; delete n[cls.id]; return n; });
+      } catch (e) {
+        alert('Save failed: ' + e.message);
+      }
+    });
+  };
+
+  const toggleActive = (cls) => {
+    const active = !cls.active;
+    startTransition(async () => {
+      try {
+        await updateGalvClass(cls.id, { active });
+        setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, active } : c));
+      } catch (e) {
+        alert('Update failed: ' + e.message);
+      }
+    });
+  };
+
+  const saveMinimum = () => {
+    startTransition(async () => {
+      try {
+        await updateGalvMinimum(parseFloat(minimum) || 0);
+        setMinSaved(true);
+        setTimeout(() => setMinSaved(false), 3000);
+      } catch (e) {
+        alert('Save failed: ' + e.message);
+      }
+    });
+  };
+
+  const inputCls = 'w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+  return (
+    <div className="space-y-5">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300 w-20">Code</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Class</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">All-in rate ($/cwt)</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">$/lb</th>
+              <th className="text-center px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            {classes.map(cls => (
+              <tr key={cls.id} className={`border-b border-gray-100 dark:border-gray-700 ${cls.active ? '' : 'opacity-50'}`}>
+                <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300">{cls.code}</td>
+                <td className="px-3 py-1.5 text-gray-800 dark:text-gray-200">{cls.name}</td>
+                <td className="px-3 py-1.5 text-right">
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={editing[cls.id] ?? cls.ratePerCwt}
+                    onChange={e => setEditing(prev => ({ ...prev, [cls.id]: e.target.value }))}
+                    onBlur={() => saveRate(cls)}
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className={inputCls}
+                  />
+                </td>
+                <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">
+                  {((editing[cls.id] !== undefined ? parseFloat(editing[cls.id]) || 0 : cls.ratePerCwt) / 100).toFixed(4)}
+                </td>
+                <td className="px-3 py-1.5 text-center">
+                  <input type="checkbox" checked={!!cls.active} onChange={() => toggleActive(cls)} className="rounded" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-end gap-4 flex-wrap">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Minimum charge per lot</label>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 dark:text-gray-400 text-sm">$</span>
+            <input type="number" step="1" min="0" value={minimum} onChange={e => setMinimum(e.target.value)}
+              className="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={saveMinimum} className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">Save</button>
+            {minSaved && <span className="text-green-600 text-sm">✓ Saved</span>}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
+          Default class per assembly: under 20 lb dipped → MLT; pipe by nominal diameter and tube by largest side
+          → the FPIP / FTUB tiers; W, WT, C, MC, L → KDS; plate, flats, bar, custom → MSC. Change it on the
+          galv line or the group in the estimate. Rates take effect on new galv lines and on groups you re-class.
+        </p>
       </div>
     </div>
   );
@@ -1011,7 +1128,7 @@ function TemplateSyncPanel() {
 
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
-export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps }) {
+export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps, galvClasses }) {
   const [linkTarget, setLinkTarget] = useState(null); // { cat, kind } | null
   const openLinkPicker = (cat, kind) => setLinkTarget({ cat, kind });
   return (
@@ -1042,6 +1159,16 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
             Per-unit rates for drilling, prep, and welding operations. These are applied automatically when a fab op is added to an estimate.
           </p>
           <OpRatesEditor rates={rates} />
+        </section>
+
+        {/* Section 2.5: Galvanizing */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Galvanizing</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Galvanizer rate classes (codes match the AZZ Houston sheet in docs/galv-rate-sheet.pdf). Enter Berger's
+            all-in $/cwt per class — the estimator prices each dipped assembly at its class rate and groups galv lines by class.
+          </p>
+          <GalvClassesEditor initialClasses={galvClasses} initialMinimum={rates?.galvMinimumCharge} />
         </section>
 
         {/* Section 3: Custom Fab Operations */}
