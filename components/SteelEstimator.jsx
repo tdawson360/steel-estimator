@@ -3,6 +3,7 @@ import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { apiFetch, ApiError, SessionExpiredError } from '../lib/api-client';
 import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical, Link2, Unlink, Layers, Lock } from 'lucide-react';
 import { LOCK_HEARTBEAT_MS } from '../lib/project-lock';
+import { hardwareLabel, groupByFamily, defaultForFamily, hardwareFinishVariant } from '../lib/hardware';
 import { laborGroupStyle } from './laborGroupStyles';
 import CustomerSearchInput from './CustomerSearchInput';
 
@@ -147,6 +148,94 @@ const roleCanEdit = (userRole, userId, p) => p.isTemplate
 // reconcile (the merge spreads the original object), so the row keeps its
 // identity across the save. Rows loaded from the DB never change id.
 const stableRowKey = (r) => r.clientKey ?? r.id;
+
+// Page width — a per-browser preference (localStorage). The material table
+// clips horizontally (sticky headers need it), so on a wide monitor the fix
+// for a squeezed row is simply more room.
+const LAYOUT_WIDTH_KEY = 'steel-estimator:layout-width';
+const LAYOUT_WIDTHS = { standard: '80rem', wide: '100rem', full: 'none' };
+const LAYOUT_WIDTH_LABELS = { standard: 'Standard', wide: 'Wide', full: 'Full width' };
+
+// ── Hardware rows (catalog on Global Pricing Data → Hardware) ──────────────
+// Picking a catalog item snapshots its label, price and weight-each onto the
+// row (customWeight = lb EACH for Hardware — see material-calc). Catalog edits
+// never reprice rows already in an estimate. `null` = free-text mode: the
+// typed size text stays, the link is dropped.
+const HW_OTHER = '__other__';
+const applyHardwareItem = (mat, item) => {
+  if (!item) return { ...mat, hardwareItemId: null };
+  return {
+    ...mat,
+    hardwareItemId: item.id,
+    size: hardwareLabel(item),
+    unitPrice: item.unitPrice || 0,
+    customWeight: item.weightEach || 0,
+    priceBy: 'EA',
+    stockLength: null,
+  };
+};
+const hardwareItemFor = (mat, items) => (mat?.hardwareItemId != null ? (items || []).find(i => i.id === mat.hardwareItemId) || null : null);
+const hardwareLengthText = (mat, items) => {
+  const it = hardwareItemFor(mat, items);
+  return it ? (it.kind === 'ADHESIVE' ? it.length : `${it.length}"`) : '—';
+};
+
+// Size-cell picker for a Hardware row: family, then size (finish in the label
+// when it matters), with "Other…" for a free-typed size. Top-level component
+// so React never remounts it mid-keystroke.
+function HardwarePicker({ items, mat, onPick, onFreeText, muted = false }) {
+  const groups = useMemo(() => groupByFamily((items || []).filter(i => i.kind !== 'ADHESIVE')), [items]);
+  const current = hardwareItemFor(mat, items);
+  const [family, setFamily] = useState(current ? current.family : (mat.size ? HW_OTHER : ''));
+  useEffect(() => {
+    if (current) setFamily(current.family);
+    else if (mat.size) setFamily(HW_OTHER);
+  }, [current?.id, mat.size]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sel = `p-1 border rounded text-xs ${muted ? 'bg-gray-50' : ''} dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100`;
+  const group = groups.find(g => g.family === family);
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={family}
+        onChange={e => {
+          const fam = e.target.value;
+          setFamily(fam);
+          if (fam === HW_OTHER) onFreeText(mat.size || '');
+          else if (fam) onPick(defaultForFamily(items, fam));
+        }}
+        className={`${sel} w-24 flex-shrink-0`}
+        title="Hardware family"
+      >
+        {!family && <option value="">— Family —</option>}
+        {groups.map(g => <option key={g.family} value={g.family}>{g.family}</option>)}
+        <option value={HW_OTHER}>Other…</option>
+      </select>
+      {family === HW_OTHER || (!family && !groups.length) ? (
+        <input
+          type="text"
+          value={mat.size || ''}
+          onChange={e => onFreeText(e.target.value)}
+          placeholder='e.g. 3/4" A325 x 2"'
+          className={`${sel} flex-1 min-w-0`}
+        />
+      ) : (
+        <select
+          value={current?.id ?? ''}
+          onChange={e => { const it = (items || []).find(i => String(i.id) === e.target.value); if (it) onPick(it); }}
+          className={`${sel} flex-1 min-w-0`}
+          title="Size — price and weight come from Global Pricing Data → Hardware"
+          disabled={!group}
+        >
+          {!current && <option value="">— Size —</option>}
+          {(group?.items || []).map(it => {
+            const finish = it.finish && it.finish !== 'Plain' && it.finish !== 'Zinc' && !it.family.toUpperCase().includes(it.finish.toUpperCase()) ? ` ${it.finish}` : '';
+            return <option key={it.id} value={it.id}>{`${it.diameter}" x ${it.length}"${finish}`}</option>;
+          })}
+        </select>
+      )}
+    </div>
+  );
+}
 
 // "9:14 AM" for today, "Sep 2, 9:14 AM" otherwise — lock / conflict banners.
 const fmtWhen = (iso) => {
@@ -763,9 +852,25 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
 
+  // Page width preference (Standard / Wide / Full), remembered per browser.
+  const [layoutWidth, setLayoutWidth] = useState('standard');
+  useEffect(() => {
+    try { const v = localStorage.getItem(LAYOUT_WIDTH_KEY); if (v && LAYOUT_WIDTHS[v]) setLayoutWidth(v); } catch {}
+  }, []);
+  const changeLayoutWidth = (v) => {
+    setLayoutWidth(v);
+    try { localStorage.setItem(LAYOUT_WIDTH_KEY, v); } catch {}
+  };
+
   // Custom fab operations from the admin-defined DB table
   const [customOps, setCustomOps] = useState([]);
   useEffect(() => { getCustomOps().then(setCustomOps).catch(() => {}); }, []);
+
+  // Hardware catalog (Global Pricing Data → Hardware) for the Size picker on
+  // Hardware rows. Rows keep their own price/weight snapshot, so an empty or
+  // stale catalog only affects the picker.
+  const [hardwareItems, setHardwareItems] = useState([]);
+  useEffect(() => { apiFetch('/api/hardware').then(d => setHardwareItems(d?.items || [])).catch(() => {}); }, []);
 
   // Galvanizer rate classes + minimum charge (Global Pricing Data → Galvanizing).
   // configureGalvClasses lets every normalizeGalvLines call site seed a new
@@ -1004,6 +1109,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               galvRate: mat.galvRate || 0,
               width: mat.width || null,
               thickness: mat.thickness || null,
+              hardwareItemId: mat.hardwareItemId ?? null,
               // Plate dims / typed weight live in DB columns under other names
               ...materialCalcInputsFromDb(mat),
               fabrication: (mat.fabrication || []).map(f => {
@@ -2529,17 +2635,37 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       if (item.id === itemId) {
         let updatedMaterials = item.materials.map(mat => {
           if (mat.id === materialId) {
-            let updated = { ...mat, [field]: value };
+            // 'hardwareItem': value is a catalog item (or null for free text)
+            // 'hardwareSize': free-typed size text, drops the catalog link
+            let updated = field === 'hardwareItem'
+              ? applyHardwareItem(mat, value)
+              : field === 'hardwareSize'
+                ? { ...mat, hardwareItemId: null, size: value }
+                : { ...mat, [field]: value };
             if (field === 'category') {
               const shapes = getShapesForCategory(value);
               updated.size = shapes.length > 0 ? shapes[0] : '';
               updated.customWeight = null;
               updated.stockLength = null; // Reset to auto-calculate for new category
-              // Hardware (bolts, anchors, fasteners) prices per each by default
+              updated.hardwareItemId = null;
+              // Hardware (bolts, anchors, fasteners) prices per each; a new
+              // Hardware row starts on the catalog's first family default
+              // (A325 3/4" x 2") so it is priced and weighed immediately.
               if (value === 'Hardware') {
                 updated.priceBy = 'EA';
                 updated.customWeight = 0;
+                const fam = groupByFamily(hardwareItems.filter(i => i.kind !== 'ADHESIVE'))[0]?.family;
+                const def = fam ? defaultForFamily(hardwareItems, fam) : null;
+                if (def) updated = applyHardwareItem(updated, def);
               }
+            }
+            // Galv on a Hardware row = galvanized hardware, bought that way:
+            // swap to the HDG-priced catalog variant when one exists (and
+            // back to plain when unchecked). No variant → price unchanged.
+            // galv.js keeps hardware out of dip lines and groups regardless.
+            if (field === 'galvanized' && mat.category === 'Hardware') {
+              const variant = hardwareFinishVariant(hardwareItems, hardwareItemFor(mat, hardwareItems), value);
+              if (variant) updated = { ...applyHardwareItem(updated, variant), galvanized: value };
             }
             // If child material changes pieces, turn off inheritance
             if (field === 'pieces' && mat.parentMaterialId) {
@@ -3656,7 +3782,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const sortArrow = (field) => stockListSort.field === field ? (stockListSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
 
   return (
-    <div className="max-w-7xl mx-auto p-4 bg-gray-100 dark:bg-gray-700 min-h-screen">
+    <div className="mx-auto p-4 bg-gray-100 dark:bg-gray-700 min-h-screen" style={{ maxWidth: LAYOUT_WIDTHS[layoutWidth] || LAYOUT_WIDTHS.standard }}>
       <div className="bg-white dark:bg-gray-900 rounded shadow">
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-300 dark:border-gray-600">
@@ -3774,6 +3900,15 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 <Save size={16} /> {saveStatus === 'saving' ? 'Saving...' : 'Save'}
               </button>
             )}
+            <select
+              value={layoutWidth}
+              onChange={e => changeLayoutWidth(e.target.value)}
+              className="px-2 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+              title="Page width — remembered on this computer"
+              data-testid="select-layout-width"
+            >
+              {Object.entries(LAYOUT_WIDTH_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
             <div className="relative" ref={exportMenuRef}>
               <button onClick={() => setShowExportMenu(p => !p)} disabled={pdfExporting}
                 className="flex items-center gap-1 bg-gray-700 dark:bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-800 disabled:opacity-50">
@@ -4462,7 +4597,16 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       </td>
                                       <td className="border p-1">
                                         {mat.category === 'Custom' || mat.category === 'Hardware' ? (
-                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder={mat.category === 'Hardware' ? 'e.g. 3/4" A325 x 2"' : undefined} />
+                                          mat.category === 'Hardware' ? (
+                                            <HardwarePicker
+                                              items={hardwareItems}
+                                              mat={mat}
+                                              onPick={it => updateMaterial(item.id, mat.id, 'hardwareItem', it)}
+                                              onFreeText={txt => updateMaterial(item.id, mat.id, 'hardwareSize', txt)}
+                                            />
+                                          ) : (
+                                          <input type="text" value={mat.size || ''} onChange={e => updateMaterial(item.id, mat.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                          )
                                         ) : mat.category === 'Plate' ? (
                                           <div className="flex items-center gap-1">
                                             <select 
@@ -4492,7 +4636,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                       </td>
                                       <td className="border p-1">
                                         {mat.category === 'Custom' || mat.category === 'Hardware' ? (
-                                          <input type="number" step="0.01" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                          mat.hardwareItemId != null ? (
+                                            <span className="block text-right text-gray-700 dark:text-gray-300" title="Weight each (lb) from the hardware catalog">{(mat.customWeight || 0).toFixed(3)} ea</span>
+                                          ) : (
+                                          <input type="number" step="0.001" value={mat.customWeight || ''} onChange={e => updateMaterial(item.id, mat.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" title={mat.category === 'Hardware' ? 'Weight each (lb)' : 'Weight per foot (lb/ft)'} />
+                                          )
                                         ) : mat.category === 'Plate' ? (
                                           <span className="block text-right">{mat.weightPerFoot?.toFixed(2) || '—'}</span>
                                         ) : (
@@ -4517,17 +4665,23 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           >+</button>
                                         </div>
                                       </td>
-                                      <td className="border p-1"><input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)}
+                                      <td className="border p-1">{mat.category === 'Hardware' ? (
+                                        <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(mat, hardwareItems)}</span>
+                                      ) : (
+                                        <input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)}
                                         data-length-for={mat.id}
-                                        className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
+                                        className="w-full p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" />
+                                      )}</td>
                                       <td className="border p-1 text-right bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200 font-medium">{fmtWt(mat.fabWeight || 0)}</td>
                                       <td className="border p-1 text-center">
                                         <input type="checkbox" checked={mat.galvanized || false} 
                                           onChange={e => updateMaterial(item.id, mat.id, 'galvanized', e.target.checked)} 
-                                          className="w-4 h-4 rounded" title="Add Galvanizing" />
+                                          className="w-4 h-4 rounded" title={mat.category === 'Hardware' ? 'Galvanized hardware — uses the HDG catalog price when one exists; never added to the dip' : 'Add Galvanizing'} />
                                       </td>
                                       <td className="border p-1">
-                                        {mat.pooled ? (
+                                        {mat.category === 'Hardware' ? (
+                                          <span className="block text-center text-gray-400" title="Hardware is bought per each — no stock length">—</span>
+                                        ) : mat.pooled ? (
                                           <div
                                             className={`text-center text-xs font-semibold rounded px-1 py-0.5 ${mat.overLength
                                               ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
@@ -4562,8 +4716,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </>
                                         )}
                                       </td>
-                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.pooled ? '—' : (mat.stocksRequired || 0)}</td>
-                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{fmtWt(mat.stockWeight || 0)}</td>
+                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.pooled || mat.category === 'Hardware' ? '—' : (mat.stocksRequired || 0)}</td>
+                                      <td className="border p-1 text-right bg-gray-50 dark:bg-gray-800">{mat.category === 'Hardware' ? '—' : fmtWt(mat.stockWeight || 0)}</td>
                                       <td className="border p-1">
                                         <select value={mat.priceBy}
                                           onChange={e => mat.pooled
@@ -4963,7 +5117,17 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         </td>
                                         <td className="border p-1">
                                           {child.category === 'Custom' || child.category === 'Hardware' ? (
-                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder={child.category === 'Hardware' ? 'e.g. 3/4" A325 x 2"' : undefined} />
+                                            child.category === 'Hardware' ? (
+                                              <HardwarePicker
+                                                items={hardwareItems}
+                                                mat={child}
+                                                muted
+                                                onPick={it => updateMaterial(item.id, child.id, 'hardwareItem', it)}
+                                                onFreeText={txt => updateMaterial(item.id, child.id, 'hardwareSize', txt)}
+                                              />
+                                            ) : (
+                                            <input type="text" value={child.size || ''} onChange={e => updateMaterial(item.id, child.id, 'size', e.target.value)} className="w-full p-1 border rounded text-xs bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                            )
                                           ) : child.category === 'Plate' ? (
                                             <div className="flex items-center gap-1">
                                               <select 
@@ -4993,7 +5157,11 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         </td>
                                         <td className="border p-1">
                                           {child.category === 'Custom' || child.category === 'Hardware' ? (
-                                            <input type="number" step="0.01" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+                                            child.hardwareItemId != null ? (
+                                              <span className="block text-right text-gray-700 dark:text-gray-300" title="Weight each (lb) from the hardware catalog">{(child.customWeight || 0).toFixed(3)} ea</span>
+                                            ) : (
+                                            <input type="number" step="0.001" value={child.customWeight || ''} onChange={e => updateMaterial(item.id, child.id, 'customWeight', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" title={child.category === 'Hardware' ? 'Weight each (lb)' : 'Weight per foot (lb/ft)'} />
+                                            )
                                           ) : child.category === 'Plate' ? (
                                             <span className="block text-right">{child.weightPerFoot?.toFixed(2) || '—'}</span>
                                           ) : (
@@ -5019,15 +5187,21 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             >+</button>
                                           </div>
                                         </td>
-                                        <td className="border p-1"><input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" /></td>
+                                        <td className="border p-1">{child.category === 'Hardware' ? (
+                                          <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(child, hardwareItems)}</span>
+                                        ) : (
+                                          <input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" />
+                                        )}</td>
                                         <td className="border p-1 text-right bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200 font-medium">{fmtWt(child.fabWeight || 0)}</td>
                                         <td className="border p-1 text-center">
                                           <input type="checkbox" checked={child.galvanized || false} 
                                             onChange={e => updateMaterial(item.id, child.id, 'galvanized', e.target.checked)} 
-                                            className="w-4 h-4 rounded" title="Add Galvanizing" />
+                                            className="w-4 h-4 rounded" title={child.category === 'Hardware' ? 'Galvanized hardware — uses the HDG catalog price when one exists; never added to the dip' : 'Add Galvanizing'} />
                                         </td>
                                         <td className="border p-1">
-                                          {child.pooled ? (
+                                          {child.category === 'Hardware' ? (
+                                            <span className="block text-center text-gray-400" title="Hardware is bought per each — no stock length">—</span>
+                                          ) : child.pooled ? (
                                             <div
                                               className={`text-center text-xs font-semibold rounded px-1 py-0.5 ${child.overLength
                                                 ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
@@ -5056,8 +5230,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             </select>
                                           )}
                                         </td>
-                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.pooled ? '—' : (child.stocksRequired || 0)}</td>
-                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{fmtWt(child.stockWeight || 0)}</td>
+                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.pooled || child.category === 'Hardware' ? '—' : (child.stocksRequired || 0)}</td>
+                                        <td className="border p-1 text-right bg-gray-100 dark:bg-gray-700">{child.category === 'Hardware' ? '—' : fmtWt(child.stockWeight || 0)}</td>
                                         <td className="border p-1">
                                           <select value={child.priceBy}
                                             onChange={e => child.pooled

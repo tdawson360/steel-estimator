@@ -470,6 +470,7 @@ export async function PUT(request, { params }) {
             totalCost: (rMat ? rMat.totalCost : mat.totalCost) || 0,
             galvanized: mat.galvanized || false,
             galvRate: mat.galvRate || 0,
+            hardwareItemId: Number.isInteger(mat.hardwareItemId) ? mat.hardwareItemId : null,
             // Plate dims come from the UI's plateThickness/plateWidth (the
             // importer is the only writer of thickness/width); the loaders
             // read them back through materialCalcInputsFromDb.
