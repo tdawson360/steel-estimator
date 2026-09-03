@@ -4938,7 +4938,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           {isConnection && fab.connWeight ? (
                                             <span className="text-blue-600 dark:text-sky-400 font-medium">{(fab.quantity || 0) * fab.connWeight}</span>
                                           ) : hasLength ? (
-                                            extLen.toFixed(1)
+                                            <span className="text-gray-700 dark:text-gray-300 whitespace-nowrap" title={`Extended length: ${fab.quantity} × ${fab.length} ${fab.unit === 'LF' ? 'ft' : 'in'} (not a weight)`}>{extLen.toFixed(2)} {fab.unit === 'LF' ? 'LF' : 'in'}</span>
                                           ) : (
                                             <span className="text-gray-400">—</span>
                                           )}
@@ -5472,7 +5472,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </td>
                                           {/* Ext Len */}
                                           <td className="border p-1 text-right text-xs">
-                                            {hasLength ? extLen.toFixed(1) : <span className="text-gray-400">—</span>}
+                                            {hasLength ? (
+                                              <span className="text-gray-700 dark:text-gray-300 whitespace-nowrap" title={`Extended length: ${fab.quantity} × ${fab.length} ${fab.unit === 'LF' ? 'ft' : 'in'} (not a weight)`}>{extLen.toFixed(2)} {fab.unit === 'LF' ? 'LF' : 'in'}</span>
+                                            ) : <span className="text-gray-400">—</span>}
                                           </td>
                                           {/* Galv */}
                                           <td className="border p-1 text-center text-gray-400">—</td>
