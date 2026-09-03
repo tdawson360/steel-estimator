@@ -172,6 +172,7 @@ const applyHardwareItem = (mat, item) => {
     customWeight: item.weightEach || 0,
     priceBy: 'EA',
     stockLength: null,
+    length: item.lengthIn || 0,   // Hardware rows keep length in INCHES (informational; never a cut length)
   };
 };
 const hardwareItemFor = (mat, items) => (mat?.hardwareItemId != null ? (items || []).find(i => i.id === mat.hardwareItemId) || null : null);
@@ -2654,6 +2655,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
               if (value === 'Hardware') {
                 updated.priceBy = 'EA';
                 updated.customWeight = 0;
+                updated.length = 0;   // inches for hardware; typed for "Other…", catalog for picks
                 const fam = groupByFamily(hardwareItems.filter(i => i.kind !== 'ADHESIVE'))[0]?.family;
                 const def = fam ? defaultForFamily(hardwareItems, fam) : null;
                 if (def) updated = applyHardwareItem(updated, def);
@@ -4666,7 +4668,16 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                         </div>
                                       </td>
                                       <td className="border p-1">{mat.category === 'Hardware' ? (
-                                        <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(mat, hardwareItems)}</span>
+                                        mat.hardwareItemId != null ? (
+                                          <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(mat, hardwareItems)}</span>
+                                        ) : (
+                                          <div className="flex items-center gap-0.5" title="Length in inches (informational — hardware is priced per each)">
+                                            <input type="number" step="0.125" min="0" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)}
+                                              data-length-for={mat.id}
+                                              className="w-full min-w-0 p-1 border rounded text-xs text-right dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="in" />
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">"</span>
+                                          </div>
+                                        )
                                       ) : (
                                         <input type="number" step="0.01" value={mat.length || ''} onChange={e => updateMaterial(item.id, mat.id, 'length', parseFloat(e.target.value) || 0)}
                                         data-length-for={mat.id}
@@ -5188,7 +5199,15 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           </div>
                                         </td>
                                         <td className="border p-1">{child.category === 'Hardware' ? (
-                                          <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(child, hardwareItems)}</span>
+                                          child.hardwareItemId != null ? (
+                                            <span className="block text-right text-xs text-gray-500 dark:text-gray-400" title="Length from the hardware catalog (inches)">{hardwareLengthText(child, hardwareItems)}</span>
+                                          ) : (
+                                            <div className="flex items-center gap-0.5" title="Length in inches (informational — hardware is priced per each)">
+                                              <input type="number" step="0.125" min="0" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)}
+                                                className="w-full min-w-0 p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="in" />
+                                              <span className="text-xs text-gray-500 dark:text-gray-400">"</span>
+                                            </div>
+                                          )
                                         ) : (
                                           <input type="number" step="0.01" value={child.length || ''} onChange={e => updateMaterial(item.id, child.id, 'length', parseFloat(e.target.value) || 0)} className="w-full p-1 border rounded text-xs text-right bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="0.00" />
                                         )}</td>
