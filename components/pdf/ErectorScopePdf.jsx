@@ -143,7 +143,7 @@ const MaterialsTable = ({ materials, laborGroups = [] }) => {
   return (
     <View style={{ marginBottom: 8 }}>
       {/* Table header */}
-      <View style={[styles.tableHeader, { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 4 }]}>
+      <View style={[styles.tableHeader, { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 4 }]} fixed>
         <Text style={{ flex: 3, fontSize: 8 }}>Shape / Size</Text>
         <Text style={{ flex: 2, fontSize: 8 }}>Description</Text>
         <Text style={{ width: LEN, fontSize: 8, textAlign: 'right' }}>Len (ft)</Text>
@@ -380,26 +380,29 @@ export const ErectorScopePdf = ({
       {/* One detail page per item */}
       {items.map((item) => (
         <Page key={item.id} size="LETTER" style={styles.page} break>
-          <CompanyHeader
-            logo={logo}
-            title="ERECTOR SCOPE PACKAGE"
-            projectName={projectName || ''}
-            date={dateHeader}
-          />
+          {/* Repeats on every page this item spills onto (react-pdf `fixed`) */}
+          <View fixed>
+            <CompanyHeader
+              logo={logo}
+              title="ERECTOR SCOPE PACKAGE"
+              projectName={projectName || ''}
+              date={dateHeader}
+            />
 
-          <SectionBar
-            label={`Item ${item.itemNumber}: ${item.itemName}`}
-            right={item.drawingRef || ''}
-          />
+            <SectionBar
+              label={`Item ${item.itemNumber}: ${item.itemName}`}
+              right={item.drawingRef || ''}
+            />
 
-          {/* Drawing revision only — no address or preparer */}
-          {drawingRevision ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8, fontSize: 8, color: COLORS.gray }}>
-              <Text>Drawing Rev: {drawingRevision}</Text>
-            </View>
-          ) : (
-            <View style={{ marginBottom: 8 }} />
-          )}
+            {/* Drawing revision only — no address or preparer */}
+            {drawingRevision ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8, fontSize: 8, color: COLORS.gray }}>
+                <Text>Drawing Rev: {drawingRevision}</Text>
+              </View>
+            ) : (
+              <View style={{ marginBottom: 8 }} />
+            )}
+          </View>
 
           {item.materials && item.materials.length > 0 ? (
             <MaterialsTable materials={item.materials} laborGroups={item.laborGroups || []} />

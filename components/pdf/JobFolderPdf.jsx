@@ -371,19 +371,24 @@ const EstimateItemPage = ({ item, logo, projectName, estimateDate }) => {
 
   return (
     <Page size="LETTER" style={styles.page} break>
-      <CompanyHeader logo={logo} title="ITEMIZED ESTIMATE" projectName={projectName || ''} date={dateHeader} />
-      <SectionBar label={`Item ${item.itemNumber}: ${item.itemName}`} right={item.drawingRef || ''} />
+      {/* Company header, item bar and the column header repeat on every page
+          this item spills onto (react-pdf `fixed`), so a long item still reads
+          Shape / Size … Total at the top of each page. */}
+      <View fixed>
+        <CompanyHeader logo={logo} title="ITEMIZED ESTIMATE" projectName={projectName || ''} date={dateHeader} />
+        <SectionBar label={`Item ${item.itemNumber}: ${item.itemName}`} right={item.drawingRef || ''} />
 
-      {/* Materials header — size column is flex:1, right-side columns fixed */}
-      <View style={[styles.tableHeader, { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 4, marginBottom: 0 }]}>
-        <Text style={{ flex: 1, fontSize: 8 }}>Shape / Size</Text>
-        <Text style={{ flex: 1, fontSize: 8 }}>Description</Text>
-        <Text style={{ width: COL.len, fontSize: 8, textAlign: 'right' }}>Len (ft)</Text>
-        <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right' }}>Qty</Text>
-        <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right' }}>Wt/ft</Text>
-        <Text style={{ width: COL.fabWt, fontSize: 8, textAlign: 'right' }}>Fab Wt</Text>
-        <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right' }}>$/unit</Text>
-        <Text style={{ width: COL.total, fontSize: 8, textAlign: 'right' }}>Total</Text>
+        {/* Materials header — size column is flex:1, right-side columns fixed */}
+        <View style={[styles.tableHeader, { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 4, marginBottom: 0 }]}>
+          <Text style={{ flex: 1, fontSize: 8 }}>Shape / Size</Text>
+          <Text style={{ flex: 1, fontSize: 8 }}>Description</Text>
+          <Text style={{ width: COL.len, fontSize: 8, textAlign: 'right' }}>Len (ft)</Text>
+          <Text style={{ width: COL.qty, fontSize: 8, textAlign: 'right' }}>Qty</Text>
+          <Text style={{ width: COL.wt, fontSize: 8, textAlign: 'right' }}>Wt/ft</Text>
+          <Text style={{ width: COL.fabWt, fontSize: 8, textAlign: 'right' }}>Fab Wt</Text>
+          <Text style={{ width: COL.rate, fontSize: 8, textAlign: 'right' }}>$/unit</Text>
+          <Text style={{ width: COL.total, fontSize: 8, textAlign: 'right' }}>Total</Text>
+        </View>
       </View>
 
       {parentMats.map((mat, idx) => {
