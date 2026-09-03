@@ -2406,8 +2406,10 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     setItems(items.map(item => {
       if (item.id !== itemId) return item;
       const nextSeq = getNextParentSequence(item.materials);
+      const newId = Date.now() + Math.random();
+      setFocusDescMaterialId(newId); // cursor lands in the new row's description
       const newMaterial = {
-        id: Date.now() + Math.random(),
+        id: newId,
         sequence: nextSeq,
         parentMaterialId: null, // This is a parent material
         description: '',
@@ -2822,7 +2824,13 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     const currentItem = items.find(i => i.id === itemId);
     const material = currentItem?.materials.find(m => m.id === materialId);
     const isChild = !!material?.parentMaterialId;
-    const defaultOp = isChild ? 'Apply- Fillet Weld' : 'Cut- Straight';
+    // A parent's new op starts BLANK ("— Select operation —"): defaulting to
+    // Cut- Straight made the row join the member's (collapsed) cutting group
+    // on the spot and vanish from view. Picking an operation re-evaluates
+    // group membership (updateMaterialFab), so the join still happens — once
+    // the estimator has actually chosen the op. Attachments never group, so
+    // they keep the fillet-weld default.
+    const defaultOp = isChild ? 'Apply- Fillet Weld' : '';
 
     // Fetch pricing for the default op (covers drilling/prep/welding global rates too)
     const pricing = material?.size ? await getPricingForSize(material.size) : null;
@@ -4400,7 +4408,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           const hiddenOps = [...new Set(hiddenFabs.map(f => groupById.get(f.laborGroupId)?.operation || f.operation))];
                                           return (
                                             <div className="flex items-center gap-1">
-                                              <input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)} className="flex-1 min-w-0 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" />
+                                              <input type="text" value={mat.description || ''} onChange={e => updateMaterial(item.id, mat.id, 'description', e.target.value)}
+                                                data-desc-for={mat.id}
+                                                className="flex-1 min-w-0 p-1 border rounded text-xs dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" placeholder="Description" />
                                               {hiddenFabs.length > 0 && (
                                                 <button type="button"
                                                   onClick={() => expandLaborGroups(item.id, hiddenGroupIds)}
@@ -4610,10 +4620,12 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                             </div>
                                           ) : (
                                           <select
-                                            value={fab.operation}
+                                            value={fab.operation || ''}
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)}
-                                            className={`w-full p-1 border rounded text-xs ${fabBg} dark:border-gray-600 dark:text-gray-100`}
+                                            className={`w-full p-1 border rounded text-xs ${fab.operation ? `${fabBg} dark:border-gray-600` : 'bg-amber-50 dark:bg-amber-900/25 border-amber-400 dark:border-amber-600'} dark:text-gray-100`}
+                                            title={fab.operation ? undefined : 'Choose an operation for this row'}
                                           >
+                                            {!fab.operation && <option value="" disabled>— Select operation —</option>}
                                             <optgroup label="Cutting">
                                               {fabricationOperations.cutting.map(op => <option key={op} value={op}>{op}</option>)}
                                             </optgroup>
