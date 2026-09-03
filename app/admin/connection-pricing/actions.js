@@ -296,6 +296,92 @@ export async function updateGalvMinimum(value) {
   return { success: true };
 }
 
+// ── Hardware catalog (lib/hardware.js) ──────────────────────────────────────
+const HW_KINDS = new Set(['BOLT_SET', 'EXPANSION_ANCHOR', 'ADHESIVE_ANCHOR', 'ADHESIVE']);
+const HW_FINISHES = new Set(['Plain', 'Zinc', 'HDG', 'SS']);
+const HW_NUM_FIELDS = ['unitPrice', 'weightEach', 'bitDiaIn', 'embedMinIn', 'embedMaxIn', 'cartridgeMl', 'sortOrder', 'diameterIn', 'lengthIn'];
+
+// Validate an admin payload into Prisma data. `partial` = update (only the
+// fields present are returned); create requires kind + family.
+function cleanHardware(data, { partial = false } = {}) {
+  const out = {};
+  if (data?.kind !== undefined || !partial) {
+    if (!HW_KINDS.has(data?.kind)) throw new Error('Invalid hardware kind');
+    out.kind = data.kind;
+  }
+  if (data?.family !== undefined || !partial) {
+    const fam = String(data?.family ?? '').trim();
+    if (!fam) throw new Error('Family is required');
+    out.family = fam;
+  }
+  for (const f of ['name', 'diameter', 'length']) {
+    if (data?.[f] !== undefined) out[f] = String(data[f]).trim();
+  }
+  if (data?.finish !== undefined) {
+    if (!HW_FINISHES.has(data.finish)) throw new Error('Invalid finish');
+    out.finish = data.finish;
+  }
+  for (const f of HW_NUM_FIELDS) {
+    if (data?.[f] === undefined) continue;
+    if (data[f] === null || data[f] === '') { out[f] = f === 'sortOrder' ? 0 : (['unitPrice', 'weightEach', 'diameterIn', 'lengthIn'].includes(f) ? 0 : null); continue; }
+    const n = Number(data[f]);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid ${f}`);
+    out[f] = n;
+  }
+  if (data?.adhesiveId !== undefined) out.adhesiveId = data.adhesiveId == null || data.adhesiveId === '' ? null : Number(data.adhesiveId);
+  for (const f of ['isDefault', 'active']) {
+    if (typeof data?.[f] === 'boolean') out[f] = data[f];
+  }
+  return out;
+}
+
+// One default per family: flagging an item clears its siblings.
+async function clearFamilyDefault(tx, family, keepId) {
+  await tx.hardwareItem.updateMany({
+    where: { family, isDefault: true, ...(keepId ? { id: { not: keepId } } : {}) },
+    data: { isDefault: false },
+  });
+}
+
+export async function createHardwareItem(data) {
+  await requireAdmin();
+  const clean = cleanHardware(data);
+  if (clean.adhesiveId != null) {
+    const adhesive = await prisma.hardwareItem.findUnique({ where: { id: clean.adhesiveId } });
+    if (!adhesive || adhesive.kind !== 'ADHESIVE') throw new Error('Adhesive must be an ADHESIVE catalog item');
+  }
+  const item = await prisma.$transaction(async (tx) => {
+    const created = await tx.hardwareItem.create({ data: clean });
+    if (created.isDefault) await clearFamilyDefault(tx, created.family, created.id);
+    return created;
+  });
+  revalidatePath('/admin/connection-pricing');
+  return item;
+}
+
+export async function updateHardwareItem(id, data) {
+  await requireAdmin();
+  const patch = cleanHardware(data, { partial: true });
+  if (Object.keys(patch).length === 0) return { success: false };
+  const item = await prisma.$transaction(async (tx) => {
+    const updated = await tx.hardwareItem.update({ where: { id: Number(id) }, data: patch });
+    if (patch.isDefault === true) await clearFamilyDefault(tx, updated.family, updated.id);
+    return updated;
+  });
+  revalidatePath('/admin/connection-pricing');
+  return item;
+}
+
+export async function deleteHardwareItem(id) {
+  await requireAdmin();
+  const itemId = Number(id);
+  const anchors = await prisma.hardwareItem.count({ where: { adhesiveId: itemId } });
+  if (anchors > 0) throw new Error(`${anchors} anchor rod(s) use this adhesive — deactivate it instead`);
+  await prisma.hardwareItem.delete({ where: { id: itemId } });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}
+
 export async function deleteCustomOp(id) {
   await requireAdmin();
   await prisma.customFabOperation.delete({ where: { id } });

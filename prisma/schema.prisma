@@ -274,6 +274,11 @@ model Material {
   width          Float?                   // Plate width in inches
   thickness      Float?                   // Plate thickness in inches
 
+  // Hardware rows: the catalog item picked (HardwareItem.id); null = free text.
+  // Price/weight are snapshotted on the row, so a missing/deactivated catalog
+  // item only affects the picker, never the numbers.
+  hardwareItemId Int?
+
   // Parent relationship
   itemId         Int
   item           Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -816,4 +821,45 @@ model GalvRateClass {
   sortOrder  Int      @default(0)
   active     Boolean  @default(true)
   updatedAt  DateTime @updatedAt
+}
+
+// =============================================================================
+// HARDWARE CATALOG
+// =============================================================================
+// Selectable bolts, anchors and adhesive for Hardware rows (Global Pricing
+// Data → Hardware; seed data in docs/hardware-seed/). Price and weight are per
+// each (a bolt set = bolt + nut + washer). The estimator copies them onto the
+// row when an item is picked — catalog edits never reprice existing rows.
+model HardwareItem {
+  id           Int      @id @default(autoincrement())
+  kind         String   // BOLT_SET | EXPANSION_ANCHOR | ADHESIVE_ANCHOR | ADHESIVE
+  family       String   // "A325", "Kwik Bolt", "HAS-V-36", "Adhesive", ...
+  name         String   @default("")   // product name within the family (adhesive: "HIT-HY 200 V3")
+  diameter     String   @default("")   // "3/4" (adhesive: blank)
+  diameterIn   Float    @default(0)
+  length       String   @default("")   // "2-1/2" (adhesive: "330 ml")
+  lengthIn     Float    @default(0)
+  finish       String   @default("Plain") // Plain | Zinc | HDG | SS
+  unitPrice    Float    @default(0)    // $/each
+  weightEach   Float    @default(0)    // lb each — rolls into shipping weight
+  isDefault    Boolean  @default(false) // preselected size for its family
+
+  // Adhesive anchor rods: setting data (Hilti Table 38) + which adhesive
+  bitDiaIn     Float?
+  embedMinIn   Float?
+  embedMaxIn   Float?
+  adhesiveId   Int?
+  adhesive     HardwareItem?  @relation("AnchorAdhesive", fields: [adhesiveId], references: [id])
+  anchors      HardwareItem[] @relation("AnchorAdhesive")
+
+  // Adhesive: cartridge size (ml)
+  cartridgeMl  Float?
+
+  sortOrder    Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([family, name, diameter, length, finish])
+  @@index([kind, active])
 }

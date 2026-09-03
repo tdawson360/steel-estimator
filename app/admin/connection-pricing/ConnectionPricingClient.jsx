@@ -1,8 +1,12 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useMemo, useTransition } from 'react';
 import AppHeader from '../../../components/AppHeader';
+import { HARDWARE_KINDS, HARDWARE_FINISHES, hardwareLabel, groupByFamily, parseInches } from '../../../lib/hardware';
 import {
+  createHardwareItem,
+  updateHardwareItem,
+  deleteHardwareItem,
   updatePricingRates,
   updateConnectionCategory,
   getBeamBySize,
@@ -231,6 +235,327 @@ function GalvClassesEditor({ initialClasses, initialMinimum }) {
           → the FPIP / FTUB tiers; W, WT, C, MC, L → KDS; plate, flats, bar, custom → MSC. Change it on the
           galv line or the group in the estimate. Rates take effect on new galv lines and on groups you re-class.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Section 2.6: Hardware catalog ───────────────────────────────────────────
+// Bolts / anchors / adhesive the estimator can pick for Hardware rows. Grouped
+// by family (collapsed — A325 alone is ~130 sizes); price and weight edit in
+// place; one default per family; deactivate hides from the picker without
+// touching rows already linked to the item.
+
+const HW_NUM_CLS = 'w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs text-right dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+// Edit-in-place number: commits on blur / Enter, cancels on Escape.
+function HwNumInput({ value, step, onChange, onCommit, onCancel }) {
+  return (
+    <input
+      type="number" step={step} min="0"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onBlur={onCommit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') onCancel(); }}
+      className={HW_NUM_CLS}
+    />
+  );
+}
+
+const emptyHardwareDraft = () => ({
+  kind: 'BOLT_SET', family: '', name: '', diameter: '', length: '', finish: 'Plain',
+  unitPrice: '', weightEach: '', isDefault: false,
+  bitDiaIn: '', embedMinIn: '', embedMaxIn: '', adhesiveId: '', cartridgeMl: '330',
+});
+
+function HardwareCatalogEditor({ initialItems }) {
+  const [items, setItems] = useState(initialItems || []);
+  const [open, setOpen] = useState({});        // family → expanded
+  const [editing, setEditing] = useState({});  // `${id}:${field}` → string
+  const [showAdd, setShowAdd] = useState(false);
+  const [draft, setDraft] = useState(emptyHardwareDraft);
+  const [busy, setBusy] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const families = useMemo(() => groupByFamily(items), [items]);
+  const adhesives = useMemo(() => items.filter(i => i.kind === 'ADHESIVE'), [items]);
+  const familyNames = useMemo(() => families.map(f => f.family), [families]);
+
+  const editKey = (id, field) => `${id}:${field}`;
+  const dropEdit = (key) => setEditing(prev => { const n = { ...prev }; delete n[key]; return n; });
+
+  const commitNumber = (item, field) => {
+    const key = editKey(item.id, field);
+    const raw = editing[key];
+    if (raw === undefined) return;
+    const val = raw === '' ? 0 : parseFloat(raw);
+    if (!Number.isFinite(val) || val < 0) { dropEdit(key); return; }
+    if (val === (item[field] ?? 0)) { dropEdit(key); return; }
+    startTransition(async () => {
+      try {
+        await updateHardwareItem(item.id, { [field]: val });
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, [field]: val } : i));
+      } catch (e) {
+        alert('Save failed: ' + e.message);
+      } finally {
+        dropEdit(key);
+      }
+    });
+  };
+
+  const toggleActive = (item) => {
+    const active = !item.active;
+    startTransition(async () => {
+      try {
+        await updateHardwareItem(item.id, { active });
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, active } : i));
+      } catch (e) { alert('Update failed: ' + e.message); }
+    });
+  };
+
+  const makeDefault = (item) => {
+    startTransition(async () => {
+      try {
+        await updateHardwareItem(item.id, { isDefault: true });
+        setItems(prev => prev.map(i => i.family === item.family ? { ...i, isDefault: i.id === item.id } : i));
+      } catch (e) { alert('Update failed: ' + e.message); }
+    });
+  };
+
+  const remove = (item) => {
+    if (!confirm(`Delete ${hardwareLabel(item)} from the catalog?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteHardwareItem(item.id);
+        setItems(prev => prev.filter(i => i.id !== item.id));
+      } catch (e) { alert('Delete failed: ' + e.message); }
+    });
+  };
+
+  const submitAdd = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const isAdhesive = draft.kind === 'ADHESIVE';
+      const payload = {
+        kind: draft.kind,
+        family: isAdhesive ? 'Adhesive' : draft.family,
+        name: isAdhesive ? draft.name : '',
+        diameter: isAdhesive ? '' : draft.diameter,
+        diameterIn: isAdhesive ? 0 : parseInches(draft.diameter),
+        length: isAdhesive ? `${parseFloat(draft.cartridgeMl) || 0} ml` : draft.length,
+        lengthIn: isAdhesive ? 0 : parseInches(draft.length),
+        finish: draft.finish,
+        unitPrice: draft.unitPrice === '' ? 0 : parseFloat(draft.unitPrice),
+        weightEach: draft.weightEach === '' ? 0 : parseFloat(draft.weightEach),
+        isDefault: !!draft.isDefault,
+        ...(draft.kind === 'ADHESIVE_ANCHOR' ? {
+          bitDiaIn: draft.bitDiaIn === '' ? null : parseInches(draft.bitDiaIn),
+          embedMinIn: draft.embedMinIn === '' ? null : parseInches(draft.embedMinIn),
+          embedMaxIn: draft.embedMaxIn === '' ? null : parseInches(draft.embedMaxIn),
+          adhesiveId: draft.adhesiveId === '' ? null : Number(draft.adhesiveId),
+        } : {}),
+        ...(isAdhesive ? { cartridgeMl: parseFloat(draft.cartridgeMl) || 0 } : {}),
+      };
+      const created = await createHardwareItem(payload);
+      setItems(prev => [
+        ...prev.map(i => created.isDefault && i.family === created.family ? { ...i, isDefault: false } : i),
+        created,
+      ]);
+      setOpen(prev => ({ ...prev, [created.family]: true }));
+      setDraft(d => ({ ...emptyHardwareDraft(), kind: d.kind, family: d.family, finish: d.finish, diameter: d.diameter }));
+    } catch (err) {
+      alert('Add failed: ' + err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldCls = 'px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const adhesiveName = (id) => adhesives.find(a => a.id === id)?.family || '—';
+
+  // Plain element factory (NOT an inner component — an inner component type
+  // is new every render, so React would remount the input on each keystroke,
+  // dropping focus and skipping the blur commit).
+  const numCell = (item, field, step = '0.01') => (
+    <HwNumInput
+      step={step}
+      value={editing[editKey(item.id, field)] ?? (item[field] ?? 0)}
+      onChange={v => setEditing(prev => ({ ...prev, [editKey(item.id, field)]: v }))}
+      onCommit={() => commitNumber(item, field)}
+      onCancel={() => dropEdit(editKey(item.id, field))}
+    />
+  );
+
+  return (
+    <div className="space-y-4">
+      {families.length === 0 && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          The catalog is empty. Run <code className="font-mono">node scripts/seed-hardware.mjs</code> or add items below.
+        </p>
+      )}
+
+      {families.map(fam => {
+        const active = fam.items.filter(i => i.active);
+        const def = fam.items.find(i => i.isDefault);
+        const isOpen = !!open[fam.family];
+        return (
+          <div key={fam.family} className="border border-gray-200 dark:border-gray-700 rounded-md">
+            <button
+              type="button"
+              onClick={() => setOpen(prev => ({ ...prev, [fam.family]: !isOpen }))}
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50"
+            >
+              <span className="flex items-center gap-3">
+                <span className="text-gray-400 text-xs w-3">{isOpen ? '▼' : '▶'}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{fam.family}</span>
+                {HARDWARE_KINDS[fam.kind] !== fam.family && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{HARDWARE_KINDS[fam.kind] || fam.kind}</span>
+                )}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                {active.length} active{fam.items.length !== active.length ? ` / ${fam.items.length}` : ''}
+                {def ? ` · default ${hardwareLabel(def)}` : ' · no default'}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-700">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Item</th>
+                      <th className="text-left px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Finish</th>
+                      {fam.kind === 'ADHESIVE_ANCHOR' && (
+                        <>
+                          <th className="text-right px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Bit (in)</th>
+                          <th className="text-right px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Embed min–max (in)</th>
+                          <th className="text-left px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Adhesive</th>
+                        </>
+                      )}
+                      {fam.kind === 'ADHESIVE' && (
+                        <th className="text-right px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Cartridge (ml)</th>
+                      )}
+                      <th className="text-right px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">$/ea</th>
+                      <th className="text-right px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">lb/ea</th>
+                      <th className="text-center px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Default</th>
+                      <th className="text-center px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Active</th>
+                      <th className="px-2 py-1.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fam.items.map(item => (
+                      <tr key={item.id} className={`border-b border-gray-100 dark:border-gray-700 ${item.active ? '' : 'opacity-50'}`}>
+                        <td className="px-3 py-1 text-gray-800 dark:text-gray-200 whitespace-nowrap">{hardwareLabel(item)}</td>
+                        <td className="px-3 py-1 text-gray-600 dark:text-gray-400">{item.finish}</td>
+                        {fam.kind === 'ADHESIVE_ANCHOR' && (
+                          <>
+                            <td className="px-3 py-1 text-right">{numCell(item, 'bitDiaIn', '0.0625')}</td>
+                            <td className="px-3 py-1 text-right whitespace-nowrap">
+                              {numCell(item, 'embedMinIn', '0.125')} – {numCell(item, 'embedMaxIn', '0.125')}
+                            </td>
+                            <td className="px-3 py-1 text-gray-600 dark:text-gray-400 whitespace-nowrap">{adhesiveName(item.adhesiveId)}</td>
+                          </>
+                        )}
+                        {fam.kind === 'ADHESIVE' && (
+                          <td className="px-3 py-1 text-right">{numCell(item, 'cartridgeMl', '1')}</td>
+                        )}
+                        <td className="px-3 py-1 text-right">{numCell(item, 'unitPrice')}</td>
+                        <td className="px-3 py-1 text-right">{numCell(item, 'weightEach', '0.001')}</td>
+                        <td className="px-3 py-1 text-center">
+                          <input type="radio" name={`hw-default-${fam.family}`} checked={!!item.isDefault} onChange={() => makeDefault(item)} title="Preselected size for this family" />
+                        </td>
+                        <td className="px-3 py-1 text-center">
+                          <input type="checkbox" checked={!!item.active} onChange={() => toggleActive(item)} className="rounded" />
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          <button type="button" onClick={() => remove(item)} className="text-gray-400 hover:text-red-600" title="Delete">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div>
+        <button type="button" onClick={() => setShowAdd(s => !s)} className="text-sm font-medium text-blue-600 hover:underline">
+          {showAdd ? '− Hide add item' : '+ Add item'}
+        </button>
+        {showAdd && (
+          <form onSubmit={submitAdd} className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 items-end p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-md">
+            <label className="text-xs text-gray-600 dark:text-gray-300">Kind
+              <select value={draft.kind} onChange={e => setDraft(d => ({ ...d, kind: e.target.value }))} className={`${fieldCls} w-full mt-1`}>
+                {Object.entries(HARDWARE_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </label>
+            {draft.kind === 'ADHESIVE' ? (
+              <label className="text-xs text-gray-600 dark:text-gray-300">Product
+                <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} required placeholder="HIT-HY 200 V3, HIT-RE 500 V3, HIT-HY 270" className={`${fieldCls} w-full mt-1`} />
+              </label>
+            ) : (
+              <label className="text-xs text-gray-600 dark:text-gray-300">Family
+                <input list="hw-families" value={draft.family} onChange={e => setDraft(d => ({ ...d, family: e.target.value }))} required placeholder="A325, Kwik Bolt, HAS-V-36…" className={`${fieldCls} w-full mt-1`} />
+                <datalist id="hw-families">{familyNames.filter(f => f !== 'Adhesive').map(f => <option key={f} value={f} />)}</datalist>
+              </label>
+            )}
+            {draft.kind !== 'ADHESIVE' ? (
+              <>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Diameter (in)
+                  <input value={draft.diameter} onChange={e => setDraft(d => ({ ...d, diameter: e.target.value }))} required placeholder="3/4" className={`${fieldCls} w-full mt-1`} />
+                </label>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Length (in)
+                  <input value={draft.length} onChange={e => setDraft(d => ({ ...d, length: e.target.value }))} required placeholder="2-1/2" className={`${fieldCls} w-full mt-1`} />
+                </label>
+              </>
+            ) : (
+              <label className="text-xs text-gray-600 dark:text-gray-300">Cartridge (ml)
+                <input type="number" step="1" min="0" value={draft.cartridgeMl} onChange={e => setDraft(d => ({ ...d, cartridgeMl: e.target.value }))} className={`${fieldCls} w-full mt-1`} />
+              </label>
+            )}
+            <label className="text-xs text-gray-600 dark:text-gray-300">Finish
+              <select value={draft.finish} onChange={e => setDraft(d => ({ ...d, finish: e.target.value }))} className={`${fieldCls} w-full mt-1`}>
+                {HARDWARE_FINISHES.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-gray-600 dark:text-gray-300">$ / each
+              <input type="number" step="0.01" min="0" value={draft.unitPrice} onChange={e => setDraft(d => ({ ...d, unitPrice: e.target.value }))} className={`${fieldCls} w-full mt-1`} />
+            </label>
+            <label className="text-xs text-gray-600 dark:text-gray-300">lb / each
+              <input type="number" step="0.001" min="0" value={draft.weightEach} onChange={e => setDraft(d => ({ ...d, weightEach: e.target.value }))} className={`${fieldCls} w-full mt-1`} />
+            </label>
+            {draft.kind === 'ADHESIVE_ANCHOR' && (
+              <>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Bit dia (in)
+                  <input value={draft.bitDiaIn} onChange={e => setDraft(d => ({ ...d, bitDiaIn: e.target.value }))} placeholder="9/16" className={`${fieldCls} w-full mt-1`} />
+                </label>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Embed min (in)
+                  <input value={draft.embedMinIn} onChange={e => setDraft(d => ({ ...d, embedMinIn: e.target.value }))} placeholder="2-3/4" className={`${fieldCls} w-full mt-1`} />
+                </label>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Embed max (in)
+                  <input value={draft.embedMaxIn} onChange={e => setDraft(d => ({ ...d, embedMaxIn: e.target.value }))} placeholder="10" className={`${fieldCls} w-full mt-1`} />
+                </label>
+                <label className="text-xs text-gray-600 dark:text-gray-300">Adhesive
+                  <select value={draft.adhesiveId} onChange={e => setDraft(d => ({ ...d, adhesiveId: e.target.value }))} className={`${fieldCls} w-full mt-1`}>
+                    <option value="">—</option>
+                    {adhesives.map(a => <option key={a.id} value={a.id}>{hardwareLabel(a)}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
+            <label className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-2 pb-2">
+              <input type="checkbox" checked={draft.isDefault} onChange={e => setDraft(d => ({ ...d, isDefault: e.target.checked }))} className="rounded" />
+              Default for family
+            </label>
+            <div>
+              <button type="submit" disabled={busy} className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50">
+                {busy ? 'Adding…' : 'Add to catalog'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -1129,7 +1454,7 @@ function TemplateSyncPanel() {
 
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
-export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps, galvClasses }) {
+export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps, galvClasses, hardwareItems }) {
   const [linkTarget, setLinkTarget] = useState(null); // { cat, kind } | null
   const openLinkPicker = (cat, kind) => setLinkTarget({ cat, kind });
   return (
@@ -1170,6 +1495,18 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
             all-in $/cwt per class — the estimator prices each dipped assembly at its class rate and groups galv lines by class.
           </p>
           <GalvClassesEditor initialClasses={galvClasses} initialMinimum={rates?.galvMinimumCharge} />
+        </section>
+
+        {/* Section 2.6: Hardware catalog */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Hardware</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Bolt sets, concrete anchors, adhesive anchor rods and adhesive the estimator can pick on a Hardware row.
+            Price and weight are per each (a bolt set is bolt + nut + washer) and are copied onto the row when picked —
+            editing here never reprices rows already in an estimate. One default size per family is preselected.
+            Source tables live in docs/hardware-seed/.
+          </p>
+          <HardwareCatalogEditor initialItems={hardwareItems} />
         </section>
 
         {/* Section 3: Custom Fab Operations */}

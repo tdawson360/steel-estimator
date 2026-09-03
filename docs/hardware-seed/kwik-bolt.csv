@@ -1,0 +1,26 @@
+family,diameter,length,length_in,weight_each_lb,default,source
+Hilti Kwik Bolt,1/4,1-5/8,1.625,0.033,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/4,2-1/4,2.25,0.04,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/4,3,3.0,0.053,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/8,2-1/8,2.125,0.08,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/8,2-3/4,2.75,0.098,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/8,3-1/2,3.5,0.123,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/8,5,5.0,0.17,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/2,2-3/4,2.75,0.195,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/2,3-3/4,3.75,0.245,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/2,5-1/2,5.5,0.35,yes,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1/2,7,7.0,0.43,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,5/8,3-1/2,3.5,0.37,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,5/8,4-1/2,4.5,0.46,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,5/8,6,6.0,0.59,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,5/8,8-1/2,8.5,0.8,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/4,4-1/4,4.25,0.65,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/4,5-1/2,5.5,0.8,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/4,7,7.0,1.0,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/4,8-1/2,8.5,1.2,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,3/4,10,10.0,1.4,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1,6,6.0,1.6,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1,9,9.0,2.25,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1,12,12.0,2.95,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1-1/4,9,9.0,3.5,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
+Hilti Kwik Bolt,1-1/4,12,12.0,4.4,,Kwik-Bolt sheet (docs/KWIK BOLTS.pdf): handwritten wt column = box weight / box qty (checked against printed box weights); nuts and washers included
