@@ -152,6 +152,10 @@ const stableRowKey = (r) => r.clientKey ?? r.id;
 // Page width — a per-browser preference (localStorage). The material table
 // clips horizontally (sticky headers need it), so on a wide monitor the fix
 // for a squeezed row is simply more room.
+// Autosave timing: debounce after the last change, hard ceiling after the first.
+const AUTOSAVE_DEBOUNCE_MS = 3000;
+const AUTOSAVE_MAX_WAIT_MS = 10000;
+
 const LAYOUT_WIDTH_KEY = 'steel-estimator:layout-width';
 const LAYOUT_WIDTHS = { standard: '80rem', wide: '100rem', full: 'none' };
 const LAYOUT_WIDTH_LABELS = { standard: 'Standard', wide: 'Wide', full: 'Full width' };
@@ -279,6 +283,16 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       setFocusDescMaterialId(null);
     }
   }, [focusDescMaterialId]);
+  // Newly added fab op whose operation dropdown should grab focus (same
+  // after-paint pattern as attachments: the new row is ready to type into)
+  const [focusFabOpId, setFocusFabOpId] = useState(null);
+  useEffect(() => {
+    if (focusFabOpId != null) {
+      const el = document.querySelector(`select[data-op-for="${focusFabOpId}"]`);
+      if (el) el.focus();
+      setFocusFabOpId(null);
+    }
+  }, [focusFabOpId]);
   const [statusChanging, setStatusChanging] = useState(false);
   const [stockListSort, setStockListSort] = useState({ field: 'size', dir: 'asc' });
   const [stockListFilter, setStockListFilter] = useState('');
@@ -909,6 +923,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const takeoffFileInputRef = useRef(null);
   const isLoadedRef = useRef(false);      // blocks dirty tracking during initial load
   const autoSaveTimerRef = useRef(null);  // debounce timer handle
+  const dirtySinceRef = useRef(null);     // when the first unsaved change happened (max-wait guard)
   const saveRef = useRef(null);           // always points to latest handleSave
   const [isDirty, setIsDirty] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -1528,6 +1543,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       setSessionExpired(false);
       setSaveStatus('saved');
       setIsDirty(false);
+      dirtySinceRef.current = null;
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && err.body?.conflict) {
@@ -1570,10 +1586,18 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     // still change local state; never mark dirty or PUT on their behalf.
     if (!canEditRef.current) return;
     setIsDirty(true);
+    // Debounce 3 s after the last change, but never wait more than
+    // AUTOSAVE_MAX_WAIT_MS after the FIRST unsaved change: a render churn
+    // that keeps producing new state (seen intermittently in dev mode on
+    // large nested estimates) used to reset this timer forever, leaving the
+    // estimate "Unsaved" with no save ever firing.
+    if (dirtySinceRef.current == null) dirtySinceRef.current = Date.now();
+    const remaining = AUTOSAVE_MAX_WAIT_MS - (Date.now() - dirtySinceRef.current);
+    const delay = Math.max(0, Math.min(AUTOSAVE_DEBOUNCE_MS, remaining));
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       saveRef.current?.();
-    }, 3000);
+    }, delay);
     return () => clearTimeout(autoSaveTimerRef.current);
   }, [
     projectName, projectAddress, customerName, customerId, billingAddress,
@@ -2977,13 +3001,13 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     const currentItem = items.find(i => i.id === itemId);
     const material = currentItem?.materials.find(m => m.id === materialId);
     const isChild = !!material?.parentMaterialId;
-    // A parent's new op starts BLANK ("— Select operation —"): defaulting to
-    // Cut- Straight made the row join the member's (collapsed) cutting group
-    // on the spot and vanish from view. Picking an operation re-evaluates
-    // group membership (updateMaterialFab), so the join still happens — once
-    // the estimator has actually chosen the op. Attachments never group, so
-    // they keep the fillet-weld default.
-    const defaultOp = isChild ? 'Apply- Fillet Weld' : '';
+    // A new op starts BLANK ("— Select operation —") on members and
+    // attachments alike, and the dropdown takes focus — the same feel as
+    // adding an attachment. (A Cut- Straight default used to join the
+    // member's collapsed cutting group on the spot and vanish; picking an
+    // operation re-evaluates group membership, so the join still happens
+    // once the estimator has actually chosen the op.)
+    const defaultOp = '';
 
     // Fetch pricing for the default op (covers drilling/prep/welding global rates too)
     const pricing = material?.size ? await getPricingForSize(material.size) : null;
@@ -3001,6 +3025,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       // cut); everything else starts at 1.
       const defaultQty = defaultOp.startsWith('Cut-') ? (mat.pieces || 1) : 1;
       const newFabId = Date.now();
+      setFocusFabOpId(newFabId); // dropdown takes focus once the row paints
       const newFab = isChild ? {
         id: newFabId,
         clientKey: newFabId,
@@ -4816,6 +4841,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                           ) : (
                                           <select
                                             value={fab.operation || ''}
+                                            data-op-for={fab.id}
                                             onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'operation', e.target.value)}
                                             className={`w-full p-1 border rounded text-xs ${fab.operation ? `${fabBg} dark:border-gray-600` : 'bg-amber-50 dark:bg-amber-900/25 border-amber-400 dark:border-amber-600'} dark:text-gray-100`}
                                             title={fab.operation ? undefined : 'Choose an operation for this row'}
@@ -5356,10 +5382,13 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                 </div>
                                               ) : (
                                               <select
-                                                value={fab.operation}
+                                                value={fab.operation || ''}
+                                                data-op-for={fab.id}
                                                 onChange={e => updateMaterialFab(item.id, child.id, fab.id, 'operation', e.target.value)}
-                                                className="flex-1 p-1 border rounded text-xs bg-green-50 dark:bg-green-900/25 dark:border-gray-600 dark:text-gray-100"
+                                                className={`flex-1 p-1 border rounded text-xs ${fab.operation ? 'bg-green-50 dark:bg-green-900/25 dark:border-gray-600' : 'bg-amber-50 dark:bg-amber-900/25 border-amber-400 dark:border-amber-600'} dark:text-gray-100`}
+                                                title={fab.operation ? undefined : 'Choose an operation for this row'}
                                               >
+                                                {!fab.operation && <option value="" disabled>— Select operation —</option>}
                                                 {/* Subparts get the same operation list as main members —
                                                     they get cut, drilled, and prepped too */}
                                                 <optgroup label="Cutting">
