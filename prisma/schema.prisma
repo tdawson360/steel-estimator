@@ -632,6 +632,7 @@ model PricingRates {
   ninetyRate                 Float?
   camberRate                 Float?
   rollRate                   Float?
+  prepCjpRate                Float?   // bevel/prep a member end for a CJP weld
 
   // Apply (welding) rates ($/in of weld)
   weldFilletRate             Float?
