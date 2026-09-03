@@ -39,6 +39,8 @@ model User {
   projects            Project[] @relation("CreatedBy")
   publishedProjects   Project[] @relation("PublishedBy")
   estimatedProjects   Project[] @relation("EstimatorProjects")
+  lockedProjects      Project[] @relation("LockedBy")
+  lastSavedProjects   Project[] @relation("LastSavedBy")
   notifications       Notification[] @relation("UserNotifications")
   activities          CustomerActivity[]
 }
@@ -134,7 +136,25 @@ model Project {
   // Who published this project
   publishedById    Int?
   publishedBy      User?     @relation("PublishedBy", fields: [publishedById], references: [id])
-  
+
+  // ── CONCURRENCY ──────────────────────────────────────────────────────────
+  // version: bumped by every content save (PUT) and by pricing syncs that
+  // reprice rows. The estimator sends the version it loaded with each save;
+  // a mismatch is refused (409) so two editors can't silently overwrite each
+  // other. lastSavedBy/At name the writer in that refusal.
+  version          Int       @default(0)
+  lastSavedById    Int?
+  lastSavedBy      User?     @relation("LastSavedBy", fields: [lastSavedById], references: [id])
+  lastSavedAt      DateTime?
+
+  // Soft edit lock: who has the estimate open in the estimator. Advisory —
+  // heartbeats keep it alive; with none for LOCK_STALE_MS (lib/project-lock.js)
+  // it is considered abandoned and anyone with edit rights may claim it.
+  lockedById       Int?
+  lockedBy         User?     @relation("LockedBy", fields: [lockedById], references: [id])
+  lockedAt         DateTime?
+  lockHeartbeatAt  DateTime?
+
   // If this is a revision, link back to the original
   parentProjectId  Int?
   parentProject    Project?  @relation("ProjectRevisions", fields: [parentProjectId], references: [id])

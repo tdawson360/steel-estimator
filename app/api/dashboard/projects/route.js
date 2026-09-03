@@ -37,6 +37,13 @@ export async function GET(request) {
         estimator: {
           select: { id: true, firstName: true, lastName: true },
         },
+        // Soft edit lock (lib/project-lock.js) — the board shows who is in it
+        lockedById: true,
+        lockedAt: true,
+        lockHeartbeatAt: true,
+        lockedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

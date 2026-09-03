@@ -5,7 +5,7 @@
 //   - duplicate test: a copy of a project whose stored rows were corrupted
 //     (pre-regime stale totals) is engine-correct immediately
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,8 +16,10 @@ import { standardFixture, mat, fab, item, recap, withGalv, id } from './helpers/
 
 const dbPath = path.join(process.cwd(), 'tests', '.tmp-api-authority.db');
 
+// Mutable so the concurrency tests can act as a second user.
+const session = vi.hoisted(() => ({ user: { id: '1', role: 'ADMIN' } }));
 vi.mock('next-auth', () => ({
-  getServerSession: async () => ({ user: { id: '1', role: 'ADMIN' } }),
+  getServerSession: async () => ({ user: session.user }),
 }));
 vi.mock('../lib/auth', () => ({ authOptions: {} }));
 
@@ -498,5 +500,103 @@ describe('round trip: plate dims, custom weight, conn-galv identity', () => {
     const [rPlate, rCustom] = re.items[0].materials;
     expect(rPlate.fabWeight).toBeCloseTo(204.2, 0);   // 2 pc × 10 ft × 10.21 lb/ft
     expect(rCustom.fabWeight).toBe(500);
+  });
+});
+
+// ── Concurrency: version check + soft edit lock (lib/project-lock.js) ────────
+describe('concurrency: version check + edit lock', () => {
+  let LOCK_POST;
+  let p;
+  const asUser = (id, role) => { session.user = { id: String(id), role }; };
+  const lockReq = (action) => LOCK_POST({ json: async () => ({ action }) }, { params: { id: String(p.id) } });
+  const put = (extra) => PUT(putRequest({ ...basePayload(), ...extra }), { params: { id: String(p.id) } });
+
+  beforeAll(async () => {
+    ({ POST: LOCK_POST } = await import('../app/api/projects/[id]/lock/route.js'));
+    await prisma.user.create({ data: { id: 2, email: 'other@bergeriron.local', role: 'ESTIMATOR', password: 'x', firstName: 'Sam', lastName: 'Neil' } });
+    p = await prisma.project.create({ data: { createdById: 1, projectName: 'Concurrency Fixture' } });
+  });
+  afterEach(() => asUser(1, 'ADMIN'));
+
+  it('a save without expectedVersion is accepted, bumps the version, and claims the lock', async () => {
+    const res = await put({});
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.version).toBe(1);
+    expect(body.lock).toMatchObject({ held: true, mine: true });
+    expect(body.lockedById).toBe(1);
+  });
+
+  it('a save with a stale expectedVersion is refused (409) and writes nothing', async () => {
+    const res = await put({ expectedVersion: 0, projectName: 'should not land' });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.conflict).toMatchObject({ kind: 'version', version: 1 });
+    const stored = await prisma.project.findUnique({ where: { id: p.id }, select: { version: true, projectName: true } });
+    expect(stored.version).toBe(1);
+    expect(stored.projectName).toBe('Tamper Fixture');
+  });
+
+  it('a save with the current expectedVersion succeeds; force skips the check', async () => {
+    let res = await put({ expectedVersion: 1 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).version).toBe(2);
+    res = await put({ expectedVersion: 0, force: true });
+    expect(res.status).toBe(200);
+    expect((await res.json()).version).toBe(3);
+  });
+
+  it('another editor cannot claim a live lock, may take it over, and then blocks the holder', async () => {
+    asUser(2, 'ESTIMATOR');
+    let res = await lockReq('claim');
+    expect(res.status).toBe(409);
+    let body = await res.json();
+    expect(body.lock).toMatchObject({ held: true, mine: false });
+
+    res = await lockReq('takeover');
+    expect(res.status).toBe(200);
+    body = await res.json();
+    expect(body.lock.mine).toBe(true);
+    expect(body.takenFrom?.id).toBe(1);
+
+    // Original holder: heartbeat and save refused, forced save wins it back.
+    asUser(1, 'ADMIN');
+    res = await lockReq('heartbeat');
+    expect(res.status).toBe(409);
+    expect((await res.json()).lock.holder.name).toBe('Sam Neil');
+
+    res = await put({ expectedVersion: 3 });
+    expect(res.status).toBe(409);
+    body = await res.json();
+    expect(body.conflict).toMatchObject({ kind: 'locked', by: 'Sam Neil' });
+
+    res = await put({ expectedVersion: 3, force: true });
+    expect(res.status).toBe(200);
+    body = await res.json();
+    expect(body.lock.mine).toBe(true);
+    expect(body.lockedById).toBe(1);
+    expect(body.version).toBe(4);
+  });
+
+  it("release drops only the caller's own lock; a stale lock is free to claim", async () => {
+    asUser(2, 'ESTIMATOR');
+    let res = await lockReq('release');
+    expect((await res.json()).released).toBe(false);
+
+    asUser(1, 'ADMIN');
+    res = await lockReq('release');
+    expect((await res.json()).released).toBe(true);
+
+    const old = new Date(Date.now() - 10 * 60_000);
+    await prisma.project.update({ where: { id: p.id }, data: { lockedById: 2, lockedAt: old, lockHeartbeatAt: old } });
+    res = await lockReq('claim');
+    expect(res.status).toBe(200);
+    expect((await res.json()).lock.mine).toBe(true);
+  });
+
+  it('viewers without edit rights cannot claim', async () => {
+    asUser(2, 'PM');
+    const res = await lockReq('claim');
+    expect(res.status).toBe(403);
   });
 });

@@ -9,6 +9,22 @@ import {
 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 import { apiFetch, SessionExpiredError } from '../../lib/api-client';
+import { isLockLive, userDisplayName } from '../../lib/project-lock';
+
+// "editing: Samantha" pill while someone has the estimate open (live lock).
+function EditingPill({ project }) {
+  if (!isLockLive(project)) return null;
+  const name = userDisplayName(project.lockedBy) || 'someone';
+  return (
+    <span
+      className="ml-2 text-xs rounded px-1.5 py-0.5 bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 font-medium whitespace-nowrap"
+      title={`${name} has this estimate open in the estimator`}
+      data-testid="editing-pill"
+    >
+      editing: {name}
+    </span>
+  );
+}
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 
@@ -512,6 +528,7 @@ function DashboardContent() {
                         >
                           {project.projectName || 'Untitled Project'}
                         </a>
+                        <EditingPill project={project} />
                         {project.isArchived && (
                           <span className="ml-2 text-xs text-gray-400 italic">archived</span>
                         )}
@@ -647,6 +664,7 @@ function DashboardContent() {
                       {t.projectName || 'Untitled Template'}
                     </a>
                     <span className="text-xs rounded px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium">Template</span>
+                    <EditingPill project={t} />
                   </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {estimatorName(t) || 'Unassigned'}

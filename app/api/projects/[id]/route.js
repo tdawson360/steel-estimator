@@ -4,10 +4,48 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../lib/auth';
 import { diffAssertedTotals } from '../../../../lib/estimating/recompute';
 import { recomputePayload, logTotalsMismatch } from '../../../../lib/recompute-server';
+import { canViewProject, canEditProject } from '../../../../lib/project-access';
+import { isLockLive, lockView, userDisplayName } from '../../../../lib/project-lock';
 
 async function getUser() {
   const session = await getServerSession(authOptions);
   return session?.user || null;
+}
+
+const USER_NAME_SELECT = { select: { id: true, firstName: true, lastName: true, email: true } };
+
+// ── Concurrency guard (see lib/project-lock.js) ──────────────────────────────
+// A save is refused when someone else holds a live edit lock, or when the
+// client's `expectedVersion` no longer matches the stored version (someone
+// saved, or a pricing sync repriced rows, since it loaded). `force: true`
+// skips both — the estimator's Overwrite button. Saves that send no
+// expectedVersion (older clients, scripts) get the lock check only.
+class SaveConflict extends Error {
+  constructor(conflict) {
+    super(conflict.kind === 'locked'
+      ? `${conflict.by || 'Another user'} is editing this estimate`
+      : `This estimate was changed by ${conflict.by || 'someone else'} after you opened it`);
+    this.name = 'SaveConflict';
+    this.conflict = conflict;
+  }
+}
+
+const CONFLICT_SELECT = {
+  version: true, updatedAt: true, lastSavedAt: true,
+  lockedById: true, lockedAt: true, lockHeartbeatAt: true,
+  lockedBy: USER_NAME_SELECT, lastSavedBy: USER_NAME_SELECT,
+};
+
+function detectConflict(live, user, expectedVersion, now) {
+  if (isLockLive(live, now) && Number(live.lockedById) !== Number(user.id)) {
+    const view = lockView(live, user.id, now);
+    return { kind: 'locked', by: view.holder.name, at: view.since, version: live.version };
+  }
+  if (expectedVersion != null && live.version !== expectedVersion) {
+    const at = live.lastSavedAt || live.updatedAt;
+    return { kind: 'version', by: userDisplayName(live.lastSavedBy), at: at ? new Date(at).toISOString() : null, version: live.version };
+  }
+  return null;
 }
 
 const FULL_PROJECT_INCLUDE = {
@@ -42,27 +80,9 @@ const FULL_PROJECT_INCLUDE = {
   customRecapColumns: true,
   customProjectTypes: true,
   customDeliveryOptions: true,
+  lockedBy: USER_NAME_SELECT,
+  lastSavedBy: USER_NAME_SELECT,
 };
-
-function canViewProject(user, project) {
-  if (user.role === 'ADMIN' || user.role === 'ESTIMATOR') return true;
-  if ((user.role === 'PM' || user.role === 'FIELD_SHOP') && project.status === 'PUBLISHED') return true;
-  return false;
-}
-
-function canEditProject(user, project) {
-  // Template projects (e.g. "Connx Template") feed company pricing via sync:
-  // only admins and the template's assigned estimator may edit.
-  if (project.isTemplate) {
-    if (user.role === 'ADMIN') return true;
-    return user.role === 'ESTIMATOR'
-      && project.estimatorId != null
-      && Number(project.estimatorId) === Number(user.id);
-  }
-  if (user.role === 'ADMIN') return true;
-  if (user.role === 'ESTIMATOR' && (project.status === 'DRAFT' || project.status === 'IN_REVIEW' || project.status === 'REOPENED')) return true;
-  return false;
-}
 
 export async function GET(request, { params }) {
   try {
@@ -87,7 +107,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'You do not have permission to view this estimate' }, { status: 403 });
     }
 
-    return NextResponse.json(project);
+    return NextResponse.json({ ...project, lock: lockView(project, user.id) });
 
   } catch (error) {
     console.error('Error loading project:', error);
@@ -214,12 +234,35 @@ export async function PUT(request, { params }) {
       }));
     }
 
+    const now = new Date();
+    const expectedVersion = Number.isInteger(data.expectedVersion) ? data.expectedVersion : null;
+    const force = data.force === true;
+
     const updatedProject = await prisma.$transaction(async (tx) => {
+
+      // ── 0. Concurrency guard ─────────────────────────────────────────────
+      // Read the live lock/version inside the transaction so two saves that
+      // race each other still serialize on the check.
+      const live = await tx.project.findUnique({ where: { id: projectId }, select: CONFLICT_SELECT });
+      if (!force) {
+        const conflict = detectConflict(live, user, expectedVersion, now.getTime());
+        if (conflict) throw new SaveConflict(conflict);
+      }
+      const lockAlreadyMine = isLockLive(live, now.getTime()) && Number(live.lockedById) === Number(user.id);
 
       // ── 1. Update project-level fields ───────────────────────────────────
       await tx.project.update({
         where: { id: projectId },
         data: {
+          // A successful save bumps the content version and makes the saver
+          // the editor of record (lock holder), keeping the original claim
+          // time when they already held it.
+          version: { increment: 1 },
+          lastSavedById: Number(user.id),
+          lastSavedAt: now,
+          lockedById: Number(user.id),
+          lockedAt: lockAlreadyMine ? undefined : now,
+          lockHeartbeatAt: now,
           projectName: data.projectName ?? '',
           projectAddress: data.projectAddress ?? '',
           customerName: data.customerName ?? '',
@@ -809,11 +852,16 @@ export async function PUT(request, { params }) {
 
     // The persisted tree already holds the server's numbers; serverTotals
     // gives the client the recomputed roll-up for reconciliation.
-    return NextResponse.json(
-      recomputed ? { ...updatedProject, serverTotals: recomputed.totals } : updatedProject
-    );
+    return NextResponse.json({
+      ...updatedProject,
+      ...(recomputed ? { serverTotals: recomputed.totals } : {}),
+      lock: lockView(updatedProject, user.id),
+    });
 
   } catch (error) {
+    if (error instanceof SaveConflict) {
+      return NextResponse.json({ error: error.message, conflict: error.conflict }, { status: 409 });
+    }
     console.error('Error saving project:', error);
     return NextResponse.json({ error: 'Failed to save project' }, { status: 500 });
   }

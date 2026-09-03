@@ -244,6 +244,16 @@ export async function applyTemplateSync({ includeInReview = false } = {}) {
     touchedProjects.add(fab.material.item.project.id);
   }
 
+  // Repriced estimates changed underneath anyone who has them open: bump the
+  // content version so their next autosave is refused with a reload prompt
+  // instead of silently writing the stale rates back.
+  if (touchedProjects.size > 0) {
+    await prisma.project.updateMany({
+      where: { id: { in: [...touchedProjects] } },
+      data: { version: { increment: 1 }, lastSavedById: Number(user.id), lastSavedAt: now },
+    });
+  }
+
   revalidatePath('/admin/connection-pricing');
   return { success: true, categoriesUpdated: preview.rows.length, updatedRows, projectsTouched: touchedProjects.size, syncedBy: user.id };
 }

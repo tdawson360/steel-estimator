@@ -1,7 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { getFabPricingForSize, getCustomOps } from '../lib/fab-pricing';
 import { apiFetch, ApiError, SessionExpiredError } from '../lib/api-client';
-import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical, Link2, Unlink, Layers } from 'lucide-react';
+import { Plus, Trash2, Download, Save, ChevronDown, ChevronRight, X, Upload, AlertCircle, Check, Copy, FileText, ArrowLeft, Calculator, GripVertical, Link2, Unlink, Layers, Lock } from 'lucide-react';
+import { LOCK_HEARTBEAT_MS } from '../lib/project-lock';
 import { laborGroupStyle } from './laborGroupStyles';
 import CustomerSearchInput from './CustomerSearchInput';
 
@@ -132,6 +133,23 @@ const STATUS_COLORS = {
   REOPENED: 'bg-purple-100 text-purple-700 border-purple-300',
 };
 const STATUS_LABELS = { DRAFT: 'Draft', IN_REVIEW: 'In Review', PUBLISHED: 'Published', REOPENED: 'Reopened' };
+
+// Mirrors lib/project-access canEditProject on the client: may this role edit
+// this project at all? (The edit lock is layered on top — see canEdit below.)
+const roleCanEdit = (userRole, userId, p) => p.isTemplate
+  ? (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && p.estimatorId != null && Number(p.estimatorId) === Number(userId)))
+  : (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (p.status === 'DRAFT' || p.status === 'IN_REVIEW' || p.status === 'REOPENED')));
+
+// "9:14 AM" for today, "Sep 2, 9:14 AM" otherwise — lock / conflict banners.
+const fmtWhen = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+};
 
 const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [activeTab, setActiveTab] = useState('project');
@@ -781,6 +799,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   const [isDirty, setIsDirty] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const sessionExpiredRef = useRef(false); // read by autosave timers at fire time
+
+  // ── Concurrency (lib/project-lock.js) ───────────────────────────────────────
+  const versionRef = useRef(null);                          // Project.version as loaded / last saved
+  const [lockedByOther, setLockedByOther] = useState(null); // { name, since } while someone else holds the edit lock
+  const [conflict, setConflict] = useState(null);           // { kind, by, at } after a refused save / takeover
+  const conflictRef = useRef(null);                         // read by handleSave at fire time
+  const [lockEpoch, setLockEpoch] = useState(0);            // bump to re-claim + restart heartbeats
+  const lockHeldRef = useRef(false);                        // we hold the lock (released on page hide)
   useEffect(() => { sessionExpiredRef.current = sessionExpired; }, [sessionExpired]);
 
   // Rehydrate all editable state from a stashed save payload. The payload is
@@ -848,6 +874,15 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       setProjectStatus(data.status || 'DRAFT');
       setProjectIsTemplate(!!data.isTemplate);
       setProjectEstimatorId(data.estimatorId ?? null);
+      versionRef.current = Number.isInteger(data.version) ? data.version : null;
+      conflictRef.current = null;
+      setConflict(null);
+      // Someone else editing → open read-only with a Take Over offer; otherwise
+      // the lock effect claims it once the session's role is known.
+      const lock = data.lock || {};
+      setLockedByOther(lock.held && !lock.mine
+        ? { name: lock.holder?.name || 'Another user', since: lock.since || null }
+        : null);
       setProjectName(data.projectName || '');
       setProjectAddress(data.projectAddress || '');
       setCustomerName(data.customerName || '');
@@ -1138,16 +1173,102 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   // Mirrors the server's canEditProject: templates are editable only by admins
   // and the template's assigned estimator. Computed here (ahead of save) so the
   // save path and the autosave effect can refuse writes the server would 403.
-  const canEdit = projectIsTemplate
-    ? (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && projectEstimatorId != null && Number(projectEstimatorId) === Number(userId)))
-    : (userRole === 'ADMIN' || (userRole === 'ESTIMATOR' && (projectStatus === 'DRAFT' || projectStatus === 'IN_REVIEW' || projectStatus === 'REOPENED')));
+  const hasEditRole = roleCanEdit(userRole, userId, { isTemplate: projectIsTemplate, estimatorId: projectEstimatorId, status: projectStatus });
+  // …and nobody else holds the edit lock (soft lock — lib/project-lock.js).
+  const canEdit = hasEditRole && !lockedByOther;
   const isReadOnly = !canEdit;
   const canEditRef = useRef(canEdit);
   canEditRef.current = canEdit;
 
+  // ── Edit lock: claim on open, heartbeat while open, release on page hide ──
+  const lockRequest = useCallback((action) => apiFetch(`/api/projects/${currentProjectId}/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  }), [currentProjectId]);
+
+  useEffect(() => {
+    if (!currentProjectId || !hasEditRole) return;
+    let cancelled = false;
+    let timer = null;
+
+    // A 409 means someone else holds the lock. On the initial claim that's the
+    // read-only + Take Over state; on a heartbeat it means they took over
+    // since our last beat — stop writing and park the work locally.
+    const refused = (err, action) => {
+      if (!(err instanceof ApiError && err.status === 409)) return false;
+      const holder = err.body?.lock?.holder;
+      const info = { name: holder?.name || 'Another user', since: err.body?.lock?.since || null };
+      lockHeldRef.current = false;
+      setLockedByOther(info);
+      if (action === 'heartbeat') {
+        const c = { kind: 'takeover', by: info.name, at: info.since };
+        conflictRef.current = c;
+        setConflict(c);
+        saveRef.current?.();   // handleSave sees conflictRef → stashes locally
+      }
+      return true;
+    };
+
+    const ping = async (action) => {
+      try {
+        await lockRequest(action);
+        if (cancelled) return;
+        lockHeldRef.current = true;
+        setLockedByOther(null);
+      } catch (err) {
+        if (cancelled) return;
+        if (refused(err, action)) {
+          if (timer) clearInterval(timer);
+          timer = null;
+          return;
+        }
+        console.warn('Edit lock request failed:', err);
+      }
+    };
+
+    ping('claim');
+    timer = setInterval(() => ping('heartbeat'), LOCK_HEARTBEAT_MS);
+
+    // Release when the tab closes or navigates away (fires blind; the server
+    // ignores a release from a non-holder). Not on effect cleanup — an epoch
+    // bump re-runs this effect and must not drop a lock we just took.
+    const releaseOnHide = () => {
+      if (!lockHeldRef.current) return;
+      lockHeldRef.current = false;
+      try {
+        navigator.sendBeacon(
+          `/api/projects/${currentProjectId}/lock`,
+          new Blob([JSON.stringify({ action: 'release' })], { type: 'application/json' }),
+        );
+      } catch {}
+    };
+    window.addEventListener('pagehide', releaseOnHide);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+      window.removeEventListener('pagehide', releaseOnHide);
+    };
+  }, [currentProjectId, hasEditRole, lockEpoch, lockRequest]);
+
+  // Take Over: claim the lock out from under the current holder, then reload
+  // so we start from their latest saved copy (their next save is refused).
+  const takeOverLock = useCallback(async () => {
+    try {
+      await lockRequest('takeover');
+      clearStash(currentProjectId);
+      window.location.reload();
+    } catch (err) {
+      alert('Could not take over this estimate. ' + err.message);
+    }
+  }, [lockRequest, currentProjectId]);
+
   // ── SAVE PROJECT TO DATABASE ────────────────────────────────────────────────
-  const handleSave = useCallback(async () => {
-    if (!currentProjectId || !canEditRef.current) return;
+  const handleSave = useCallback(async (opts = {}) => {
+    const force = opts?.force === true;   // Overwrite: skip the lock + version checks
+    if (!currentProjectId) return;
+    // A refused save leaves us read-only but still stashing (conflictRef).
+    if (!force && !canEditRef.current && !conflictRef.current) return;
     const payload = {
         projectName,
         projectAddress,
@@ -1193,7 +1314,18 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           text: opt,
           isSelected: selectedCustomDelivery === opt,
         })),
+        // Concurrency: the version we loaded (server refuses if it moved);
+        // force = Overwrite.
+        ...(versionRef.current != null ? { expectedVersion: versionRef.current } : {}),
+        ...(force ? { force: true } : {}),
       };
+
+    // A refused save (someone else saved first, or took over editing) parks
+    // the work locally until the user picks Reload or Overwrite.
+    if (conflictRef.current && !force) {
+      writeStash(currentProjectId, payload);
+      return;
+    }
 
     // Session known-dead: skip the network round-trip but keep the local stash
     // fresh, so edits made while logged out remain recoverable. Network saves
@@ -1267,12 +1399,34 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         });
       }
 
+      if (Number.isInteger(saved?.version)) versionRef.current = saved.version;
+      if (conflictRef.current || force) {
+        // Overwrite went through: we are the editor of record again.
+        conflictRef.current = null;
+        setConflict(null);
+        setLockedByOther(null);
+        lockHeldRef.current = true;
+        setLockEpoch(e => e + 1);   // restart heartbeats after a takeover
+      }
+
       clearStash(currentProjectId);
       setSessionExpired(false);
       setSaveStatus('saved');
       setIsDirty(false);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.body?.conflict) {
+        // Someone else saved first (version) or holds the lock (locked /
+        // took over). Park the work locally; the banner offers Reload or
+        // Overwrite.
+        const c = err.body.conflict;
+        writeStash(currentProjectId, payload);
+        conflictRef.current = c;
+        setConflict(c);
+        if (c.kind === 'locked') setLockedByOther({ name: c.by, since: c.at });
+        setSaveStatus(null);
+        return;
+      }
       if (err instanceof SessionExpiredError || (err instanceof ApiError && err.nonJson)) {
         // The save did not happen and retrying on a dead session won't help:
         // stash the work locally, keep the dirty flag, and pause autosave
@@ -3495,6 +3649,47 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             {isReadOnly && <span className="text-xs text-amber-600 font-medium">(Read Only)</span>}
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
+            {conflict && (
+              <span className="text-red-600 text-sm flex items-center gap-2" data-testid="save-conflict-banner">
+                <AlertCircle size={14} />
+                {conflict.kind === 'takeover'
+                  ? `${conflict.by} took over this estimate at ${fmtWhen(conflict.at)}`
+                  : conflict.kind === 'locked'
+                    ? `${conflict.by} is editing this estimate (since ${fmtWhen(conflict.at)})`
+                    : `${conflict.by || 'Someone else'} changed this estimate at ${fmtWhen(conflict.at)}, after you opened it`}
+                — your unsaved changes are kept on this computer
+                <button
+                  onClick={() => { clearStash(currentProjectId); window.location.reload(); }}
+                  className="px-2 py-0.5 border border-red-300 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
+                  title="Discard your unsaved changes and load the saved copy"
+                  data-testid="button-conflict-reload"
+                >
+                  Reload
+                </button>
+                <button
+                  onClick={() => saveRef.current?.({ force: true })}
+                  className="px-2 py-0.5 border border-red-300 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
+                  title="Save your copy over theirs and take back editing"
+                  data-testid="button-conflict-overwrite"
+                >
+                  Overwrite
+                </button>
+              </span>
+            )}
+            {lockedByOther && !conflict && (
+              <span className="text-amber-600 text-sm flex items-center gap-2" data-testid="edit-lock-banner">
+                <Lock size={14} />
+                {lockedByOther.name} is editing this estimate{lockedByOther.since ? ` (since ${fmtWhen(lockedByOther.since)})` : ''}
+                <button
+                  onClick={takeOverLock}
+                  className="px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                  title="Take over editing — their next save will be refused"
+                  data-testid="button-take-over"
+                >
+                  Take over
+                </button>
+              </span>
+            )}
             {sessionExpired && (
               <span className="text-red-600 text-sm flex items-center gap-2" data-testid="session-expired-banner">
                 <AlertCircle size={14} />
