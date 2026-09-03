@@ -896,7 +896,7 @@ const OP_RATE_GROUPS = [
       { key: 'camberRate',  label: 'Camber' },
       { key: 'rollRate',    label: 'Roll' },
       { key: 'prepCjpRate', label: 'Prep for CJP' },
-      { key: 'taperRate',   label: 'Taper' },
+      { key: 'taperRate',   label: 'Taper ($/lin ft)' },
     ],
   },
   {
