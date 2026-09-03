@@ -95,6 +95,7 @@ export async function POST(request) {
         projectName: '',
         status: 'DRAFT',
         createdById: parseInt(user.id),
+        handlingEnabled: true,   // per-piece handling on for new estimates (existing ones opt in)
         items: {
           create: [
             {

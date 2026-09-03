@@ -190,6 +190,10 @@ export function makeStatefulUpdaters(initialItems, { pricing = null } = {}) {
     isGroupableFab: libLaborGroups.isGroupableFab,
     fabGroupKey: libLaborGroups.fabGroupKey,
     normalizeGalvLines: libGalv.normalizeGalvLines,
+    // The estimator reconciles galv + per-piece handling through one wrapper;
+    // handling is off unless configured, so galv-only keeps these
+    // characterizations exact.
+    normalizeAutoLines: libGalv.normalizeGalvLines,
   });
   return { ...bound, getState: () => state };
 }

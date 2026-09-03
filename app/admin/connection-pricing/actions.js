@@ -382,6 +382,66 @@ export async function deleteHardwareItem(id) {
   return { success: true };
 }
 
+// ── Per-piece handling classes (lib/estimating/handling.js) ─────────────────
+function cleanHandlingClass(data, { partial = false } = {}) {
+  const out = {};
+  if (data?.name !== undefined || !partial) {
+    const name = String(data?.name ?? '').trim();
+    if (!name) throw new Error('Name is required');
+    out.name = name;
+  }
+  if (data?.code !== undefined) {
+    const code = String(data.code).trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{1,12}$/.test(code)) throw new Error('Code: letters/digits only, up to 12');
+    out.code = code;
+  }
+  for (const f of ['minLb', 'minutesPerPiece', 'sortOrder']) {
+    if (data?.[f] === undefined) continue;
+    const n = Number(data[f]);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid ${f}`);
+    out[f] = n;
+  }
+  if (data?.maxLb !== undefined) {
+    if (data.maxLb === null || data.maxLb === '') out.maxLb = null;
+    else { const n = Number(data.maxLb); if (!Number.isFinite(n) || n < 0) throw new Error('Invalid maxLb'); out.maxLb = n; }
+  }
+  if (typeof data?.active === 'boolean') out.active = data.active;
+  return out;
+}
+
+export async function createHandlingClass(data) {
+  await requireAdmin();
+  const clean = cleanHandlingClass(data);
+  if (!clean.code) {
+    const n = await prisma.handlingClass.count();
+    clean.code = `HL${n + 1}`;
+  }
+  if (clean.sortOrder === undefined) clean.sortOrder = (await prisma.handlingClass.count()) + 1;
+  const created = await prisma.handlingClass.create({ data: clean });
+  revalidatePath('/admin/connection-pricing');
+  return created;
+}
+
+export async function updateHandlingClass(id, data) {
+  await requireAdmin();
+  const patch = cleanHandlingClass(data, { partial: true });
+  if (Object.keys(patch).length === 0) return { success: false };
+  const updated = await prisma.handlingClass.update({ where: { id: Number(id) }, data: patch });
+  revalidatePath('/admin/connection-pricing');
+  return updated;
+}
+
+export async function deleteHandlingClass(id) {
+  await requireAdmin();
+  const cls = await prisma.handlingClass.findUnique({ where: { id: Number(id) } });
+  if (!cls) return { success: false };
+  const used = await prisma.materialFabrication.count({ where: { handlingClass: cls.code } });
+  if (used > 0) throw new Error(`${used} handling line(s) use this class — deactivate it instead`);
+  await prisma.handlingClass.delete({ where: { id: cls.id } });
+  revalidatePath('/admin/connection-pricing');
+  return { success: true };
+}
+
 export async function deleteCustomOp(id) {
   await requireAdmin();
   await prisma.customFabOperation.delete({ where: { id } });

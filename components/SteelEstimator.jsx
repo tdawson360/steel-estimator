@@ -45,8 +45,19 @@ import {
   familyKeyForSize, fabGroupKey, isGroupableFab, applyGroupRates,
   computeGroupSummaries, familyBlocks, groupAnchors, buildAutoGroups,
   sortMaterialsByFamily, nextColorIndex, GROUP_COLOR_COUNT, splitGroupsBySize, joinGalvGroups, seedGalvGroupRates,
+  joinHandlingGroups, seedHandlingGroupRates,
 } from '../lib/estimating/labor-groups';
-import { normalizeGalvLines, projectGalvTotal, GALV_MINIMUM_CHARGE, configureGalvClasses, getConfiguredGalvClasses } from '../lib/estimating/galv';
+
+// Auto-join both class-keyed group families (galv by rate class, handling
+// by weight class) — one entry point for the call sites below.
+const joinAutoGroups = (item) => joinHandlingGroups(joinGalvGroups(item));
+import { normalizeGalvLines as normalizeGalvLinesOnly, projectGalvTotal, GALV_MINIMUM_CHARGE, configureGalvClasses, getConfiguredGalvClasses } from '../lib/estimating/galv';
+import { normalizeHandlingLines, configureHandling, getConfiguredHandling, HANDLING_OP, DEFAULT_HANDLING_CLASSES, handlingRatePerPiece, handlingClassLabel } from '../lib/estimating/handling';
+
+// Every mutation that touches materials/fabs reconciles BOTH auto-line
+// families: galv (assembly dips) then per-piece handling. One entry point so
+// the 7 call sites below stay in sync.
+const normalizeAutoLines = (materials, opts) => normalizeHandlingLines(normalizeGalvLinesOnly(materials, opts));
 import { DEFAULT_GALV_CLASSES, galvClassRatePerLb, galvClassLabel } from '../lib/estimating/galv-classes';
 import { buildStockSummary, buildDetailedStockList } from '../lib/estimating/stock-list';
 import { normalizeLengthOverride, availableLengthsForOverrides, lengthCapsForOverrides } from '../lib/estimating/supplier-lengths';
@@ -352,6 +363,10 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
   // Cross-item stock nesting (persisted per project)
   const [nestingEnabled, setNestingEnabled] = useState(false);
+  // Per-piece handling (lib/estimating/handling.js): project switch + class table
+  const [handlingEnabled, setHandlingEnabled] = useState(false);
+  const [handlingClasses, setHandlingClasses] = useState(null);
+  const [shopLaborRate, setShopLaborRate] = useState(65);
   const [nestKerfIn, setNestKerfIn] = useState(0.25);   // saw kerf per cut, inches
   const [nestEndCropIn, setNestEndCropIn] = useState(0); // end crop per stick, inches
 
@@ -899,6 +914,33 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
     }).catch(() => {});
   }, []);
 
+  // Per-piece handling classes + shop rate (Global Pricing Data → Handling).
+  useEffect(() => {
+    apiFetch('/api/handling-classes').then(d => {
+      if (Array.isArray(d?.classes)) setHandlingClasses(d.classes);
+      if (d?.shopLaborRatePerHr > 0) setShopLaborRate(d.shopLaborRatePerHr);
+      configureHandling({ classes: Array.isArray(d?.classes) ? d.classes : undefined, shopRate: d?.shopLaborRatePerHr });
+    }).catch(() => {});
+  }, []);
+  // Keep the module config in step with the project switch, and re-reconcile
+  // lines when the switch or the class table changes after load (so turning
+  // handling on adds the lines at once, and off removes them).
+  useEffect(() => {
+    configureHandling({ enabled: handlingEnabled, classes: handlingClasses || undefined, shopRate: shopLaborRate });
+    if (!isLoadedRef.current) return;
+    setItems(prev => {
+      let changed = false;
+      const next = prev.map(item => {
+        const materials = normalizeHandlingLines(item.materials);
+        if (materials === item.materials) return item;
+        changed = true;
+        // switching off empties the handling groups — drop them too
+        return pruneEmptyLaborGroups(joinAutoGroups({ ...item, materials }));
+      });
+      return changed ? next : prev;
+    });
+  }, [handlingEnabled, handlingClasses, shopLaborRate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const customOpRateMap = useMemo(() => {
     const m = {};
     for (const op of customOps) m[op.name] = { rate: op.rate, unit: op.defaultUnit };
@@ -1046,6 +1088,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       setTaxCategory(data.taxCategory || null);
 
       setNestingEnabled(data.nestingEnabled || false);
+      setHandlingEnabled(data.handlingEnabled || false);
+      configureHandling({ enabled: data.handlingEnabled || false });
       setNestKerfIn(typeof data.nestKerfIn === 'number' ? data.nestKerfIn : 0.25);
       setNestEndCropIn(typeof data.nestEndCropIn === 'number' ? data.nestEndCropIn : 0);
       try {
@@ -1234,7 +1278,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
             ...item,
             // Galv normalize after calc: folds any legacy per-piece galv lines
             // into the one-assembly-one-line model on load.
-            materials: normalizeGalvLines(resequenceMaterials(item.materials).map(mat => {
+            materials: normalizeAutoLines(resequenceMaterials(item.materials).map(mat => {
               const calcMat = calculateMaterial(mat);
               return {
                 ...calcMat,
@@ -1247,9 +1291,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           if (!(calcItem.laborGroups || []).length) return calcItem;
           // Groups are exact-size only: split any legacy family-keyed group
           // that spans sizes (same rate on every piece, so totals hold).
-          const split = seedGalvGroupRates(
-            joinGalvGroups(splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() })),
-            getConfiguredGalvClasses());
+          const split = seedHandlingGroupRates(seedGalvGroupRates(
+            joinAutoGroups(splitGroupsBySize(calcItem, { makeId: () => Date.now() + Math.random() })),
+            getConfiguredGalvClasses()), getConfiguredHandling().classes, getConfiguredHandling().shopRate);
           const stamped = applyGroupRates(split);
           return {
             ...stamped,
@@ -1428,6 +1472,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         deliveryWillCall: deliveryOptions.willCall,
         taxCategory,
         nestingEnabled,
+        handlingEnabled,
         nestKerfIn: parseFloat(nestKerfIn) || 0,
         nestEndCropIn: parseFloat(nestEndCropIn) || 0,
         stockLengthOverrides,
@@ -1572,7 +1617,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       alert('Failed to save project. ' + err.message);
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [currentProjectId, projectName, projectAddress, customerName, customerId, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
+  }, [currentProjectId, projectName, projectAddress, customerName, customerId, billingAddress, customerContact, customerPhone, customerEmail, estimateDate, bidTime, estimatedBy, drawingDate, drawingRevision, architect, estimatorId, dashboardStatus, newOrCo, notes, projectTypes, deliveryOptions, taxCategory, handlingEnabled, nestingEnabled, nestKerfIn, nestEndCropIn, stockLengthOverrides, breakoutGroups, items, adjustments, selectedExclusions, customExclusions, selectedQualifications, customQualifications, customRecapColumns, customProjectTypes, customDeliveryOptions, selectedCustomDelivery]);
 
   // Keep saveRef pointing at the latest handleSave closure (no deps — runs every render)
   useEffect(() => { saveRef.current = handleSave; });
@@ -2224,7 +2269,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       }
       // Fold imported galv lines into the one-assembly-one-line model
       // (galvanized subparts ride their parent's dip)
-      flatMaterials.splice(0, flatMaterials.length, ...normalizeGalvLines(flatMaterials));
+      flatMaterials.splice(0, flatMaterials.length, ...normalizeAutoLines(flatMaterials));
 
       // Build item-level fabrication (uniform coating)
       const itemFab = [];
@@ -2651,7 +2696,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       materials.splice(lastIdx + 1, 0, newParent, ...newChildren);
 
       setFocusLengthMaterialId(newParentId);
-      return joinGalvGroups({ ...item, materials: normalizeGalvLines(resequenceMaterials(materials)) });
+      return joinAutoGroups({ ...item, materials: normalizeAutoLines(resequenceMaterials(materials)) });
     }));
   };
 
@@ -2818,7 +2863,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
         // Galv assembly rule is authoritative last: one line per dipped
         // assembly (parent + galvanized children + galv connection weights).
-        return joinGalvGroups({ ...item, materials: normalizeGalvLines(updatedMaterials) });
+        return joinAutoGroups({ ...item, materials: normalizeAutoLines(updatedMaterials) });
       }
       return item;
     }));
@@ -2835,7 +2880,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         idsToDelete.push(...childIds);
 
         const remaining = item.materials.filter(m => !idsToDelete.includes(m.id));
-        return pruneEmptyLaborGroups({ ...item, materials: normalizeGalvLines(resequenceMaterials(remaining)) });
+        return pruneEmptyLaborGroups({ ...item, materials: normalizeAutoLines(resequenceMaterials(remaining)) });
       }
       return item;
     }));
@@ -3227,7 +3272,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
 
       // Galv assembly rule last: folds/creates galv lines to match the
       // one-assembly-one-line model after any fab mutation.
-      return { ...nextItem, materials: normalizeGalvLines(nextItem.materials) };
+      return { ...nextItem, materials: normalizeAutoLines(nextItem.materials) };
     }));
   };
 
@@ -3243,7 +3288,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         ) };
       });
 
-      return pruneEmptyLaborGroups({ ...item, materials: normalizeGalvLines(updatedMaterials) });
+      return pruneEmptyLaborGroups({ ...item, materials: normalizeAutoLines(updatedMaterials) });
     }));
   };
 
@@ -3307,7 +3352,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
           }),
         };
       });
-      return pruneEmptyLaborGroups(joinGalvGroups({ ...item, materials }));
+      return pruneEmptyLaborGroups(joinAutoGroups({ ...item, materials }));
     }));
   };
 
@@ -3337,6 +3382,73 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
       });
       const laborGroups = existing ? groups.filter(x => x.id !== groupId) : groups.map(x => x.id === groupId ? target : x);
       return { ...item, laborGroups, materials };
+    }));
+  };
+
+  // ── Per-piece handling: class picks + member exclusion ────────────────────
+  // Picking a class on a line PINS it (weight edits no longer re-class it);
+  // an ungrouped line takes the class rate, a grouped line leaves its group
+  // when the class differs and auto-joins the class's group if one exists.
+  const setHandlingLineClass = (itemId, materialId, fabId, code) => {
+    if (!code) return;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const groups = item.laborGroups || [];
+      const classRate = handlingRatePerPiece(handlingClasses || DEFAULT_HANDLING_CLASSES, code, shopLaborRate);
+      const materials = item.materials.map(m => {
+        if (m.id !== materialId) return m;
+        return {
+          ...m,
+          fabrication: (m.fabrication || []).map(f => {
+            if (f.id !== fabId) return f;
+            const grp = f.laborGroupId != null ? groups.find(g => g.id === f.laborGroupId) : null;
+            const leaving = grp && grp.familyKey !== code;
+            const next = { ...f, handlingClass: code, handlingClassPinned: true, description: `Handling — ${handlingClassLabel(handlingClasses || DEFAULT_HANDLING_CLASSES, code)}`, ...(leaving ? { laborGroupId: null } : {}) };
+            if (next.laborGroupId == null && classRate) { next.unitPrice = classRate; next.rate = classRate; }
+            return { ...next, totalCost: computeFabLineTotal(next) };
+          }),
+        };
+      });
+      return pruneEmptyLaborGroups(joinAutoGroups({ ...item, materials }));
+    }));
+  };
+
+  // Re-class a whole handling group: every member takes (and pins) the class
+  // and the class rate; merges into an existing group for that class.
+  const setHandlingGroupClass = (itemId, groupId, code) => {
+    if (!code) return;
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const groups = item.laborGroups || [];
+      const g = groups.find(x => x.id === groupId);
+      if (!g || g.familyKey === code) return item;
+      const existing = groups.find(x => x.id !== groupId && x.operation === HANDLING_OP && x.familyKey === code);
+      const classRate = handlingRatePerPiece(handlingClasses || DEFAULT_HANDLING_CLASSES, code, shopLaborRate);
+      const target = existing || { ...g, familyKey: code, rate: classRate || g.rate };
+      const rate = target.rate || 0;
+      const label = `Handling — ${handlingClassLabel(handlingClasses || DEFAULT_HANDLING_CLASSES, code)}`;
+      const materials = item.materials.map(m => {
+        let changed = false;
+        const fabrication = (m.fabrication || []).map(f => {
+          if (f.laborGroupId !== groupId) return f;
+          changed = true;
+          const next = { ...f, handlingClass: code, handlingClassPinned: true, description: label, laborGroupId: target.id, unitPrice: rate, rate };
+          return { ...next, totalCost: computeFabLineTotal(next) };
+        });
+        return changed ? { ...m, fabrication } : m;
+      });
+      const laborGroups = existing ? groups.filter(x => x.id !== groupId) : groups.map(x => x.id === groupId ? target : x);
+      return { ...item, laborGroups, materials };
+    }));
+  };
+
+  // Exclude / re-include a member from per-piece handling (the normalizer
+  // drops or re-adds the line).
+  const setHandlingExcluded = (itemId, materialId, excluded) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      const materials = normalizeHandlingLines(item.materials.map(m => m.id === materialId ? { ...m, handlingExcluded: !!excluded } : m));
+      return pruneEmptyLaborGroups(joinAutoGroups({ ...item, materials }));
     }));
   };
 
@@ -4283,6 +4395,24 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                 </div>
               </div>
 
+              {/* Per-piece Handling */}
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
+                <h2 className="text-lg font-semibold mb-3">Per-piece Handling</h2>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input type="checkbox" checked={handlingEnabled}
+                    onChange={e => setHandlingEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded" data-testid="checkbox-handling-enabled" />
+                  <span className="text-sm font-medium">Add a Handling line to every main member</span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Unloading, racking, moving to the saw and to fit-up. Each member gets one Handling line: its
+                  weight per piece (attachments included) picks a class from Global Pricing Data → Handling,
+                  quantity is the piece count, and the rate is minutes × the shop rate. Lines group by class.
+                  Re-class a line or group on the Estimate tab, or exclude a member. On for new estimates;
+                  switching it on here adds the lines to this estimate at once.
+                </p>
+              </div>
+
               {/* Material Nesting */}
               <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded border">
                 <h2 className="text-lg font-semibold mb-3">Material Nesting</h2>
@@ -4611,6 +4741,14 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                   {hiddenFabs.length} grouped
                                                 </button>
                                               )}
+                                              {handlingEnabled && mat.handlingExcluded && mat.category !== 'Hardware' && (
+                                                <button type="button"
+                                                  onClick={() => setHandlingExcluded(item.id, mat.id, false)}
+                                                  title="Per-piece handling is excluded for this member — click to add it back"
+                                                  className="flex-shrink-0 text-[10px] leading-4 px-1 rounded bg-slate-200 text-slate-600 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                                  no handling
+                                                </button>
+                                              )}
                                             </div>
                                           );
                                         })()}
@@ -4782,7 +4920,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                     </tr>
                                     {/* Parent material fab rows (a collapsed group's members are hidden) */}
                                     {(mat.fabrication || [])
-                                      .filter(f => !f.isAutoGalv && !f.isConnGalv &&
+                                      .filter(f => !f.isAutoGalv && !f.isConnGalv && !f.isAutoHandling &&
                                         !(f.laborGroupId != null && groupById.get(f.laborGroupId)?.collapsed))
                                       .map(fab => {
                                       const hasLength = (fab.unit === 'IN' || fab.unit === 'LF') && fab.length;
@@ -5031,6 +5169,94 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                     {/* Galv rows: the assembly dip line (class-priced, groupable by
                                         class) and any standalone connection dips. A collapsed group's
                                         members are hidden — the member row shows the "N grouped" tag. */}
+                                    {/* Per-piece handling line (auto; class from piece weight) */}
+                                    {(mat.fabrication || [])
+                                      .filter(f => f.isAutoHandling &&
+                                        !(f.laborGroupId != null && groupById.get(f.laborGroupId)?.collapsed))
+                                      .map(fab => {
+                                      const grp = fab.laborGroupId != null ? groupById.get(fab.laborGroupId) : null;
+                                      const gStyle = grp ? laborGroupStyle(grp.colorIndex) : null;
+                                      const rowKey = !grp ? fabGroupKey(mat, fab) : null;
+                                      const joinTarget = rowKey
+                                        ? laborGroups.find(g => `${g.familyKey}|${g.operation}` === rowKey)
+                                        : null;
+                                      const canGroupSimilar = rowKey && !joinTarget && item.materials.some(m2 =>
+                                        !m2.parentMaterialId && (m2.fabrication || []).some(f2 =>
+                                          f2.id !== fab.id && f2.laborGroupId == null &&
+                                          isGroupableFab(f2) && fabGroupKey(m2, f2) === rowKey));
+                                      const hClasses = handlingClasses || DEFAULT_HANDLING_CLASSES;
+                                      const unpriced = !(grp ? grp.rate : fab.unitPrice);
+                                      return (
+                                      <tr key={stableRowKey(fab)} className={grp ? gStyle.row : 'bg-slate-100 dark:bg-slate-800/60'} data-testid="handling-row">
+                                        <td className={`border p-1 text-center text-xs font-medium ${grp ? gStyle.tag : 'text-slate-600 dark:text-slate-300'}`}>{grp ? '[Grp]' : '[Hdl]'}</td>
+                                        <td className="border p-1 text-xs text-slate-700 dark:text-slate-200">
+                                          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 min-w-0">
+                                            <span className="truncate" title={`${fab.description}${fab.handlingClassPinned ? ' (class pinned)' : ' (class from piece weight)'}`}>Handling</span>
+                                            <select
+                                              value={fab.handlingClass || ''}
+                                              onChange={e => setHandlingLineClass(item.id, mat.id, fab.id, e.target.value)}
+                                              title={`Handling weight class (Global Pricing Data → Handling). Piece weight incl. attachments: ${fmtWt(((mat.fabWeight || 0) + item.materials.filter(m => m.parentMaterialId === mat.id).reduce((s, m) => s + (m.fabWeight || 0), 0)) / (mat.pieces || 1))} lb`}
+                                              className="ml-auto min-w-0 max-w-[10rem] p-0.5 border rounded text-[10px] bg-slate-50 dark:bg-slate-800 dark:border-gray-600 dark:text-gray-100"
+                                            >
+                                              {!fab.handlingClass && <option value="">Class…</option>}
+                                              {hClasses.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                            </select>
+                                          </div>
+                                        </td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-xs">{fab.quantity}</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-center text-gray-400">—</td>
+                                        <td className="border p-1 text-xs text-center">EA</td>
+                                        <td className="border p-1">
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            value={fab.unitPrice || ''}
+                                            disabled={!!grp}
+                                            onChange={e => updateMaterialFab(item.id, mat.id, fab.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                            className={`w-full p-1 border rounded text-xs text-right dark:text-gray-100 ${grp ? `${gStyle.input} opacity-70` : unpriced ? 'bg-amber-100 dark:bg-amber-900 border-amber-400' : 'bg-slate-50 dark:bg-slate-800 dark:border-gray-600'}`}
+                                            placeholder="$/pc"
+                                            title={grp ? 'Priced by the group — edit the rate on the group line' : unpriced ? 'Needs pricing — set minutes for this class on Global Pricing Data → Handling, or type a rate' : 'Rate per piece'}
+                                          />
+                                        </td>
+                                        <td className={`border p-1 text-right font-semibold ${grp ? gStyle.total : 'text-slate-700 dark:text-slate-200'}`}>{fmtPrice(fab.totalCost || 0)}</td>
+                                        <td className="border p-1 text-center">
+                                          <div className="flex items-center justify-center gap-1">
+                                            {grp && (
+                                              <button onClick={() => detachFabFromGroup(item.id, mat.id, fab.id)}
+                                                className={gStyle.tag} title="Detach from group — price this member's handling individually (starts at the group rate)">
+                                                <Unlink size={12} />
+                                              </button>
+                                            )}
+                                            {joinTarget && (
+                                              <button onClick={() => joinFabToGroup(item.id, mat.id, fab.id, joinTarget.id)}
+                                                className={laborGroupStyle(joinTarget.colorIndex).tag}
+                                                title={`Join group: Handling — ${handlingClassLabel(hClasses, joinTarget.familyKey)}`}>
+                                                <Link2 size={12} />
+                                              </button>
+                                            )}
+                                            {canGroupSimilar && (
+                                              <button onClick={() => groupSimilarFabs(item.id, mat.id, fab.id)}
+                                                className="text-purple-600 hover:text-purple-800" title="Group every member in this handling class at one rate">
+                                                <Layers size={12} />
+                                              </button>
+                                            )}
+                                            <button onClick={() => setHandlingExcluded(item.id, mat.id, true)}
+                                              className="text-gray-400 hover:text-red-600" title="No handling for this member (removes the line; re-add from the member row)">
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                      );
+                                    })}
                                     {(mat.fabrication || [])
                                       .filter(f => (f.isAutoGalv || f.isConnGalv) &&
                                         !(f.laborGroupId != null && groupById.get(f.laborGroupId)?.collapsed))
@@ -5583,6 +5809,19 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
                                                   {(galvClasses || DEFAULT_GALV_CLASSES).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
                                                 </select>
                                                 <span className="font-normal text-gray-500 dark:text-gray-400">({g.memberCount} assembl{g.memberCount === 1 ? 'y' : 'ies'})</span>
+                                              </div>
+                                            ) : g.operation === HANDLING_OP ? (
+                                              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 min-w-0">
+                                                <span>Handling —</span>
+                                                <select
+                                                  value={g.familyKey || ''}
+                                                  onChange={e => setHandlingGroupClass(item.id, g.id, e.target.value)}
+                                                  title="Handling weight class for every member in this group (pins the class on each)"
+                                                  className="min-w-0 max-w-[10rem] p-0.5 border rounded text-[10px] font-normal bg-transparent dark:border-gray-600 dark:text-gray-100"
+                                                >
+                                                  {(handlingClasses || DEFAULT_HANDLING_CLASSES).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                                </select>
+                                                <span className="font-normal text-gray-500 dark:text-gray-400">({g.memberCount} member{g.memberCount === 1 ? '' : 's'})</span>
                                               </div>
                                             ) : (
                                               <>

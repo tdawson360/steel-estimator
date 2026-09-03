@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo, useTransition } from 'react';
 import AppHeader from '../../../components/AppHeader';
 import { HARDWARE_KINDS, HARDWARE_FINISHES, hardwareLabel, groupByFamily, parseInches } from '../../../lib/hardware';
 import {
+  createHandlingClass,
+  updateHandlingClass,
+  deleteHandlingClass,
   createHardwareItem,
   updateHardwareItem,
   deleteHardwareItem,
@@ -234,6 +237,170 @@ function GalvClassesEditor({ initialClasses, initialMinimum }) {
           Default class per assembly: under 20 lb dipped → MLT; pipe by nominal diameter and tube by largest side
           → the FPIP / FTUB tiers; W, WT, C, MC, L → KDS; plate, flats, bar, custom → MSC. Change it on the
           galv line or the group in the estimate. Rates take effect on new galv lines and on groups you re-class.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Section 2.55: Per-piece handling classes ────────────────────────────────
+// Weight brackets for one piece (member + attachments) with minutes per
+// piece; $/piece = minutes ÷ 60 × shop rate. Brackets and minutes both edit
+// in place; rows can be added for finer bands.
+
+function HandlingClassesEditor({ initialClasses, shopRate }) {
+  const [classes, setClasses] = useState(initialClasses || []);
+  const [editing, setEditing] = useState({});   // `${id}:${field}` → string
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ name: '', minLb: '', maxLb: '', minutesPerPiece: '' });
+  const [, startTransition] = useTransition();
+  const rate = Number(shopRate) || 0;
+  const perPiece = (minutes) => rate ? (Number(minutes) || 0) / 60 * rate : 0;
+
+  const key = (id, f) => `${id}:${f}`;
+  const drop = (k) => setEditing(prev => { const n = { ...prev }; delete n[k]; return n; });
+  const commit = (cls, field) => {
+    const k = key(cls.id, field);
+    const raw = editing[k];
+    if (raw === undefined) return;
+    const val = field === 'maxLb' && raw === '' ? null : parseFloat(raw);
+    if (val !== null && (!Number.isFinite(val) || val < 0)) { drop(k); return; }
+    if (val === (cls[field] ?? null)) { drop(k); return; }
+    startTransition(async () => {
+      try {
+        await updateHandlingClass(cls.id, { [field]: val });
+        setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, [field]: val } : c));
+      } catch (e) { alert('Save failed: ' + e.message); }
+      finally { drop(k); }
+    });
+  };
+  const commitName = (cls) => {
+    const k = key(cls.id, 'name'); const raw = editing[k];
+    if (raw === undefined) return;
+    const name = String(raw).trim();
+    if (!name || name === cls.name) { drop(k); return; }
+    startTransition(async () => {
+      try { await updateHandlingClass(cls.id, { name }); setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, name } : c)); }
+      catch (e) { alert('Save failed: ' + e.message); }
+      finally { drop(k); }
+    });
+  };
+  const toggleActive = (cls) => {
+    const active = !cls.active;
+    startTransition(async () => {
+      try { await updateHandlingClass(cls.id, { active }); setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, active } : c)); }
+      catch (e) { alert('Update failed: ' + e.message); }
+    });
+  };
+  const remove = (cls) => {
+    if (!confirm(`Delete handling class "${cls.name}"?`)) return;
+    startTransition(async () => {
+      try { await deleteHandlingClass(cls.id); setClasses(prev => prev.filter(c => c.id !== cls.id)); }
+      catch (e) { alert('Delete failed: ' + e.message); }
+    });
+  };
+  const submitAdd = async (e) => {
+    e.preventDefault();
+    try {
+      const created = await createHandlingClass({
+        name: draft.name,
+        minLb: draft.minLb === '' ? 0 : parseFloat(draft.minLb),
+        maxLb: draft.maxLb === '' ? null : parseFloat(draft.maxLb),
+        minutesPerPiece: draft.minutesPerPiece === '' ? 0 : parseFloat(draft.minutesPerPiece),
+      });
+      setClasses(prev => [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder || a.minLb - b.minLb));
+      setDraft({ name: '', minLb: '', maxLb: '', minutesPerPiece: '' });
+      setAdding(false);
+    } catch (err) { alert('Add failed: ' + err.message); }
+  };
+
+  const numCls = 'w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs text-right dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const cell = (cls, field, step) => (
+    <HwNumInput
+      step={step}
+      value={editing[key(cls.id, field)] ?? (cls[field] ?? '')}
+      onChange={v => setEditing(prev => ({ ...prev, [key(cls.id, field)]: v }))}
+      onCommit={() => commit(cls, field)}
+      onCancel={() => drop(key(cls.id, field))}
+    />
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300 w-16">Code</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Class</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">From (lb)</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Up to (lb)</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Minutes / piece</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-600 dark:text-gray-300">$ / piece</th>
+              <th className="text-center px-3 py-2 font-medium text-gray-600 dark:text-gray-300">Active</th>
+              <th className="px-2 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {classes.map(cls => (
+              <tr key={cls.id} className={`border-b border-gray-100 dark:border-gray-700 ${cls.active ? '' : 'opacity-50'}`}>
+                <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300">{cls.code}</td>
+                <td className="px-3 py-1.5">
+                  <input
+                    value={editing[key(cls.id, 'name')] ?? cls.name}
+                    onChange={e => setEditing(prev => ({ ...prev, [key(cls.id, 'name')]: e.target.value }))}
+                    onBlur={() => commitName(cls)}
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') drop(key(cls.id, 'name')); }}
+                    className="w-56 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </td>
+                <td className="px-3 py-1.5 text-right">{cell(cls, 'minLb', '1')}</td>
+                <td className="px-3 py-1.5 text-right">{cell(cls, 'maxLb', '1')}</td>
+                <td className="px-3 py-1.5 text-right">{cell(cls, 'minutesPerPiece', '0.5')}</td>
+                <td className="px-3 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
+                  {perPiece(editing[key(cls.id, 'minutesPerPiece')] ?? cls.minutesPerPiece) ? `$${perPiece(editing[key(cls.id, 'minutesPerPiece')] ?? cls.minutesPerPiece).toFixed(2)}` : <span className="text-amber-600">needs minutes</span>}
+                </td>
+                <td className="px-3 py-1.5 text-center">
+                  <input type="checkbox" checked={!!cls.active} onChange={() => toggleActive(cls)} className="rounded" />
+                </td>
+                <td className="px-2 py-1.5 text-right">
+                  <button type="button" onClick={() => remove(cls)} className="text-gray-400 hover:text-red-600" title="Delete">✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-start gap-6 flex-wrap">
+        <div>
+          <button type="button" onClick={() => setAdding(a => !a)} className="text-sm font-medium text-blue-600 hover:underline">
+            {adding ? '− Hide add class' : '+ Add class'}
+          </button>
+          {adding && (
+            <form onSubmit={submitAdd} className="mt-2 flex items-end gap-2 flex-wrap p-3 border border-dashed border-gray-300 dark:border-gray-600 rounded-md">
+              <label className="text-xs text-gray-600 dark:text-gray-300">Name
+                <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} required className="block mt-1 w-48 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-800 dark:text-gray-100" />
+              </label>
+              <label className="text-xs text-gray-600 dark:text-gray-300">From (lb)
+                <input type="number" min="0" step="1" value={draft.minLb} onChange={e => setDraft(d => ({ ...d, minLb: e.target.value }))} className={`block mt-1 ${numCls}`} />
+              </label>
+              <label className="text-xs text-gray-600 dark:text-gray-300">Up to (lb)
+                <input type="number" min="0" step="1" value={draft.maxLb} onChange={e => setDraft(d => ({ ...d, maxLb: e.target.value }))} placeholder="open" className={`block mt-1 ${numCls}`} />
+              </label>
+              <label className="text-xs text-gray-600 dark:text-gray-300">Minutes / piece
+                <input type="number" min="0" step="0.5" value={draft.minutesPerPiece} onChange={e => setDraft(d => ({ ...d, minutesPerPiece: e.target.value }))} className={`block mt-1 ${numCls}`} />
+              </label>
+              <button type="submit" className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">Add</button>
+            </form>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
+          Every main member gets one Handling line: its weight per piece (attachments included) picks the
+          class, quantity is the piece count, and the rate is minutes ÷ 60 × the shop labor rate
+          (${rate.toFixed(2)}/hr above). Handling lines group by class. Estimators can re-class a line or a
+          group, or exclude a member. Per-piece handling is on for new estimates and switched per project on
+          the Project Info tab. Changing minutes here affects new lines and $0 lines, not priced ones.
         </p>
       </div>
     </div>
@@ -1455,7 +1622,7 @@ function TemplateSyncPanel() {
 
 // ─── Main page layout ──────────────────────────────────────────────────────────
 
-export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps, galvClasses, hardwareItems }) {
+export default function ConnectionPricingClient({ rates, wfCategories, cCategories, customOps, galvClasses, hardwareItems, handlingClasses }) {
   const [linkTarget, setLinkTarget] = useState(null); // { cat, kind } | null
   const openLinkPicker = (cat, kind) => setLinkTarget({ cat, kind });
   return (
@@ -1508,6 +1675,16 @@ export default function ConnectionPricingClient({ rates, wfCategories, cCategori
             Source tables live in docs/hardware-seed/.
           </p>
           <HardwareCatalogEditor initialItems={hardwareItems} />
+        </section>
+
+        {/* Section 2.7: Per-piece handling */}
+        <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">Handling</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Per-piece handling — unloading, racking, moving to the saw and to fit-up. Weight classes for one piece
+            with minutes per piece; the dollar rate follows the shop labor rate.
+          </p>
+          <HandlingClassesEditor initialClasses={handlingClasses} shopRate={rates?.shopLaborRatePerHr} />
         </section>
 
         {/* Section 3: Custom Fab Operations */}

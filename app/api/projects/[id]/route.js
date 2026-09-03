@@ -293,6 +293,7 @@ export async function PUT(request, { params }) {
           deliveryWillCall: data.deliveryWillCall ?? false,
           taxCategory: data.taxCategory ?? null,
           nestingEnabled: data.nestingEnabled ?? false,
+          handlingEnabled: data.handlingEnabled ?? false,
           nestKerfIn: (typeof data.nestKerfIn === 'number' && isFinite(data.nestKerfIn)) ? data.nestKerfIn : 0.25,
           nestEndCropIn: (typeof data.nestEndCropIn === 'number' && isFinite(data.nestEndCropIn)) ? data.nestEndCropIn : 0,
           stockLengthOverrides: typeof data.stockLengthOverrides === 'object' && data.stockLengthOverrides !== null
@@ -471,6 +472,7 @@ export async function PUT(request, { params }) {
             galvanized: mat.galvanized || false,
             galvRate: mat.galvRate || 0,
             hardwareItemId: Number.isInteger(mat.hardwareItemId) ? mat.hardwareItemId : null,
+            handlingExcluded: mat.handlingExcluded || false,
             // Plate dims come from the UI's plateThickness/plateWidth (the
             // importer is the only writer of thickness/width); the loaders
             // read them back through materialCalcInputsFromDb.
@@ -535,6 +537,9 @@ export async function PUT(request, { params }) {
               isGalvLine: fab.isGalvLine || fab.isAutoGalv || fab.isConnGalv || false,
               galvKind: fab.isAutoGalv ? 'auto' : (conn ? 'conn' : (fab.galvKind ?? null)),
               galvClass: fab.galvClass ?? null,
+              handlingKind: fab.isAutoHandling ? 'auto' : (fab.handlingKind ?? null),
+              handlingClass: fab.handlingClass ?? null,
+              handlingPinned: !!fab.handlingClassPinned,
               parentFabId: (conn && fab.parentFabId != null)
                 ? (fabIdMap.get(fab.parentFabId)
                    ?? (isExistingId(fab.parentFabId, existingMatFabIds) ? Number(fab.parentFabId) : null))

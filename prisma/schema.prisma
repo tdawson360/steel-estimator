@@ -89,6 +89,11 @@ model Project {
   // Template") whose item totals feed pricing lookups via sync.
   isTemplate       Boolean   @default(false)
 
+  // Per-piece handling (lib/estimating/handling.js): one auto "Piece Handling"
+  // line per main member, priced by weight class. Off for projects created
+  // before the feature; on for new ones (POST /api/projects sets it).
+  handlingEnabled  Boolean   @default(false)
+
   // Cross-item stock nesting: pool cut lengths across items onto shared sticks
   nestingEnabled   Boolean   @default(false)
   nestKerfIn       Float     @default(0.25)  // saw kerf per cut, inches
@@ -279,6 +284,9 @@ model Material {
   // item only affects the picker, never the numbers.
   hardwareItemId Int?
 
+  // Per-piece handling opt-out for this member (no auto handling line)
+  handlingExcluded Boolean @default(false)
+
   // Parent relationship
   itemId         Int
   item           Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -336,6 +344,13 @@ model MaterialFabrication {
 
   // Per-op length in inches/feet for IN/LF-unit ops (qty × length × rate)
   length       Float?
+  // Per-piece handling auto line (lib/estimating/handling.js): kind "auto",
+  // its weight class (HandlingClass.code) and whether the estimator pinned
+  // the class (otherwise it re-derives from the piece weight).
+  handlingKind   String?
+  handlingClass  String?
+  handlingPinned Boolean @default(false)
+
   // Connection galvanizing (separate from the material-level galv flag)
   galvanized   Boolean @default(false)
   galvWeight   Float?
@@ -863,4 +878,22 @@ model HardwareItem {
 
   @@unique([family, name, diameter, length, finish])
   @@index([kind, active])
+}
+
+// =============================================================================
+// PER-PIECE HANDLING CLASSES
+// =============================================================================
+// Weight brackets for one piece (member + attachments) with minutes per piece;
+// $/piece = minutes ÷ 60 × PricingRates.shopLaborRatePerHr. Seeded by the
+// handling_classes migration with 0 minutes — Samantha fills them in.
+model HandlingClass {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique          // HL1 … HL5
+  name            String
+  minLb           Float    @default(0)
+  maxLb           Float?                    // null = open-ended
+  minutesPerPiece Float    @default(0)
+  sortOrder       Int      @default(0)
+  active          Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
 }
