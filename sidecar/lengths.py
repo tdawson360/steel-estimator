@@ -121,6 +121,21 @@ class Chain:
         return all(abs((x1 - x0) * (y - y0) - (y1 - y0) * (x - x0)) / L < 1.5 for x, y in self.pts[1:-1])
 
 
+def _extend_pts(pts, chain, s_old, s_new, at_start):
+    """Move the first/last vertex of a sliced polyline along the chain's end
+    tangent to parameter s_new, which may lie beyond the drawn chain."""
+    if at_start:
+        a, b = chain.pts[1], chain.pts[0]
+    else:
+        a, b = chain.pts[-2], chain.pts[-1]
+    L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+    u = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+    d = abs(s_new - s_old)
+    end = pts[0] if at_start else pts[-1]
+    new = (end[0] + u[0] * d, end[1] + u[1] * d)
+    return [new] + pts[1:] if at_start else pts[:-1] + [new]
+
+
 def _simplify(pts, tol=1.0):
     if len(pts) <= 2:
         return pts
@@ -408,6 +423,69 @@ def local_weight(chain, s, reach):
     return max(ws) if ws else None
 
 
+EXTEND_FT = 6.0     # ft: how far a free member end may reach out to the line it frames into
+
+
+def ray_hits(p, u, reach, chains, exclude):
+    """Chains crossed by the segment p -> p + u*reach: [(dist, other, s_on_other)]."""
+    q = (p[0] + u[0] * reach, p[1] + u[1] * reach)
+    x0, x1 = sorted((p[0], q[0]))
+    y0, y1 = sorted((p[1], q[1]))
+    out = []
+    for o in chains:
+        if o is exclude:
+            continue
+        if max(x for x, _ in o.pts) < x0 - 1 or min(x for x, _ in o.pts) > x1 + 1:
+            continue
+        if max(y for _, y in o.pts) < y0 - 1 or min(y for _, y in o.pts) > y1 + 1:
+            continue
+        for j, b0, b1 in o.segments():
+            r = _seg_x(p, q, b0, b1)
+            if r is None:
+                continue
+            ta, tb = r
+            if not (0.0 <= ta <= 1.0 and -0.02 <= tb <= 1.02):
+                continue
+            Lb = math.hypot(b1[0] - b0[0], b1[1] - b0[1])
+            out.append((ta * reach, o, o.cum[j] + max(0.0, min(1.0, tb)) * Lb))
+    out.sort(key=lambda h: h[0])
+    return out
+
+
+def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, page_dim):
+    """Where an estimator would end this member: the nearest line it frames
+    into, found by extending the member's own line past the drawn end.
+    Priority: equal-or-heavier labelled member, then a sheet-spanning grid
+    line, then any unlabelled drawn line; lighter members are ignored.
+    Returns the new s (may equal s_end)."""
+    if len(chain.pts) < 2:
+        return s_end
+    p = chain.point_at(s_end)
+    a, b = (chain.pts[-2], chain.pts[-1]) if outward > 0 else (chain.pts[1], chain.pts[0])
+    L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+    u = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+    best = None                                       # (priority, dist)
+    for dist, other, sb in ray_hits(p, u, extend, chains, chain):
+        if dist < 0.5:
+            continue
+        w = local_weight(other, sb, reach_label)
+        if w is not None:
+            if w < own_weight - 1e-6:
+                continue
+            pri = 0
+        elif page_dim and other.length > 0.6 * page_dim:
+            pri = 1
+        elif other.pieces > 1 or other.width >= 0.5 * max(chain.width, 0.01):
+            pri = 2
+        else:
+            continue
+        if best is None or (pri, dist) < best:
+            best = (pri, dist)
+    if best is None:
+        return s_end
+    return s_end + best[1] if outward > 0 else s_end - best[1]
+
+
 def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
     """A through-crossing cuts the member when the crossing line is, at that
     point, an equal-or-heavier member, or an unlabelled drawn (multi-piece)
@@ -478,22 +556,38 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
             continue
         if id(ch) not in xcache:
             xcache[id(ch)] = crossings(ch, chains)
-        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], weights.get(c.get("key"), 0.0), reach,
-                                 page_dim=min(page.rect.width, page.rect.height))
+        page_dim = min(page.rect.width, page.rect.height)
+        own_w = weights.get(c.get("key"), 0.0)
+        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], own_w, reach, page_dim=page_dim)
         c["cuts"] = (lo, hi, [(round(s), round(o.length), o.pieces, thr, local_weight(o, sb, reach)) for s, o, thr, sb in xcache[id(ch)] if abs(s - c["s"]) < 300])
+        free_lo, free_hi = lo == 0.0, hi == ch.length
         # each callout owns the stretch nearest it
         for s_other, _, _, other in ch.callouts:
             if other is c:
                 continue
             mid = (s_other + c["s"]) / 2
-            if s_other < c["s"]:
-                lo = max(lo, mid)
-            else:
-                hi = min(hi, mid)
+            if s_other < c["s"] and mid > lo:
+                lo, free_lo = mid, False
+            elif s_other > c["s"] and mid < hi:
+                hi, free_hi = mid, False
         if hi - lo < 1:
             c["len_note"] = "zero-length extent"
             continue
-        c["seg"] = ch.slice(lo, hi)
+        # Estimators measure to the line a member frames into, not to where
+        # the drafter stopped the stroke: reach out from each free end.
+        extend = EXTEND_FT * (ppf or 9)
+        pts = ch.slice(lo, hi)
+        if free_lo:
+            lo2 = snap_end(ch, lo, -1, chains, own_w, reach, extend, page_dim)
+            if lo2 < lo:
+                pts = _extend_pts(pts, ch, lo, lo2, at_start=True)
+                lo = lo2
+        if free_hi:
+            hi2 = snap_end(ch, hi, +1, chains, own_w, reach, extend, page_dim)
+            if hi2 > hi:
+                pts = _extend_pts(pts, ch, hi, hi2, at_start=False)
+                hi = hi2
+        c["seg"] = pts
         if not ppf:
             c["len_note"] = "no sheet scale found"
             continue

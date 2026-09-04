@@ -72,6 +72,24 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
   vector steel + stroke-font text. Both need one raster path. Count-only now works on both.
 - Python deps: numpy, opencv-python-headless, rapidocr, onnxruntime (all pip on 3.14).
 
+## 2026-09-04 evening: CAB IAH100 (Walter P Moore) - the standard case
+
+- Fully vector, real text, scale note on every plan. Todd's markups: 419 polylines on S-209.
+- Vector length step, no set-specific tuning: 34% of callouts within 2 ft. After this round:
+  58%. Changes: SJI joist callouts (152/152 exact count), rejoin member lines broken around
+  their label (only when a text box sits in the gap), never cut at sheet-spanning grids or
+  lines much thinner than the member, penalise thin strokes when anchoring, 6 ft label gate.
+- W-shape totals on S-209 mostly within 10-15% of Todd's (W27x84 517/560, W12x14 182/191,
+  W16x36 159/198, W12x16 132/141). Joists 3,900 LF vs 5,030: drawn joist lines stop 1-3 ft
+  short of the girder centerlines Todd snaps to -> next fix is snapping member ends to the
+  nearest heavier crossing within ~3 ft.
+- "TYP" items Todd multiplies by hand (86 HSS5x5 kickers from 12 labels, 52 L6x6x1/2 RTU curb
+  angles from 1 label, 13 HSS14x6x5/8 canopy beams) are the other big gap: needs pattern
+  counting (repeated symbols/rectangles per label), not length logic.
+- Todd's verdict on the fringe sets: Weslayan/San Esteban were edge cases; scoping tool should
+  stay high-level (stairs, rails, canopies, countertop supports), aluminum/stainless/bronze ARE
+  Berger scope, and scope output should be Revu boxes, not markdown.
+
 ## Goal
 
 First-pass structural steel takeoff from bid PDFs — member counts, tonnage, then lengths — ingested into the estimator through the existing importer. Bluebeam Revu remains the human review surface. This is not a new app and not a Bluebeam replacement.
