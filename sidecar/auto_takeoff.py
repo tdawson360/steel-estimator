@@ -88,8 +88,15 @@ def sheet_info(page):
                 cands.append((rank, dist, t))
                 break
     title = min(cands)[2] if cands else ""
-    if not number:
-        lab = page.get_label() or ""
+    # A PDF page label of the form "S-61003 - STEEL FRAMING DETAILS - ROOF"
+    # (Bluebeam-combined sets) names the sheet better than title-block
+    # heuristics, which can latch onto a note like "EL COLUMN, RE: PLAN".
+    lab = page.get_label() or ""
+    m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?)\s*[-:]\s*(.+)$", lab.upper())
+    if m:
+        number = number or m.group(1)
+        title = m.group(2).strip()
+    elif not number:
         m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,3}(?:\.\d{1,2})?)", lab.upper())
         if m:
             number = m.group(1)

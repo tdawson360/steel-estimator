@@ -337,7 +337,31 @@ def looks_like_leader(chain, bbox):
 
 # ── anchoring ─────────────────────────────────────────────────────────
 
-def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
+def member_width(chains, callouts):
+    """Typical stroke width of labelled member lines on this sheet: the
+    median width of the nearest line under each label (labels sit on or
+    right beside their member).  Thin is judged relative to this, so a
+    sheet drawn entirely in 0.36 pt lines has nothing 'thin'."""
+    ws = []
+    for c in callouts:
+        bb = pymupdf.Rect(c["bbox"])
+        pt = ((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2)
+        best = None
+        for ch in chains:
+            if ch.width == 0 or ch.is_closed():
+                continue
+            n = ch.nearest(*pt)
+            if n and n[0] <= 15 and (best is None or n[0] < best[0]):
+                best = (n[0], ch.width)
+        if best:
+            ws.append(best[1])
+    if not ws:
+        return 0.0
+    ws.sort()
+    return ws[len(ws) // 2]
+
+
+def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset(), thin_below=0.5):
     """Nearest chain to pt running parallel to angle: (chain, s, dist, note).
     Solid strokes win over dashed ones at equal distance (dashed is usually
     existing or hidden work).  Falls back to the nearest multi-piece chain of
@@ -353,7 +377,9 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
             continue
         d, s, direction = n
         # member lines are drawn heavier than grid, dimension and hidden work
-        thin = 30 if ch.width < 0.5 else 0
+        thin = 30 if ch.width < thin_below else 0
+        if thin and angle is None:
+            continue                        # a leader arrow never points at grid work
         score = d + thin + (15 if ch.width > 2.5 else 0) + (40 if ch.pieces > 1 else 0)
         if angle is not None:
             da = abs(direction - (angle % 180))
@@ -375,38 +401,68 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
     return None, None, None, "no member line near callout", None
 
 
+MOVE_MAX = 40.0     # pt: a label only moves to a second-best line that scored within this
+
+
+def _move(c, sec, weights, note):
+    old = c["chain"]
+    old.callouts = [t for t in old.callouts if t[3] is not c]
+    c["chain"], c["s"], c["lateral"] = sec[1], sec[2], sec[3]
+    c["second"], c["moved"] = None, True
+    c["anchor_note"] = "; ".join(n for n in (c["anchor_note"], note) if n)
+    sec[1].callouts.append((sec[2], weights.get(c.get("key"), 0.0), c.get("key"), c))
+
+
+def _detach(c, note):
+    old = c["chain"]
+    old.callouts = [t for t in old.callouts if t[3] is not c]
+    c["chain"], c["s"], c["second"], c["moved"] = None, None, None, True
+    c["anchor_note"] = "; ".join(n for n in (c["anchor_note"], note) if n)
+
+
 def resolve_conflicts(callouts, weights, ppf, near_ft=3.0):
-    """Two labels of different sizes cannot both name the same spot on one
-    line (a beam replacing a joist in a bay draws the neighbouring joist's
-    label onto the beam line).  Move whichever label is cheaper to move,
-    i.e. whose second-best line scored nearly as well, to that line."""
-    for _ in range(2):
+    """Labels that landed on the wrong line.
+
+    1. A label much lighter than the heaviest label on its line is an
+       attachment or a neighbour (kicker angle beside a girder, joist label
+       beside a beam that replaced a joist): it moves to its second-best
+       line if that scored nearly as well, otherwise it becomes count-only
+       rather than claiming a stretch of the heavy member.
+    2. Two labels of different sizes within a few feet of each other on one
+       line: whichever has the better second choice moves there."""
+    for _ in range(3):
         moved = False
         by_chain = {}
         for c in callouts:
             if c.get("chain") is not None:
                 by_chain.setdefault(id(c["chain"]), []).append(c)
         for group in by_chain.values():
+            ws = [weights.get(c.get("key"), 0.0) for c in group]
+            heaviest = max(ws) if ws else 0.0
+            if heaviest > 0 and len(group) > 1:
+                for c, w in zip(group, ws):
+                    if c.get("moved") or w >= 0.5 * heaviest:
+                        continue
+                    sec = c.get("second")
+                    if sec and sec[0] - c["lateral"] <= MOVE_MAX:
+                        _move(c, sec, weights, "moved off a heavier member's line")
+                    else:
+                        _detach(c, f"label sits on a heavier member's line ({max(group, key=lambda g: weights.get(g.get('key'), 0.0)).get('key')}): attachment, count only")
+                    moved = True
+                if moved:
+                    continue
             group.sort(key=lambda c: c["s"])
             for a, b in zip(group, group[1:]):
                 if a.get("key") == b.get("key") or abs(a["s"] - b["s"]) > near_ft * ppf:
                     continue
                 if a.get("moved") or b.get("moved"):
                     continue
-                cands = []
-                for c in (a, b):
-                    sec = c.get("second")
-                    if sec:
-                        cands.append((sec[0] - c["lateral"], c, sec))
+                cands = [(c["second"][0] - c["lateral"], c, c["second"]) for c in (a, b)
+                         if c.get("second") and c["second"][0] - c["lateral"] <= MOVE_MAX]
                 if not cands:
                     continue
                 cost, c, sec = min(cands, key=lambda t: t[0])
-                old = c["chain"]
-                old.callouts = [t for t in old.callouts if t[3] is not c]
-                c["chain"], c["s"], c["lateral"] = sec[1], sec[2], sec[3]
-                c["second"], c["moved"] = None, True
-                c["anchor_note"] = "; ".join(n for n in (c["anchor_note"], "moved off a line another size had claimed") if n)
-                sec[1].callouts.append((sec[2], weights.get(c.get("key"), 0.0), c.get("key"), c))
+                _move(c, sec, weights, "moved off a line another size had claimed")
                 moved = True
         if not moved:
             break
@@ -579,16 +635,17 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
     # any short single stroke ending at an arrowhead is a leader, never a member
     leaders = frozenset(id(ch) for ch in chains if ch.pieces == 1 and ch.length <= 250 and any(
         math.hypot(px - tx, py - ty) <= 8 for px, py in (ch.pts[0], ch.pts[-1]) for tx, ty in tips))
+    thin_below = 0.5 * member_width(chains, callouts)
     for c in callouts:
         bb = pymupdf.Rect(c["bbox"])
         tip = leader_tip(bb, tips, paths)
         if tip:
             c["anchor"], c["anchor_pt"] = "leader", tip
-            ch, s, d, note, second = anchor_chain(chains, tip, None, LEADER_TIP_MAX, bb, leaders)
+            ch, s, d, note, second = anchor_chain(chains, tip, None, LEADER_TIP_MAX, bb, leaders, thin_below)
         else:
             centre = ((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2)
             c["anchor"], c["anchor_pt"] = "text", centre
-            ch, s, d, note, second = anchor_chain(chains, centre, -c["angle"], lateral_max, bb, leaders)
+            ch, s, d, note, second = anchor_chain(chains, centre, -c["angle"], lateral_max, bb, leaders, thin_below)
         # HSS labels on a plan are usually columns or kickers seen end-on:
         # only trust a drawn line that is parallel and right beside the text.
         if str(c.get("key", "")).upper().startswith("HSS") and \
