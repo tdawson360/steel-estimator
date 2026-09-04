@@ -43,6 +43,7 @@ Takeoffs are done in-house with Bluebeam Revu; Todd shares the profile/toolkit w
 - Canonical files (repo root): `Steel_Estimator_Takeoff_v1.7.bpx` (profile: 23 custom columns, choice lists, Allow Custom Text on the op columns + Shape_Size) and `BIW_Steel_Tool_Kit_v1.7.btx` (22 measurement tools, clean presets).
 - **Version the internal names** when shipping new files (profile `Name`, toolkit `Title`) — Revu will not replace a loaded same-named profile/tool set, and hand-edited column XML is ignored on import. The reliable loop: fix columns in Revu's UI → export → that export is the new canonical bpx.
 - Markups list → CSV export → **Import CSV** in the app (`/api/import-csv`, logic in `lib/estimating/import-takeoff.js`).
+- **Auto takeoff** (`sidecar/`, Python + PyMuPDF; plan in `docs/auto-takeoff-pipeline.md`): counts AISC callouts on structural framing plans and writes Revu-readable annotations carrying the v1.7 custom columns. Validates sizes against `sidecar/aisc-shapes.json` (regenerate with `node scripts/export-aisc-shapes.mjs`). Bid PDFs live outside the repo (`C:\Projects\bid-samples`).
 
 ### CSV contract (essentials)
 

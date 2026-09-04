@@ -29,3 +29,6 @@ tests/.tmp-*.db
 
 # dev-server build dir (NEXT_DIST_DIR)
 .next-dev/
+
+# Python sidecar
+sidecar/__pycache__/
