@@ -29,7 +29,23 @@ import shapes                                   # noqa: E402
 from auto_takeoff import page_callouts, sheet_info   # noqa: E402
 
 
-def markup_polylines(mdoc, pno, ppf_at):
+SIZE_COLUMNS = ("Shape_Size", "(Non-Flat) Mat Size", "Material Size", "Mat Size")
+
+
+def size_column_indexes(mdoc):
+    """Which custom-column slots hold the member size in this markup file
+    (profiles changed over the years: Shape_Size today, '(Non-Flat) Mat
+    Size' / 'Material Size' in the older estimating profile)."""
+    cols = mdoc.xref_get_key(mdoc.pdf_catalog(), "BSIAnnotColumns")
+    if cols[0] != "xref":
+        return [4]
+    raw = re.findall(r"/Name \(((?:\\.|[^)\\])*)\)", mdoc.xref_object(int(cols[1].split()[0])))
+    names = [n.replace("\\(", "(").replace("\\)", ")") for n in raw]
+    idx = [names.index(n) for n in SIZE_COLUMNS if n in names]
+    return idx or [4]
+
+
+def markup_polylines(mdoc, pno, ppf_at, size_idx):
     out = []
     page = mdoc[pno]
     for a in page.annots():
@@ -38,8 +54,9 @@ def markup_polylines(mdoc, pno, ppf_at):
         v = a.vertices
         L = sum(math.hypot(v[i + 1][0] - v[i][0], v[i + 1][1] - v[i][1]) for i in range(len(v) - 1))
         cols = re.findall(r"\(([^)]*)\)", mdoc.xref_get_key(a.xref, "BSIColumnData")[1] or "")
-        size = cols[4] if len(cols) > 4 else ""
-        out.append({"key": shapes.norm(size), "size": size, "ft": L / ppf_at(v[0]), "v": v, "used": False})
+        size = next((cols[i] for i in size_idx if i < len(cols) and cols[i].strip()), "")
+        out.append({"key": shapes.norm(size), "size": size, "subject": a.info.get("subject", ""),
+                    "ft": L / ppf_at(v[0]), "v": v, "used": False})
     return out
 
 
@@ -89,7 +106,7 @@ def nearest_poly(polys, c, same_size_reach=150, any_size_reach=25):
     return None
 
 
-def score_page(doc, mdoc, pno, weights, use_ocr):
+def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
     page = doc[pno]
     calls = page_callouts(page)
     if not calls and use_ocr:
@@ -99,10 +116,14 @@ def score_page(doc, mdoc, pno, weights, use_ocr):
         c["key"] = shapes.resolve(c["fam"], c["dims"])[0]
     calls = [c for c in calls if c["key"]]
     regions = lengths.scale_regions(page)
+    extra = None
+    if len(page.get_images()) >= 4:                    # rasterised linework: add strokes from the tiles
+        import raster
+        extra, _, _ = raster.raster_polylines(page)
     for rect, ppf in (regions or [(None, None)]):
         group = [c for c in calls if rect is None or rect.contains(pymupdf.Point((c["bbox"].x0 + c["bbox"].x1) / 2, (c["bbox"].y0 + c["bbox"].y1) / 2))]
         if group:
-            lengths.measure(page, group, weights, ppf)
+            lengths.measure(page, group, weights, ppf, extra_segments=extra)
     vps = markup_viewports(mdoc, pno)
 
     def ppf_at(pt):
@@ -114,7 +135,7 @@ def score_page(doc, mdoc, pno, weights, use_ocr):
                 return p
         return regions[0][1] if regions else 9.0
 
-    polys = markup_polylines(mdoc, pno, ppf_at)
+    polys = markup_polylines(mdoc, pno, ppf_at, size_idx)
     res = {"callouts": len(calls), "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
            "lf_auto": collections.defaultdict(float), "lf_todd": collections.defaultdict(float),
            "n_auto": collections.Counter(), "n_todd": collections.Counter()}
@@ -148,11 +169,12 @@ def run(root, jobs, use_ocr):
     for d in sorted(root.iterdir()):
         if not d.is_dir() or (jobs and d.name not in jobs):
             continue
-        sets = [p for p in d.glob("*.pdf") if not p.name.startswith("MARKUPS_")]
-        marks = list(d.glob("MARKUPS_*.pdf"))
+        marks = [p for p in d.glob("*.pdf") if "MARKUPS_" in p.name.upper()]
+        sets = [p for p in d.glob("*.pdf") if p not in marks]
         if not sets or not marks:
             continue
         doc, mdoc = pymupdf.open(sets[0]), pymupdf.open(marks[0])
+        size_idx = size_column_indexes(mdoc)
         lines += [f"## {d.name}", "", f"`{sets[0].name}` ({doc.page_count} pages) vs `{marks[0].name}`", "",
                   "| Page | Sheet | Title | Callouts | Measured | Todd polylines | Matched | ≤1 ft | ≤2 ft |", "|---|---|---|---|---|---|---|---|---|"]
         job = collections.Counter()
@@ -168,7 +190,7 @@ def run(root, jobs, use_ocr):
                 continue
             if not doc[pno].get_text().strip() and not use_ocr:
                 continue
-            r = score_page(doc, mdoc, pno, weights, use_ocr)
+            r = score_page(doc, mdoc, pno, weights, use_ocr, size_idx)
             if not r["callouts"] and not r["polylines"]:
                 continue
             if not is_plan:
