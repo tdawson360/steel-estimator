@@ -54,6 +54,72 @@ def sheet_scale(page):
     return None
 
 
+def scale_notes(page):
+    """[(x, y, ppf)] for every scale note on the page (y-down page points)."""
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        for l in b["lines"]:
+            s = "".join(sp["text"] for sp in l["spans"])
+            for m in SCALE_RE.finditer(s):
+                inch = eval_frac(m.group(1))
+                feet = int(m.group(2)) + (int(m.group(3) or 0)) / 12.0
+                if inch > 0 and feet > 0:
+                    x0, y0, x1, y1 = l["bbox"]
+                    out.append(((x0 + x1) / 2, (y0 + y1) / 2, inch * 72.0 / feet))
+    return out
+
+
+def scale_regions(page, row_gap=60.0):
+    """Drawing regions and their scales, the way an estimator sets Bluebeam
+    scaling windows: one window per plan on the sheet.
+
+    Scale notes sit under plan titles, so notes at the same height form a
+    row of plans; a row's window runs from just below the previous row's
+    notes down to its own notes, and a row with plans at different scales
+    is split at the midpoints between its notes.  Returns [(Rect, ppf)] in
+    page (y-down) coordinates; a sheet with one scale gets one window."""
+    r = page.rect
+    notes = sorted(scale_notes(page), key=lambda n: (n[1], n[0]))
+    if not notes:
+        return []
+    rows, cur = [], [notes[0]]
+    for n in notes[1:]:
+        if n[1] - cur[-1][1] <= row_gap:
+            cur.append(n)
+        else:
+            rows.append(cur)
+            cur = [n]
+    rows.append(cur)
+    regions = []
+    top = r.y0
+    for row in rows:
+        row.sort(key=lambda n: n[0])
+        bottom = max(n[1] for n in row) + 20
+        if len({round(n[2], 3) for n in row}) == 1:
+            regions.append((pymupdf.Rect(r.x0, top, r.x1, bottom), row[0][2]))
+        else:
+            left = r.x0
+            for i, n in enumerate(row):
+                right = (n[0] + row[i + 1][0]) / 2 if i + 1 < len(row) else r.x1
+                regions.append((pymupdf.Rect(left, top, right, bottom), n[2]))
+                left = right
+        top = bottom
+    # whatever lies below the last row (title block strip etc.) keeps the last scale
+    if regions and regions[-1][0].y1 < r.y1:
+        last = regions[-1]
+        regions[-1] = (pymupdf.Rect(last[0].x0, last[0].y0, last[0].x1, r.y1), last[1])
+    return regions
+
+
+def region_for(regions, pt):
+    for rect, ppf in regions:
+        if rect.contains(pymupdf.Point(*pt)):
+            return rect, ppf
+    return (regions[0] if regions else (None, None))
+
+
 # ── chains ────────────────────────────────────────────────────────────
 
 @dataclass
@@ -368,14 +434,16 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset(), th
     any direction (curved edges, labels aligned to the curve)."""
     best, fallback, second = None, None, None
     for ch in chains:
-        if id(ch) in skip or (bbox is not None and looks_like_leader(ch, bbox)):
-            continue
-        if ch.width == 0 or ch.is_closed():
-            continue                        # fills, symbols, column/opening outlines
+        if id(ch) in skip or ch.width == 0 or ch.is_closed():
+            continue                        # leaders, fills, symbols, column/opening outlines
         n = ch.nearest(*pt)
         if n is None or n[0] > max_lateral:
             continue
         d, s, direction = n
+        parallel = angle is not None and min(abs(direction - (angle % 180)), 180 - abs(direction - (angle % 180))) <= PARALLEL_TOL
+        member_like = parallel and ch.length >= 27 and ch.width >= thin_below       # >= 3 ft at 1/8", member weight
+        if bbox is not None and not member_like and looks_like_leader(ch, bbox):
+            continue                        # a leader / shoulder ending at the text, not a member beside it
         # member lines are drawn heavier than grid, dimension and hidden work
         thin = 30 if ch.width < thin_below else 0
         if thin and angle is None:
@@ -394,6 +462,8 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset(), th
             best = (score, ch, s, d)
         elif second is None or score < second[0]:
             second = (score, ch, s, d)
+    if best and second and second[0] - best[0] <= 6 and second[1].length >= 3 * best[1].length:
+        best, second = second, best        # a doubled stub beside the real member line
     if best:
         return best[1], best[2], best[3], "", second
     if fallback:
@@ -444,7 +514,7 @@ def resolve_conflicts(callouts, weights, ppf, near_ft=3.0):
                     if c.get("moved") or w >= 0.5 * heaviest:
                         continue
                     sec = c.get("second")
-                    if sec and sec[0] - c["lateral"] <= MOVE_MAX:
+                    if sec and sec[0] - c["lateral"] <= MOVE_MAX and sec[1].length >= 2 * ppf:
                         _move(c, sec, weights, "moved off a heavier member's line")
                     else:
                         _detach(c, f"label sits on a heavier member's line ({max(group, key=lambda g: weights.get(g.get('key'), 0.0)).get('key')}): attachment, count only")
@@ -458,7 +528,8 @@ def resolve_conflicts(callouts, weights, ppf, near_ft=3.0):
                 if a.get("moved") or b.get("moved"):
                     continue
                 cands = [(c["second"][0] - c["lateral"], c, c["second"]) for c in (a, b)
-                         if c.get("second") and c["second"][0] - c["lateral"] <= MOVE_MAX]
+                         if c.get("second") and c["second"][0] - c["lateral"] <= MOVE_MAX
+                         and c["second"][1].length >= 2 * ppf]
                 if not cands:
                     continue
                 cost, c, sec = min(cands, key=lambda t: t[0])
@@ -639,17 +710,21 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
     for c in callouts:
         bb = pymupdf.Rect(c["bbox"])
         tip = leader_tip(bb, tips, paths)
+        ch = None
         if tip:
             c["anchor"], c["anchor_pt"] = "leader", tip
             ch, s, d, note, second = anchor_chain(chains, tip, None, LEADER_TIP_MAX, bb, leaders, thin_below)
-        else:
+        if ch is None:                       # no leader, or the arrow we found was not ours
             centre = ((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2)
             c["anchor"], c["anchor_pt"] = "text", centre
             ch, s, d, note, second = anchor_chain(chains, centre, -c["angle"], lateral_max, bb, leaders, thin_below)
         # HSS labels on a plan are usually columns or kickers seen end-on:
         # only trust a drawn line that is parallel and right beside the text.
+        # HSS labels with a leader at an angle are columns or kickers seen
+        # end-on (length from sections); HSS labelled along a drawn line are
+        # beams and measure like any other member.
         if str(c.get("key", "")).upper().startswith("HSS") and \
-                (ch is None or note or d > 4 * (ppf or 9) or ch.pieces < 2):
+                (ch is None or note or d > 3 * (ppf or 9)):
             ch, s, d, note = None, None, None, "HSS: length from sections, not plan"
         c["chain"], c["s"], c["lateral"], c["anchor_note"] = ch, s, d, note
         c["second"] = second

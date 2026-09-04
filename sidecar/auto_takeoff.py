@@ -211,14 +211,30 @@ class Scale:
         self.by_ppf[ppf] = xref
         return xref
 
-    def install_viewport(self, page, ppf):
-        mx = self.measure_xref(ppf)
-        r = page.rect
-        vp = self.doc.get_new_xref()
-        self.doc.update_object(vp, f"<< /Type /Viewport /BBox [0 0 {r.width:g} {r.height:g}] "
-                                   f"/Measure {mx} 0 R /NM {pdf_string(new_name())} >>")
-        self.doc.xref_set_key(page.xref, "VP", f"[{vp} 0 R]")
-        return mx
+    def install_viewports(self, page, regions):
+        """One Bluebeam-style scaling window per drawing region; returns
+        {ppf: measure xref} for the annotations to reference."""
+        H = page.rect.height
+        refs, out = [], {}
+        for rect, ppf in regions:
+            mx = self.measure_xref(ppf)
+            out[ppf] = mx
+            vp = self.doc.get_new_xref()
+            bbox = f"[{rect.x0:g} {H - rect.y1:g} {rect.x1:g} {H - rect.y0:g}]"     # PDF y-up
+            self.doc.update_object(vp, f"<< /Type /Viewport /BBox {bbox} /Measure {mx} 0 R "
+                                       f"/Name (Viewport) /NM {pdf_string(new_name())} >>")
+            refs.append(f"{vp} 0 R")
+        if refs:
+            self.doc.xref_set_key(page.xref, "VP", "[" + " ".join(refs) + "]")
+        return out
+
+
+def scale_text(ppf):
+    """9 pt/ft -> '1/8" = 1\\'-0"'."""
+    from fractions import Fraction
+    f = Fraction(ppf / 72.0).limit_denominator(64)
+    inch = f"{f.numerator}/{f.denominator}" if f.denominator > 1 else str(f.numerator)
+    return f"{inch}\" = 1'-0\""
 
 
 def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xref):
@@ -277,10 +293,11 @@ def run(args):
             if found and not number:
                 number = ocr.ocr_sheet_number(page, title_block_clip(page))
                 labels[-1] = number or labels[-1]
-        ppf = lengths.sheet_scale(page) if annotate else None
+        regions = lengths.scale_regions(page) if annotate else []
+        ppf = regions[0][1] if regions else None
         rec = {"page": pno + 1, "sheet": number or "?", "title": title, "kind": kind,
                "chars": chars, "hits": len(found), "annotated": annotate, "source": source,
-               "scale": f"{72 / ppf:g}\" = 1'" if ppf else ""}
+               "scale": "; ".join(sorted({scale_text(p) for _, p in regions})) if regions else ""}
         sheets.append(rec)
         if not annotate:
             continue
@@ -294,8 +311,16 @@ def run(args):
                 if raster.has_raster_linework(page):
                     extra, _, _ = raster.raster_polylines(page, dpi=args.raster_dpi)
                     rec["raster"] = len(extra)
-            lengths.measure(page, resolved, weights, ppf, extra_segments=extra)
-        measure_xref = scale.install_viewport(page, ppf) if (ppf and args.lengths) else None
+            # one pass per scaling window, like Bluebeam's per-plan viewports
+            for rect, rppf in (regions or [(None, None)]):
+                group = [h for h in resolved if rect is None or rect.contains(
+                    pymupdf.Point((h["bbox"].x0 + h["bbox"].x1) / 2, (h["bbox"].y0 + h["bbox"].y1) / 2))]
+                if not group:
+                    continue
+                lengths.measure(page, group, weights, rppf, extra_segments=extra)
+                for h in group:
+                    h["ppf"] = rppf
+        xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         for h in found:
             row = {**rec, **h}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
@@ -315,6 +340,7 @@ def run(args):
             if h.get("note_extra"):
                 len_note = "; ".join(n for n in (h["note_extra"], len_note) if n)
             row["length_ft"] = ft
+            measure_xref = xrefs.get(h.get("ppf"))
             if ft and measure_xref and h.get("seg") and h.get("confident"):
                 notes = "AUTO LEN" + (f" CHECK: {len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
