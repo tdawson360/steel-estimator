@@ -117,8 +117,8 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
     calls = [c for c in calls if c["key"]]
     regions = lengths.scale_regions(page)
     extra = None
-    if len(page.get_images()) >= 4:                    # rasterised linework: add strokes from the tiles
-        import raster
+    import raster
+    if raster.has_raster_linework(page):               # rasterised linework: add strokes from the tiles
         extra, _, _ = raster.raster_polylines(page)
     groups = {}
     for c in calls:

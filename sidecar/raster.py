@@ -64,8 +64,17 @@ def page_images_canvas(page, dpi=200):
     return canvas, scale
 
 
-def has_raster_linework(page, min_tiles=4):
-    return len(page.get_images()) >= min_tiles
+def has_raster_linework(page, min_cover=0.25):
+    """True when image tiles cover a good share of the sheet (rasterised
+    drawing content), not when the page merely carries logos, hatch pattern
+    cells or a thousand tiny symbol bitmaps."""
+    page_area = page.rect.get_area() or 1.0
+    covered = 0.0
+    for info in page.get_image_info():
+        r = pymupdf.Rect(info["bbox"])
+        if r.width >= 100 and r.height >= 100:
+            covered += r.get_area()
+    return covered / page_area >= min_cover
 
 
 def ink_mask(canvas, black=BLACK):
