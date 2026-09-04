@@ -1,16 +1,19 @@
-"""Auto-takeoff step 1: count AISC member callouts on structural framing plans
-and write them back as Revu-readable annotations.
+"""Auto-takeoff: count AISC member callouts on structural framing plans, draft
+their lengths from the plan's line work, and write both back as Revu-readable
+annotations.
 
     python sidecar/auto_takeoff.py "bid.pdf" [-o out.pdf] [--sheets S2.11,S2.12]
-                                   [--item 1] [--desc "STRUCTURAL FRAMING"]
+                                   [--item 1] [--desc "STRUCTURAL FRAMING"] [--no-lengths]
 
 For every framing-plan sheet the script finds each shape designation in the
 PDF's text layer (any rotation), validates it against the estimator's own AISC
-table, and draws a rectangle annotation over the callout.  Each rectangle
-carries the v1.7 profile's custom columns (Shape_Size, Drawing_Ref, Notes, ...)
-so Revu's Markups List shows them immediately and the normal CSV export feeds
-the estimator's importer.  Unresolved callouts get a red "Auto Exception"
-rectangle whose Notes say why.  Lengths are NOT measured yet (step 4).
+table, and measures the member under it (sidecar/lengths.py).  A callout with
+a length becomes a PolyLine measurement in the toolkit's subject and colour,
+calibrated to the sheet scale so Revu shows feet-inches and the estimator can
+drag its ends; a callout without one becomes a rectangle over the text (count
+only).  Every annotation carries the v1.7 profile's custom columns so Revu's
+Markups List and CSV export work unchanged.  Unresolved callouts get a red
+dashed "Auto Exception" rectangle whose Notes say why.
 
 Outputs, next to the annotated PDF: a Markdown report and a CSV of every hit.
 """
@@ -21,12 +24,13 @@ import math
 import re
 import sys
 import uuid
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 import pymupdf
 
 sys.path.insert(0, str(Path(__file__).parent))
+import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
                           load_toolkit, pdf_string)
@@ -38,6 +42,7 @@ KINDS = [("plan", r"\bPLAN"), ("section", r"\bSECTION|\bDETAIL"), ("schedule", r
 FAMILY_SUBJECT = {"W": "Stl W Beam", "WT": "Stl WT", "C": "Stl C", "MC": "Stl MC", "PIPE": "Stl Pipe"}
 EXCEPTION_SUBJECT = "Auto Exception"
 AUTHOR = "Auto Takeoff"
+TARGET_UNIT = 0.001157407          # Revu's pt -> ft constant (1 / 864)
 
 
 def latest(pattern):
@@ -104,7 +109,7 @@ def sheet_info(page):
 
 def page_callouts(page):
     """Every AISC-looking designation on the page outside the title block:
-    dicts with raw, fam, dims, bbox, angle."""
+    dicts with raw, fam, dims, bbox, angle (degrees, y-up)."""
     tb = title_block_clip(page)
     out = []
     for b in page.get_text("dict")["blocks"]:
@@ -152,6 +157,15 @@ class Labeler:
         return t.color if t else (1, 0, 0)
 
 
+def feet_inches(ft):
+    total_in = int(round(ft * 12))
+    return f"{total_in // 12}'-{total_in % 12}\""
+
+
+def new_name():
+    return "AUTO-" + uuid.uuid4().hex[:12].upper()
+
+
 def add_box(doc, page, rect, subject, color, content, columns, values, dashed=False):
     r = pymupdf.Rect(rect) + (-6, -6, 6, 6)
     annot = page.add_rect_annot(r)
@@ -159,9 +173,60 @@ def add_box(doc, page, rect, subject, color, content, columns, values, dashed=Fa
     annot.set_colors(stroke=color, fill=None)
     annot.set_info(title=AUTHOR, subject=subject, content=content)
     annot.update()
-    nm = "AUTO-" + uuid.uuid4().hex[:12].upper()
+    nm = new_name()
     doc.xref_set_key(annot.xref, "NM", pdf_string(nm))
     doc.xref_set_key(annot.xref, "BSIColumnData", column_data(columns, values))
+    return nm
+
+
+class Scale:
+    """One /Measure dictionary per sheet scale, plus a page viewport."""
+
+    def __init__(self, doc):
+        self.doc = doc
+        self.by_ppf = {}
+
+    def measure_xref(self, ppf):
+        if ppf in self.by_ppf:
+            return self.by_ppf[ppf]
+        inch_per_ft = ppf / 72.0                      # 9 pt/ft -> 0.125 in = 1 ft
+        r = pdf_string(f"{inch_per_ft:g} in = 1 ft' in\"")
+        nf = "/Type /NumberFormat /F /F /D 1 /FD true"
+        obj = (f"<< /Type /Measure /Subtype /RL /R {r}"
+               f" /X [ << {nf} /U (') /C {1.0 / ppf:.7f} /SS () >> ]"
+               f" /D [ << {nf} /U (') /C 1 /PS () /SS (-) >> << {nf} /U (\") /C 12 /PS () /SS () >> ]"
+               f" /A [ << /Type /NumberFormat /U (sf) /C 1 /D 1 /FD true /SS () >> ]"
+               f" /TargetUnitConversion {TARGET_UNIT} >>")
+        xref = self.doc.get_new_xref()
+        self.doc.update_object(xref, obj)
+        self.by_ppf[ppf] = xref
+        return xref
+
+    def install_viewport(self, page, ppf):
+        mx = self.measure_xref(ppf)
+        r = page.rect
+        vp = self.doc.get_new_xref()
+        self.doc.update_object(vp, f"<< /Type /Viewport /BBox [0 0 {r.width:g} {r.height:g}] "
+                                   f"/Measure {mx} 0 R /NM {pdf_string(new_name())} >>")
+        self.doc.xref_set_key(page.xref, "VP", f"[{vp} 0 R]")
+        return mx
+
+
+def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xref):
+    annot = page.add_polyline_annot([pymupdf.Point(x, y) for x, y in pts])
+    annot.set_border(width=3)
+    annot.set_colors(stroke=color, fill=color)
+    annot.set_info(title=AUTHOR, subject=subject, content=feet_inches(ft))
+    annot.update()
+    nm = new_name()
+    x = annot.xref
+    doc.xref_set_key(x, "NM", pdf_string(nm))
+    doc.xref_set_key(x, "IT", "/PolyLineDimension")
+    doc.xref_set_key(x, "Measure", f"{measure_xref} 0 R")
+    doc.xref_set_key(x, "MeasurementTypes", "130")
+    doc.xref_set_key(x, "DS", pdf_string("font: bold Helvetica 12pt; text-align:center; line-height:13.8pt; color:#800000"))
+    doc.xref_set_key(x, "DepthUnit", f"[<< /Type /NumberFormat /U (') /C {TARGET_UNIT} /D 100 /FD true /SS () >>]")
+    doc.xref_set_key(x, "BSIColumnData", column_data(columns, values))
     return nm
 
 
@@ -173,11 +238,12 @@ def run(args):
     pname, columns = load_profile(profile)
     tname, tools = load_toolkit(toolkit)
     labeler = Labeler(columns, tools)
-    shapes.load_db()
+    weights = {k: v["weight"] for k, v in shapes.load_db().items()}
 
     src = Path(args.pdf)
     out = Path(args.output) if args.output else src.with_name(src.stem + "_AUTO.pdf")
     doc = pymupdf.open(src)
+    scale = Scale(doc)
     wanted = {s.strip().upper() for s in args.sheets.split(",")} if args.sheets else None
 
     sheets, hits, exceptions, labels = [], [], [], []
@@ -190,32 +256,52 @@ def run(args):
         annotate = (number in wanted) if wanted else (structural and kind == "plan")
         scan = annotate or structural
         found = page_callouts(page) if (scan and chars) else []
+        ppf = lengths.sheet_scale(page) if annotate else None
         rec = {"page": pno + 1, "sheet": number or "?", "title": title, "kind": kind,
-               "chars": chars, "hits": len(found), "annotated": annotate}
+               "chars": chars, "hits": len(found), "annotated": annotate,
+               "scale": f"{72 / ppf:g}\" = 1'" if ppf else ""}
         sheets.append(rec)
         if not annotate:
             continue
         for h in found:
-            key, conf, note = shapes.resolve(h["fam"], h["dims"])
-            row = {**rec, **h, "key": key, "conf": conf, "note": note}
-            if key:
-                label, subject = labeler.label(key, h["fam"], h["dims"])
-                row["label"], row["subject"] = label, subject
-                notes = f"AUTO {conf:.2f}" + (f" CHECK: {note}" if note else "")
-                values = {"Item_Number": args.item, "Item_Description": args.desc,
-                          "Shape_Size": label, "Quantity": "1", "Drawing_Ref": number,
-                          "Notes": notes}
-                row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject),
-                                    label, columns, values, dashed=conf < 1)
-                hits.append(row)
-            else:
-                row["label"], row["subject"] = h["raw"], EXCEPTION_SUBJECT
-                values = {"Item_Number": args.item, "Item_Description": args.desc,
-                          "Shape_Size": h["raw"], "Drawing_Ref": number,
-                          "Notes": f"AUTO EXCEPTION: {note}"}
-                row["nm"] = add_box(doc, page, h["bbox"], EXCEPTION_SUBJECT, (1, 0, 0),
-                                    h["raw"], columns, values, dashed=True)
+            h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
+        resolved = [h for h in found if h["key"]]
+        if not args.no_lengths and resolved:
+            lengths.measure(page, resolved, weights, ppf)
+        measure_xref = scale.install_viewport(page, ppf) if (ppf and not args.no_lengths) else None
+        for h in found:
+            row = {**rec, **h}
+            base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
+            if not h["key"]:
+                row["label"], row["subject"], row["length_ft"] = h["raw"], EXCEPTION_SUBJECT, None
+                values = {**base, "Shape_Size": h["raw"], "Notes": f"AUTO EXCEPTION: {h['note']}"}
+                row["nm"] = add_box(doc, page, h["bbox"], EXCEPTION_SUBJECT, (1, 0, 0), h["raw"],
+                                    columns, values, dashed=True)
                 exceptions.append(row)
+                continue
+            label, subject = labeler.label(h["key"], h["fam"], h["dims"])
+            row["label"], row["subject"] = label, subject
+            ft = h.get("length_ft")
+            len_note = h.get("len_note", "")
+            if h["conf"] < 1:
+                len_note = "; ".join(n for n in (f"size {h['note']}", len_note) if n)
+            row["length_ft"] = ft
+            if ft and measure_xref and h.get("seg") and h.get("confident"):
+                notes = "AUTO LEN" + (f" CHECK: {len_note}" if len_note else "")
+                lbft = weights.get(h["key"], 0)
+                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
+                          "Measured_Length": f"{ft:.2f}", "Weight_Per_Ft": f"{lbft:g}",
+                          "Total_Length_Ft": f"{ft:.1f}", "Total_Weight_Lbs": f"{ft * lbft:.0f}"}
+                row["nm"] = add_polyline(doc, page, h["seg"], subject, labeler.color(subject), ft,
+                                         columns, values, measure_xref)
+            else:
+                draft = f"draft {ft:.1f} ft" if ft else ""
+                why = "; ".join(n for n in (draft, len_note) if n)
+                notes = "AUTO COUNT ONLY" + (f": {why}" if why else "")
+                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes}
+                row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject), label,
+                                    columns, values, dashed=h["conf"] < 1)
+            hits.append(row)
 
     install_columns(doc, columns)
     try:
@@ -225,32 +311,50 @@ def run(args):
         print(f"page labels not set: {e}", file=sys.stderr)
     doc.save(out, garbage=3, deflate=True)
 
-    write_report(out, src, pname, tname, sheets, hits, exceptions)
+    write_report(out, src, pname, tname, sheets, hits, exceptions, weights)
     write_csv(out, hits + exceptions)
     return out, sheets, hits, exceptions
 
 
-def write_report(out, src, pname, tname, sheets, hits, exceptions):
+def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
     lines = [f"# Auto takeoff: {src.name}", "",
              f"Run {dt.datetime.now():%Y-%m-%d %H:%M}. Profile {pname}. Tools {tname}. Output `{out.name}`.", "",
-             "## Sheets", "", "| Page | Sheet | Kind | Title | Text | Callouts | Annotated |", "|---|---|---|---|---|---|---|"]
+             "## Sheets", "", "| Page | Sheet | Kind | Title | Scale | Text | Callouts | Annotated |",
+             "|---|---|---|---|---|---|---|---|"]
     for s in sheets:
         if s["sheet"] == "?" and not s["annotated"] and not s["hits"]:
             continue
-        lines.append(f"| {s['page']} | {s['sheet']} | {s['kind']} | {s['title']} | "
+        lines.append(f"| {s['page']} | {s['sheet']} | {s['kind']} | {s['title']} | {s['scale']} | "
                      f"{'yes' if s['chars'] else 'NO TEXT'} | {s['hits']} | {'yes' if s['annotated'] else ''} |")
     notext = [s for s in sheets if not s["chars"]]
     if notext:
         lines += ["", f"Pages with no text layer (need OCR): {', '.join(str(s['page']) for s in notext)}"]
-    lines += ["", "## Counts (annotated sheets)", "", "| Sheet | Shape | Count | lb/ft |", "|---|---|---|---|"]
-    counts = Counter((h["sheet"], h["label"], h["key"]) for h in hits)
-    for (sheet, label, key), n in sorted(counts.items()):
-        lines.append(f"| {sheet} | {label} | {n} | {shapes.weight(key) or ''} |")
-    lines += ["", f"Total members counted: {len(hits)}"]
-    checks = [h for h in hits if h["conf"] < 1]
+    lines += ["", "## Members (annotated sheets)", "",
+              "Drawn = polyline written to the PDF (confident). Draft = length only in the box's Notes, for you to draw.", "",
+              "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
+    groups = {}
+    for h in hits:
+        g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
+        g[0] += 1
+        if h.get("length_ft") and h.get("confident"):
+            g[1] += 1
+            g[2] += h["length_ft"]
+        elif h.get("length_ft"):
+            g[3] += 1
+            g[4] += h["length_ft"]
+    tot_lb = 0.0
+    for (sheet, label, key), (n, nd, lfd, nr, lfr) in sorted(groups.items()):
+        lbft = weights.get(key) or 0
+        tot_lb += (lfd + lfr) * lbft
+        lines.append(f"| {sheet} | {label} | {n} | {nd} | {lfd:.1f} | {nr} | {lfr:.1f} | {lbft:g} |")
+    lines += ["", f"Total members counted: {len(hits)}. Drawn + draft tonnage: {tot_lb / 2000:.1f} tons (excludes members with no length)."]
+    checks = [h for h in hits if h.get("len_note") or h["conf"] < 1]
     if checks:
-        lines += ["", "## Needs a look (fuzzy matches, dashed boxes)", ""]
-        lines += [f"- p{h['page']} {h['sheet']}: `{h['raw']}` read as **{h['label']}** ({h['note']})" for h in checks]
+        lines += ["", "## Needs a look", ""]
+        for h in checks:
+            what = f"{h['length_ft']:.1f} ft" if h.get("length_ft") else "count only"
+            why = "; ".join(n for n in (h["note"] if h["conf"] < 1 else "", h.get("len_note", "")) if n)
+            lines.append(f"- p{h['page']} {h['sheet']}: `{h['raw']}` as **{h['label']}**, {what}: {why}")
     lines += ["", "## Exceptions (red dashed boxes)", ""]
     if exceptions:
         for r in exceptions:
@@ -265,15 +369,16 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions):
 
 
 def write_csv(out, rows):
-    cols = ["page", "sheet", "subject", "label", "key", "conf", "note", "raw", "line", "angle",
-            "x0", "y0", "x1", "y1", "nm"]
+    cols = ["page", "sheet", "subject", "label", "key", "conf", "length_ft", "anchor", "len_note", "note",
+            "raw", "line", "angle", "x0", "y0", "x1", "y1", "nm"]
     with open(out.with_suffix(".hits.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(cols)
         for r in rows:
             b = r["bbox"]
             w.writerow([r["page"], r["sheet"], r["subject"], r["label"], r["key"] or "", r["conf"],
-                        r["note"], r["raw"], r["line"], r["angle"],
+                        f"{r['length_ft']:.2f}" if r.get("length_ft") else "", r.get("anchor", ""),
+                        r.get("len_note", ""), r["note"], r["raw"], r["line"], r["angle"],
                         round(b.x0, 1), round(b.y0, 1), round(b.x1, 1), round(b.y1, 1), r["nm"]])
 
 
@@ -284,15 +389,22 @@ def main():
     ap.add_argument("--sheets", help="comma-separated sheet numbers to annotate (default: structural plans)")
     ap.add_argument("--item", default="1", help="Item_Number for every auto row")
     ap.add_argument("--desc", default="STRUCTURAL FRAMING", help="Item_Description for every auto row")
+    ap.add_argument("--no-lengths", action="store_true", help="count only; rectangles over every callout")
     ap.add_argument("--profile", help=".bpx to take the column contract from (default: newest in repo)")
     ap.add_argument("--toolkit", help=".btx to take subjects/colours from (default: newest in repo)")
     args = ap.parse_args()
     out, sheets, hits, exceptions = run(args)
     print(f"wrote {out}")
     print(f"annotated sheets: {', '.join(s['sheet'] for s in sheets if s['annotated']) or 'none'}")
-    by = Counter(h["label"] for h in hits)
-    for label, n in by.most_common():
-        print(f"  {n:4d}  {label}")
+    by = {}
+    for h in hits:
+        g = by.setdefault(h["label"], [0, 0, 0.0])
+        g[0] += 1
+        if h.get("length_ft"):
+            g[1] += 1
+            g[2] += h["length_ft"]
+    for label, (n, nl, lf) in sorted(by.items(), key=lambda kv: -kv[1][0]):
+        print(f"  {n:4d}  {label:20} {nl:3d} with length  {lf:8.1f} LF")
     print(f"members: {len(hits)}   exceptions: {len(exceptions)}   report: {out.with_suffix('.report.md').name}")
 
 

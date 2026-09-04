@@ -24,6 +24,33 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
 - Step 1 output is a rectangle over each callout (counts only, `Length_Ft` blank, Notes =
   `AUTO <confidence>`); unresolved callouts get a red dashed "Auto Exception" box.
 
+## 2026-09-04 afternoon: length step (build step 4) first pass
+
+- `sidecar/lengths.py` measures members from vector chains; `auto_takeoff.py` writes
+  PolyLine measurements (viewport + /Measure at the sheet scale, Contents in ft-in,
+  Measured_Length/Weight/Total columns filled) when confident, rectangles otherwise.
+- Scale comes from the sheet's `1/8" = 1'-0"` text (9 pt/ft on a 42x30 sheet).
+- Ground truth: Todd's markup PDF keeps every polyline with vertices and BSIColumnData,
+  so per-callout and total-LF scoring is scripted (scratch harness, not in repo).
+- What the Weslayan sheet taught us:
+  - Members are one continuous CAD polyline per run (dash phase never resets at member
+    ends), so only crossings and per-callout nearest-stretch can split them. Todd's
+    piece breaks on the edge channels are shipping judgment, not geometry.
+  - Hierarchy by lb/ft is wrong here (C15 edge channels are heavier than the W8 beams
+    that frame into them); judging a crossing by the label nearest that point on the
+    other line, and ignoring lighter members, matches Todd's cuts.
+  - HSS labels are kickers/columns with 45-degree leaders: no plan length, ever.
+  - Labels sit up to 11 ft from their lines; W16 stubs are only reachable via their
+    leader arrows (shoulder + filled triangle).
+  - BIG ONE: the solid new-steel linework on S2.11 is RASTER (205 image tiles, ~400 dpi).
+    Only dashed hidden lines, grid, text and leaders are vectors. Vector-only lengths
+    therefore cover ~20 of 93 members on this sheet; the rest are count-only with a
+    draft length in Notes. Next decision: image-based line extraction from the tiles,
+    or accept count-only for rasterised sheets.
+- Confidence gate (polyline vs count-only): parallel anchor, label within 4 ft of the
+  line, 2-60 ft, no different-shape label within 40 ft on the same line, and a leader
+  must land on a solid vector line.
+
 ## Goal
 
 First-pass structural steel takeoff from bid PDFs — member counts, tonnage, then lengths — ingested into the estimator through the existing importer. Bluebeam Revu remains the human review surface. This is not a new app and not a Bluebeam replacement.
