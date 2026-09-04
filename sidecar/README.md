@@ -1,13 +1,13 @@
 # Auto-takeoff sidecar (Python)
 
-First-pass member counts and draft lengths from bid PDFs, delivered as
-Revu-readable annotations. See `docs/auto-takeoff-pipeline.md` for the plan,
-build order and findings from real sets.
+First-pass member counts (and experimental draft lengths) from bid PDFs,
+delivered as Revu-readable annotations. See `docs/auto-takeoff-pipeline.md`
+for the plan, build order and findings from real sets.
 
 ```
-pip install -r sidecar/requirements.txt          # PyMuPDF only (no OCR needed so far)
+pip install -r sidecar/requirements.txt          # PyMuPDF; numpy+OpenCV for raster; RapidOCR for stroke-font sheets
 node scripts/export-aisc-shapes.mjs              # refresh aisc-shapes.json after editing lib/estimating/aisc-shapes.js
-python sidecar/auto_takeoff.py "C:\path\to\bid.pdf" [-o out.pdf] [--sheets S2.11] [--lengths]
+python sidecar/auto_takeoff.py "C:\path\to\bid.pdf" [-o out.pdf] [--sheets S2.11] [--lengths] [--ocr off]
 ```
 
 Outputs next to the input (or `-o`): `<name>_AUTO.pdf`, `<name>_AUTO.report.md`, `<name>_AUTO.hits.csv`.
@@ -18,40 +18,56 @@ Revu locks an open PDF, so close the previous output or use a new `-o` name.
 - One annotation per shape callout on every structural framing plan, under
   the toolkit's subject and colour, with the v1.7 custom columns filled
   (Item_Number, Item_Description, Shape_Size, Quantity, Drawing_Ref, Notes).
-- With `--lengths` (experimental, off by default: 1 of 18 polylines hit its member on the
-  Weslayan set, the rest traced grid lines through columns), a **PolyLine measurement**
-  (feet-inches, calibrated via a page viewport) when the length step is confident. Notes = `AUTO LEN`.
-- A **rectangle** over the callout otherwise (count only). Notes say why and
-  carry the draft length when one was computed: `AUTO COUNT ONLY: draft 17.3 ft; label 7 ft from line`.
+- A **rectangle** over the callout (count only) is the default product. Notes
+  say `AUTO COUNT ONLY`, plus `OCR 0.99` when the callout was read by OCR and
+  any draft length/reason when `--lengths` ran.
+- With `--lengths` (experimental, off by default), a **PolyLine measurement**
+  (feet-inches, calibrated via a page viewport) when the length step is
+  confident. On the Weslayan set 1 of 18 hit its member; keep it off for real work.
 - A red dashed **Auto Exception** rectangle for callouts that resolve to no
   size in the estimator's table.
 - Page labels set to sheet numbers; `/BSIAnnotColumns` installed so Revu maps
   the column data without any profile tricks.
 
+## How callouts are read
+
+1. The PDF text layer (any rotation). Works when the engineer's export keeps
+   real fonts (Weslayan / SCA: Arial).
+2. **OCR fallback** (`ocr.py`, RapidOCR on overlapping 1000 px tiles at 300 dpi,
+   0 and 90 degree passes) when a plan's text layer holds no callouts. Needed
+   when AutoCAD stroke fonts export as line paths (San Esteban / RDP: 44 callouts
+   read at 0.95-0.99 confidence, ~3.5 min per sheet). The title-block sheet
+   number is OCR'd the same way. `--ocr off` disables it.
+
 ## Modules
 
 - `auto_takeoff.py` — CLI: classify sheets from the title block, find AISC
-  callouts in the text layer (any rotation), resolve them, measure, write.
-- `lengths.py` — length step: vector paths become ordered chains (dashes
-  joined, curves sampled); a callout anchors to the nearest parallel chain or
-  to its leader arrow's target; the member runs along the chain until a
-  crossing by an equal-or-heavier member or an unlabelled drawn line, and each
-  callout owns the stretch nearest it. A confidence gate decides polyline vs
-  count-only. HSS labels never get a plan length (columns/kickers).
+  callouts, resolve them, (optionally) measure, write annotations + report.
+- `shapes.py` — callout regex + resolution to `aisc-shapes.json` keys.
 - `revu_profile.py` — reads the `.bpx` (column contract, Shape_Size choice
   list) and `.btx` (tool subjects/colours); writes `/BSIAnnotColumns` and
   `/BSIColumnData`.
-- `shapes.py` — callout regex + resolution to `aisc-shapes.json` keys.
+- `ocr.py` — tiled RapidOCR callout and sheet-number reading.
+- `lengths.py` — experimental length step: vector paths (and raster strokes)
+  become ordered chains; a callout anchors to the nearest parallel chain or to
+  its leader arrow's target; the member runs along the chain until a crossing
+  by an equal-or-heavier member or an unlabelled drawn line; each callout owns
+  the stretch nearest it; a confidence gate decides polyline vs count-only.
+- `raster.py` — strokes from image tiles: draws only the page's images onto a
+  canvas, keeps near-black pixels (new steel is pure black on these exports,
+  existing work grey), OpenCV LSD segments, collinear merge, end-to-end
+  linking into polylines. Extraction is clean; turning strokes into member
+  extents that match an estimator's judgment is not solved yet.
 
 ## Known limits (2026-09-04)
 
-- Only **vector** line work is measured. Sheets whose new-steel linework is
-  rasterised (the Weslayan set embeds ~200 image tiles at ~400 dpi; the solid
-  beams live only there) yield count-only boxes for those members. Reading
-  lines out of the tiles is a separate build (OpenCV-style line extraction).
-- Continuous edge members drawn as one CAD polyline are split per callout by
-  nearest-stretch, not by the estimator's shipping-piece judgment; total feet
-  come out right, piece counts may not.
-- Plates, angles taken off sections, deck and connections stay manual.
+- Lengths: per-piece agreement with a human takeoff is ~10-20% on the Weslayan
+  set under every rule tried, vector or raster. Continuous edge members are one
+  CAD polyline that the estimator splits by shipping judgment; beams that pass
+  over other members are continuous in one estimator's eyes and cut in the
+  drawing's geometry. Counts are the reliable product.
+- OCR does not read 45-degree text reliably (only 0/90 passes); adding passes
+  costs time linearly.
+- Plates, angles taken off sections, deck, pipe and connections stay manual.
 
 Bid drawings are client data: keep them outside the repo (e.g. `C:\Projects\bid-samples`).

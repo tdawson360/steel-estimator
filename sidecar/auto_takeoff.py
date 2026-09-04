@@ -253,12 +253,24 @@ def run(args):
         labels.append(number or page.get_label() or str(pno + 1))
         discipline = re.match(r"[A-Z]*", number).group(0)[-1:]      # "LRS2.11" -> "S"
         structural = discipline == "S"
-        annotate = (number in wanted) if wanted else (structural and kind == "plan")
+        # Plans with no readable sheet number (stroke-font title blocks) are
+        # scanned too; they cost nothing unless callouts turn up.
+        annotate = (number in wanted) if wanted else ((structural or not number) and kind == "plan")
         scan = annotate or structural
         found = page_callouts(page) if (scan and chars) else []
+        source = "text"
+        if annotate and not found and args.ocr != "off":
+            import ocr                                   # heavy import, only when needed
+            found = ocr.ocr_callouts(page, dpi=args.ocr_dpi)
+            source = "ocr"
+            for h in found:
+                h["note_extra"] = f"OCR {h['ocr_conf']:.2f}"
+            if found and not number:
+                number = ocr.ocr_sheet_number(page, title_block_clip(page))
+                labels[-1] = number or labels[-1]
         ppf = lengths.sheet_scale(page) if annotate else None
         rec = {"page": pno + 1, "sheet": number or "?", "title": title, "kind": kind,
-               "chars": chars, "hits": len(found), "annotated": annotate,
+               "chars": chars, "hits": len(found), "annotated": annotate, "source": source,
                "scale": f"{72 / ppf:g}\" = 1'" if ppf else ""}
         sheets.append(rec)
         if not annotate:
@@ -267,7 +279,13 @@ def run(args):
             h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
         resolved = [h for h in found if h["key"]]
         if args.lengths and resolved:
-            lengths.measure(page, resolved, weights, ppf)
+            extra = None
+            if args.raster != "off":
+                import raster                            # OpenCV, only when needed
+                if raster.has_raster_linework(page):
+                    extra, _, _ = raster.raster_polylines(page, dpi=args.raster_dpi)
+                    rec["raster"] = len(extra)
+            lengths.measure(page, resolved, weights, ppf, extra_segments=extra)
         measure_xref = scale.install_viewport(page, ppf) if (ppf and args.lengths) else None
         for h in found:
             row = {**rec, **h}
@@ -285,6 +303,8 @@ def run(args):
             len_note = h.get("len_note", "")
             if h["conf"] < 1:
                 len_note = "; ".join(n for n in (f"size {h['note']}", len_note) if n)
+            if h.get("note_extra"):
+                len_note = "; ".join(n for n in (h["note_extra"], len_note) if n)
             row["length_ft"] = ft
             if ft and measure_xref and h.get("seg") and h.get("confident"):
                 notes = "AUTO LEN" + (f" CHECK: {len_note}" if len_note else "")
@@ -319,13 +339,16 @@ def run(args):
 def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
     lines = [f"# Auto takeoff: {src.name}", "",
              f"Run {dt.datetime.now():%Y-%m-%d %H:%M}. Profile {pname}. Tools {tname}. Output `{out.name}`.", "",
-             "## Sheets", "", "| Page | Sheet | Kind | Title | Scale | Text | Callouts | Annotated |",
-             "|---|---|---|---|---|---|---|---|"]
+             "## Sheets", "", "| Page | Sheet | Kind | Title | Scale | Text | Callouts | Read by | Annotated |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for s in sheets:
         if s["sheet"] == "?" and not s["annotated"] and not s["hits"]:
             continue
+        src = s.get("source", "text") if s["hits"] else ""
+        if s.get("raster"):
+            src += f" + {s['raster']} raster strokes"
         lines.append(f"| {s['page']} | {s['sheet']} | {s['kind']} | {s['title']} | {s['scale']} | "
-                     f"{'yes' if s['chars'] else 'NO TEXT'} | {s['hits']} | {'yes' if s['annotated'] else ''} |")
+                     f"{'yes' if s['chars'] else 'NO TEXT'} | {s['hits']} | {src} | {'yes' if s['annotated'] else ''} |")
     notext = [s for s in sheets if not s["chars"]]
     if notext:
         lines += ["", f"Pages with no text layer (need OCR): {', '.join(str(s['page']) for s in notext)}"]
@@ -390,7 +413,13 @@ def main():
     ap.add_argument("--item", default="1", help="Item_Number for every auto row")
     ap.add_argument("--desc", default="STRUCTURAL FRAMING", help="Item_Description for every auto row")
     ap.add_argument("--lengths", action="store_true",
-                    help="also draft member lengths from vector line work (experimental; off by default)")
+                    help="also draft member lengths from the line work (experimental; off by default)")
+    ap.add_argument("--ocr", choices=["auto", "off"], default="auto",
+                    help="read callouts by OCR when a plan's text layer has none (stroke-font sheets)")
+    ap.add_argument("--ocr-dpi", type=int, default=300)
+    ap.add_argument("--raster", choices=["auto", "off"], default="auto",
+                    help="with --lengths: also measure strokes recovered from image tiles")
+    ap.add_argument("--raster-dpi", type=int, default=200)
     ap.add_argument("--profile", help=".bpx to take the column contract from (default: newest in repo)")
     ap.add_argument("--toolkit", help=".btx to take subjects/colours from (default: newest in repo)")
     args = ap.parse_args()

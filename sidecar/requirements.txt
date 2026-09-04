@@ -1,1 +1,7 @@
 pymupdf>=1.24
+# lengths from rasterised sheets (--lengths with image tiles)
+numpy
+opencv-python-headless
+# OCR fallback for stroke-font callouts (pip-only PaddleOCR models on onnxruntime)
+rapidocr
+onnxruntime

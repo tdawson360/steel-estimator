@@ -145,8 +145,26 @@ def _bezier(p0, p1, p2, p3, n=6):
     return pts
 
 
-def extract_chains(page):
-    chains = []
+def chains_from_segments(items, path_base=100000):
+    """Solid chains from strokes recovered off a rasterised sheet
+    (sidecar/raster.py): each item is either (x0, y0, x1, y1, width) or
+    (points, width) for an already-linked polyline."""
+    out = []
+    for i, it in enumerate(items):
+        if len(it) == 2:
+            pts, w = it
+        else:
+            x0, y0, x1, y1, w = it
+            pts = [(x0, y0), (x1, y1)]
+        if len(pts) >= 2:
+            ch = Chain(list(pts), w, 1, path_base + i)
+            if ch.length >= MIN_CHAIN:
+                out.append(ch)
+    return out
+
+
+def extract_chains(page, extra_segments=None):
+    chains = chains_from_segments(extra_segments) if extra_segments else []
     for pid, p in enumerate(page.get_drawings()):
         w = p.get("width") or 0.0
         cur, pieces = [], 0
@@ -347,13 +365,15 @@ def own_weight_cuts(chain, s_anchor, xs, own_weight, reach):
 
 # ── main entry ────────────────────────────────────────────────────────
 
-def measure(page, callouts, weights, ppf):
+def measure(page, callouts, weights, ppf, extra_segments=None):
     """Attach chain/extent/length to each callout dict (in place).
 
     callouts: dicts with bbox, angle (deg, y-up as page_callouts gives), key.
+    extra_segments: (x0, y0, x1, y1, width) strokes recovered from raster
+    tiles, treated as solid drawn lines alongside the vector paths.
     Sets c['length_ft'], c['seg'] (vertex list), c['len_note'], c['anchor']."""
     paths = page.get_drawings()
-    chains = extract_chains(page)
+    chains = extract_chains(page, extra_segments)
     tips = arrowheads(paths)
     lateral_max = LATERAL_FT * ppf if ppf else 100.0
     # any short single stroke ending at an arrowhead is a leader, never a member

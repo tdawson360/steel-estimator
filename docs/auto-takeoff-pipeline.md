@@ -51,6 +51,27 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
   line, 2-60 ft, no different-shape label within 40 ft on the same line, and a leader
   must land on a solid vector line.
 
+## 2026-09-04 late: tile extraction + OCR fallback
+
+- Todd's Revu verdict on the vector length pass: 1 of 18 polylines hit its member, the rest
+  traced grid lines through columns; count-only boxes "work great". Lengths are now opt-in
+  (`--lengths`), count-only is the product.
+- `sidecar/raster.py`: draws only the page's image tiles onto a canvas, keeps pure-black
+  pixels (new steel 0-9, existing work 80-89 on the Weslayan tiles), OpenCV LSD segments,
+  collinear merge, end-to-end linking. Extraction is clean (overlay checked visually), but
+  member extents from those strokes still disagree with Todd's pieces (~10-20% per callout,
+  drawn LF a fraction of his). Same root cause as vector: piece breaks are estimator
+  judgment; beams continuous over other members in his eyes are cut by geometry.
+- San Esteban (RDP Engineers, 1 page): fully VECTOR steel, but callouts are AutoCAD stroke
+  fonts exported as line paths -> zero text-layer callouts. `sidecar/ocr.py` (RapidOCR,
+  pip-only, tiled 1000 px at 300 dpi, 0/90 passes) reads 44 callouts at 0.95-0.99
+  (C3x5 x18, W6x9 x11, C6x8.2 x9, C12x20.7 x4, W10x33, W12x30) in ~3.5 min. Whole-page OCR
+  finds 1. Misses: two vertical W6x9, "2 ANG 2X2X1/4" (not our regex), pipe. Title-block
+  sheet number is OCR'd too. OCR runs automatically when a plan's text layer has no callouts.
+- So the two sets are mirror images: Weslayan = vector text + raster steel; San Esteban =
+  vector steel + stroke-font text. Both need one raster path. Count-only now works on both.
+- Python deps: numpy, opencv-python-headless, rapidocr, onnxruntime (all pip on 3.14).
+
 ## Goal
 
 First-pass structural steel takeoff from bid PDFs — member counts, tonnage, then lengths — ingested into the estimator through the existing importer. Bluebeam Revu remains the human review surface. This is not a new app and not a Bluebeam replacement.
