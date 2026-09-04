@@ -18,3 +18,18 @@ Prices: none of these sources carry current pricing; unit prices are to be seede
 - `kwik-bolt-tz2.csv` replaces the classic Kwik-Bolt list for seeding: Hilti's current carbon-steel wedge anchor is the Kwik Bolt TZ2 (1/4"-1"; no 1-1/4"). Sizes are Hilti's current offering; weights are Todd's sheet values where the size matches exactly, otherwise a straight-line fit of Todd's weights for that diameter. Default stays 1/2" x 5-1/2". The original `kwik-bolt.csv` is kept as the weight source.
 - `adhesives.csv`: HIT-HY 200 V3 (HY 200-A), HIT-RE 500 V3, HIT-HY 270 — single 330 ml cartridge net price (case price noted for reference).
 - A325 sets: no Hilti source; see the seed script / admin for how those are priced.
+
+## A325 vendor pricing (2026-09-04)
+
+- `a325-pricing-2026-09.csv` is the vendor's response to `docs/A325-pricing-request.xlsx`
+  (returned as `docs/A325-pricing.xlsx`), one line per diameter x length with a plain and/or
+  HDG price per set; blank = vendor had no price. Loaded by `scripts/load-a325-pricing.mjs`
+  (`--dry` to preview): plain price -> Plain item priced; no plain price -> Plain item hidden
+  (kept for old estimate rows); HDG price -> `finish=HDG` variant row created (the estimator
+  swaps galvanized Hardware rows to it); Todd's rule: only sizes the vendor could price show.
+- Vendor notes on the sheet: DH nuts subbed with A194-2H, prices current, availability sparse,
+  parts require a requote for purchase, all sets unassembled.
+- Sixteen sizes came back with HDG cheaper than plain (e.g. 1-1/4" x 4": $9.14 plain vs $7.12
+  HDG); loaded as given, worth a question to the vendor.
+- Result: 82 plain + 79 HDG priced and active, 50 plain sizes hidden. Hidden sizes can be
+  re-enabled on Global Pricing Data -> Hardware.

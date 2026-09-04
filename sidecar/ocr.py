@@ -124,11 +124,21 @@ def ocr_callouts(page, dpi=300, rotations=(0, 90), clip=None, min_conf=0.6):
                         y0 = (bx[:, 1].min() + ty) / scale
                         x1 = (bx[:, 0].max() + tx) / scale
                         y1 = (bx[:, 1].max() + ty) / scale
-                        key = (shapes.norm(raw), round((x0 + x1) / 30), round((y0 + y1) / 30))
-                        if key in hits and hits[key]["ocr_conf"] >= sc:
-                            continue
-                        hits[key] = {"raw": raw.strip(), "fam": fam, "dims": dims,
-                                     "bbox": pymupdf.Rect(x0, y0, x1, y1),
-                                     "angle": 90 if rot else 0, "line": txt.strip(),
-                                     "ocr_conf": float(sc)}
-    return list(hits.values())
+                        hits.setdefault(shapes.norm(raw), []).append({
+                            "raw": raw.strip(), "fam": fam, "dims": dims,
+                            "bbox": pymupdf.Rect(x0, y0, x1, y1),
+                            "angle": 90 if rot else 0, "line": txt.strip(),
+                            "ocr_conf": float(sc)})
+    # The same label is read by overlapping tiles and by both rotation passes:
+    # keep the best read among boxes that overlap or nearly touch.
+    out = []
+    for reads in hits.values():
+        reads.sort(key=lambda h: -h["ocr_conf"])
+        kept = []
+        for h in reads:
+            grown = h["bbox"] + (-8, -8, 8, 8)
+            if any(grown.intersects(k["bbox"]) for k in kept):
+                continue
+            kept.append(h)
+        out += kept
+    return out
