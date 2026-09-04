@@ -3,7 +3,7 @@ their lengths from the plan's line work, and write both back as Revu-readable
 annotations.
 
     python sidecar/auto_takeoff.py "bid.pdf" [-o out.pdf] [--sheets S2.11,S2.12]
-                                   [--item 1] [--desc "STRUCTURAL FRAMING"] [--no-lengths]
+                                   [--item 1] [--desc "STRUCTURAL FRAMING"] [--lengths]
 
 For every framing-plan sheet the script finds each shape designation in the
 PDF's text layer (any rotation), validates it against the estimator's own AISC
@@ -266,9 +266,9 @@ def run(args):
         for h in found:
             h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
         resolved = [h for h in found if h["key"]]
-        if not args.no_lengths and resolved:
+        if args.lengths and resolved:
             lengths.measure(page, resolved, weights, ppf)
-        measure_xref = scale.install_viewport(page, ppf) if (ppf and not args.no_lengths) else None
+        measure_xref = scale.install_viewport(page, ppf) if (ppf and args.lengths) else None
         for h in found:
             row = {**rec, **h}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
@@ -389,7 +389,8 @@ def main():
     ap.add_argument("--sheets", help="comma-separated sheet numbers to annotate (default: structural plans)")
     ap.add_argument("--item", default="1", help="Item_Number for every auto row")
     ap.add_argument("--desc", default="STRUCTURAL FRAMING", help="Item_Description for every auto row")
-    ap.add_argument("--no-lengths", action="store_true", help="count only; rectangles over every callout")
+    ap.add_argument("--lengths", action="store_true",
+                    help="also draft member lengths from vector line work (experimental; off by default)")
     ap.add_argument("--profile", help=".bpx to take the column contract from (default: newest in repo)")
     ap.add_argument("--toolkit", help=".btx to take subjects/colours from (default: newest in repo)")
     args = ap.parse_args()

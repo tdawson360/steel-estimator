@@ -7,7 +7,7 @@ build order and findings from real sets.
 ```
 pip install -r sidecar/requirements.txt          # PyMuPDF only (no OCR needed so far)
 node scripts/export-aisc-shapes.mjs              # refresh aisc-shapes.json after editing lib/estimating/aisc-shapes.js
-python sidecar/auto_takeoff.py "C:\path\to\bid.pdf" [-o out.pdf] [--sheets S2.11] [--no-lengths]
+python sidecar/auto_takeoff.py "C:\path\to\bid.pdf" [-o out.pdf] [--sheets S2.11] [--lengths]
 ```
 
 Outputs next to the input (or `-o`): `<name>_AUTO.pdf`, `<name>_AUTO.report.md`, `<name>_AUTO.hits.csv`.
@@ -18,8 +18,9 @@ Revu locks an open PDF, so close the previous output or use a new `-o` name.
 - One annotation per shape callout on every structural framing plan, under
   the toolkit's subject and colour, with the v1.7 custom columns filled
   (Item_Number, Item_Description, Shape_Size, Quantity, Drawing_Ref, Notes).
-- A **PolyLine measurement** (feet-inches, calibrated to the sheet scale via a
-  page viewport) when the length step is confident. Notes = `AUTO LEN`.
+- With `--lengths` (experimental, off by default: 1 of 18 polylines hit its member on the
+  Weslayan set, the rest traced grid lines through columns), a **PolyLine measurement**
+  (feet-inches, calibrated via a page viewport) when the length step is confident. Notes = `AUTO LEN`.
 - A **rectangle** over the callout otherwise (count only). Notes say why and
   carry the draft length when one was computed: `AUTO COUNT ONLY: draft 17.3 ft; label 7 ft from line`.
 - A red dashed **Auto Exception** rectangle for callouts that resolve to no
