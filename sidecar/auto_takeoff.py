@@ -143,6 +143,8 @@ class Labeler:
         hit = self.by_norm.get(shapes.norm(key))
         if hit and hit[1]:
             return hit
+        if fam == "JOIST":
+            return key, "Stl Joist"
         label = re.sub(r"^([A-Z]+)", r"\1 ", key).replace("x", " x ")
         if fam == "L":
             subj = "Stl L Eq Legs" if len(dims) == 3 and dims[0] == dims[1] else "Stl L UnEq Legs"
@@ -238,7 +240,7 @@ def run(args):
     pname, columns = load_profile(profile)
     tname, tools = load_toolkit(toolkit)
     labeler = Labeler(columns, tools)
-    weights = {k: v["weight"] for k, v in shapes.load_db().items()}
+    weights = shapes.all_weights()
 
     src = Path(args.pdf)
     out = Path(args.output) if args.output else src.with_name(src.stem + "_AUTO.pdf")

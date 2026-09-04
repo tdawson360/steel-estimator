@@ -163,7 +163,22 @@ def chains_from_segments(items, path_base=100000):
     return out
 
 
+def text_boxes(page):
+    """Bounding boxes of every text line on the page (label gaps live here)."""
+    boxes = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") == 0:
+            for l in b["lines"]:
+                boxes.append(pymupdf.Rect(l["bbox"]))
+    return boxes
+
+
 def extract_chains(page, extra_segments=None):
+    chains = _raw_chains(page, extra_segments)
+    return merge_collinear_chains(chains, text_boxes(page))
+
+
+def _raw_chains(page, extra_segments=None):
     chains = chains_from_segments(extra_segments) if extra_segments else []
     for pid, p in enumerate(page.get_drawings()):
         w = p.get("width") or 0.0
@@ -207,6 +222,56 @@ def extract_chains(page, extra_segments=None):
                     pieces = 1
         flush()
     return chains
+
+
+LABEL_GAP = 70.0        # pt: a member line broken around its own label rejoins across this
+
+
+def merge_collinear_chains(chains, boxes, gap=LABEL_GAP, off_tol=1.5, ang_tol=1.0):
+    """Join straight chains that lie on one line with a short gap between
+    them when a text label sits in that gap (CAD breaks a member line where
+    its label is placed).  Same width only; gaps without text stay gaps, so
+    collinear beams in adjacent bays are not glued together."""
+    def gap_has_text(ux, uy, rho, ta, tb):
+        tm = (ta + tb) / 2
+        mx, my = tm * ux - rho * uy, tm * uy + rho * ux
+        p = pymupdf.Point(mx, my)
+        return any((bx + (-4, -4, 4, 4)).contains(p) for bx in boxes)
+
+    straight = [c for c in chains if c.is_straight()]
+    other = [c for c in chains if not c.is_straight()]
+    groups = {}
+    for c in straight:
+        (x0, y0), (x1, y1) = c.pts[0], c.pts[-1]
+        ang = math.degrees(math.atan2(y1 - y0, x1 - x0)) % 180
+        ux, uy = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        rho = -uy * x0 + ux * y0
+        key = (round(ang / ang_tol) % round(180 / ang_tol), round(rho / off_tol), round(c.width, 1))
+        t0, t1 = x0 * ux + y0 * uy, x1 * ux + y1 * uy
+        groups.setdefault(key, []).append((min(t0, t1), max(t0, t1), ux, uy, rho, c))
+    merged = []
+    for items in groups.values():
+        items.sort(key=lambda it: it[0])
+        cur = None
+        for t0, t1, ux, uy, rho, c in items:
+            if cur and t0 - cur[1] <= gap and (t0 - cur[1] <= 2 or gap_has_text(ux, uy, rho, cur[1], t0)):
+                cur[1] = max(cur[1], t1)
+                cur[5].append(c)
+            else:
+                if cur:
+                    merged.append(cur)
+                cur = [t0, t1, ux, uy, rho, [c]]
+        if cur:
+            merged.append(cur)
+    out = list(other)
+    for t0, t1, ux, uy, rho, members in merged:
+        if len(members) == 1:
+            out.append(members[0])
+            continue
+        p0 = (t0 * ux - rho * uy, t0 * uy + rho * ux)
+        p1 = (t1 * ux - rho * uy, t1 * uy + rho * ux)
+        out.append(Chain([p0, p1], members[0].width, sum(m.pieces for m in members), members[0].path))
+    return out
 
 
 # ── leaders ───────────────────────────────────────────────────────────
@@ -266,7 +331,9 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
         if n is None or n[0] > max_lateral:
             continue
         d, s, direction = n
-        score = d + (15 if ch.width > 1.0 else 0) + (40 if ch.pieces > 1 else 0)
+        # member lines are drawn heavier than grid, dimension and hidden work
+        thin = 30 if ch.width < 0.5 else 0
+        score = d + thin + (15 if ch.width > 2.5 else 0) + (40 if ch.pieces > 1 else 0)
         if angle is not None:
             da = abs(direction - (angle % 180))
             da = min(da, 180 - da)
@@ -341,19 +408,24 @@ def local_weight(chain, s, reach):
     return max(ws) if ws else None
 
 
-def own_weight_cuts(chain, s_anchor, xs, own_weight, reach):
+def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
     """A through-crossing cuts the member when the crossing line is, at that
     point, an equal-or-heavier member, or an unlabelled drawn (multi-piece)
     line.  Lighter members frame in; plain single strokes (grid, dimension,
-    wall lines) are ignored."""
+    wall lines) are ignored, as are sheet-spanning lines (grids) and lines
+    drawn much thinner than the member itself."""
     lo, hi = 0.0, chain.length
     for s, other, through, sb in xs:
         if not through:
             continue
+        if page_dim and other.length > 0.6 * page_dim:
+            continue                                   # grid / section line
         w = local_weight(other, sb, reach)
         if w is None:
             if other.pieces < 2:
                 continue
+            if chain.width > 0 and other.width < 0.5 * chain.width:
+                continue                               # hidden/grid work, not a member
         elif w < own_weight - 1e-6:
             continue
         if s < s_anchor - CUT_MARGIN:
@@ -406,7 +478,8 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
             continue
         if id(ch) not in xcache:
             xcache[id(ch)] = crossings(ch, chains)
-        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], weights.get(c.get("key"), 0.0), reach)
+        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], weights.get(c.get("key"), 0.0), reach,
+                                 page_dim=min(page.rect.width, page.rect.height))
         c["cuts"] = (lo, hi, [(round(s), round(o.length), o.pieces, thr, local_weight(o, sb, reach)) for s, o, thr, sb in xcache[id(ch)] if abs(s - c["s"]) < 300])
         # each callout owns the stretch nearest it
         for s_other, _, _, other in ch.callouts:
@@ -429,7 +502,7 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
         # becomes a drawn polyline; anything else stays count-only with the
         # draft length in its note, so the estimator never deletes a bad line.
         doubts = [c["anchor_note"]] if c["anchor_note"] else []
-        if c["lateral"] > 4 * ppf and c["anchor"] == "text":
+        if c["lateral"] > 6 * ppf and c["anchor"] == "text":
             doubts.append(f"label {c['lateral'] / ppf:.0f} ft from line")
         if c["anchor"] == "leader" and ch.pieces > 1:
             doubts.append("arrow lands on a dashed line, member itself probably raster")

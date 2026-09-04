@@ -58,16 +58,49 @@ def _to_fraction(tok):
     return re.sub(r"\s*-\s*|\s+", "-", tok)
 
 
+# Open-web steel joists (SJI): depth + series + section, e.g. 20LH04, 24K4,
+# 24LHSP (special, weight from the joist supplier).  Approximate lb/ft from
+# the SJI load tables; LHSP/DLH specials carry no weight until quoted.
+JOIST = re.compile(r"(?<![A-Z0-9])(\d{2})\s?(LHSP|DLHSP|KCS|DLH|LH|K)\s?(\d{1,2})?(?![A-Z0-9/])", re.I)
+JOIST_WEIGHTS = {
+    "8K1": 5.1, "10K1": 5.0, "12K1": 5.0, "12K3": 5.7, "12K5": 7.1, "14K1": 5.2, "14K3": 6.0, "14K4": 6.7, "14K6": 7.7,
+    "16K2": 5.5, "16K3": 6.3, "16K4": 7.0, "16K5": 7.5, "16K6": 8.1, "16K7": 8.6, "16K9": 10.0,
+    "18K3": 6.6, "18K4": 7.2, "18K5": 7.7, "18K6": 8.5, "18K7": 9.0, "18K9": 10.2, "18K10": 11.7,
+    "20K3": 6.7, "20K4": 7.6, "20K5": 8.2, "20K6": 8.9, "20K7": 9.3, "20K9": 10.8, "20K10": 12.2,
+    "22K4": 8.0, "22K5": 8.8, "22K6": 9.2, "22K7": 9.7, "22K9": 11.3, "22K10": 12.6, "22K11": 13.8,
+    "24K4": 8.4, "24K5": 9.3, "24K6": 9.7, "24K7": 10.1, "24K8": 11.5, "24K9": 12.0, "24K10": 13.1, "24K12": 16.0,
+    "26K5": 9.8, "26K6": 10.6, "26K7": 10.9, "26K8": 12.1, "26K9": 12.2, "26K10": 13.8, "26K12": 16.6,
+    "28K6": 11.4, "28K7": 11.8, "28K8": 12.7, "28K9": 13.0, "28K10": 14.3, "28K12": 17.1,
+    "30K7": 12.3, "30K8": 13.2, "30K9": 13.4, "30K10": 15.0, "30K11": 16.4, "30K12": 17.6,
+    "18LH02": 10, "18LH03": 11, "18LH04": 12, "18LH05": 15, "18LH06": 15, "18LH07": 17, "18LH08": 19, "18LH09": 21,
+    "20LH02": 10, "20LH03": 11, "20LH04": 12, "20LH05": 14, "20LH06": 15, "20LH07": 17, "20LH08": 19, "20LH09": 21, "20LH10": 23,
+    "24LH03": 11, "24LH04": 12, "24LH05": 13, "24LH06": 16, "24LH07": 17, "24LH08": 18, "24LH09": 21, "24LH10": 23, "24LH11": 25,
+    "28LH05": 13, "28LH06": 16, "28LH07": 17, "28LH08": 18, "28LH09": 21, "28LH10": 23, "28LH11": 25, "28LH12": 27, "28LH13": 30,
+    "32LH06": 14, "32LH07": 16, "32LH08": 17, "32LH09": 21, "32LH10": 21, "32LH11": 24, "32LH12": 27, "32LH13": 30,
+    "36LH07": 16, "36LH08": 18, "36LH09": 21, "36LH10": 21, "36LH11": 23, "36LH12": 25, "36LH13": 30, "36LH14": 36,
+}
+
+
 def find_callouts(text):
-    """Yield (family, dims, raw) for every AISC-looking designation in text."""
-    for m in CALLOUT.finditer(clean(text)):
+    """Yield (family, dims, raw) for every AISC-looking designation in text,
+    plus ("JOIST", [designation], raw) for SJI joist designations."""
+    t = clean(text)
+    for m in CALLOUT.finditer(t):
         fam = m.group(1).upper()
         dims = [d.strip() for d in m.groups()[1:] if d]
         yield fam, dims, m.group(0)
+    for m in JOIST.finditer(t):
+        desig = (m.group(1) + m.group(2) + (m.group(3) or "")).upper()
+        yield "JOIST", [desig], m.group(0)
 
 
 def resolve(fam, dims):
     """Return (key, confidence, note). key is the estimator's table key or None."""
+    if fam == "JOIST":
+        desig = dims[0].upper()
+        if desig in JOIST_WEIGHTS:
+            return desig, 1.0, ""
+        return desig, 0.9, "joist weight from supplier (special / not in SJI approx table)"
     if fam == "PL":
         return None, 0.0, "plate callout (plates are not auto-counted)"
     if fam == "HP":
@@ -93,8 +126,19 @@ def resolve(fam, dims):
 
 
 def weight(key):
+    if key in JOIST_WEIGHTS:
+        return JOIST_WEIGHTS[key]
     return db().get(key, {}).get("weight")
 
 
 def category(key):
+    if key in JOIST_WEIGHTS or JOIST.fullmatch(key or ""):
+        return "Joist"
     return db().get(key, {}).get("category")
+
+
+def all_weights():
+    """{key: lb/ft} for every shape the sidecar can name (AISC table + joists)."""
+    w = {k: v["weight"] for k, v in db().items()}
+    w.update(JOIST_WEIGHTS)
+    return w
