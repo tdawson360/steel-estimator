@@ -91,13 +91,16 @@ def boost_contrast(img, gain=4, thicken=3):
     return (255 - inv).astype(np.uint8)
 
 
-def ocr_callouts(page, dpi=300, rotations=(0, 90), clip=None, min_conf=0.6):
+def ocr_callouts(page, dpi=300, rotations=(0, 90), clip=None, min_conf=0.6, return_reads=False):
     """Shape callouts read off the rendered page. Duplicates from overlapping
-    tiles or rotation passes collapse to the best-confidence read."""
+    tiles or rotation passes collapse to the best-confidence read.
+    With return_reads=True also returns every text read (deduplicated,
+    in reading order) for vocabulary scanning."""
     img, scale = render(page, dpi)
     img = boost_contrast(img)           # stroke fonts are hairlines at 300 dpi
     eng = engine()
     hits = {}
+    reads = []
     H, W = img.shape[:2]
     for rot in rotations:
         for ty in range(0, H, TILE - OVERLAP):
@@ -116,14 +119,16 @@ def ocr_callouts(page, dpi=300, rotations=(0, 90), clip=None, min_conf=0.6):
                 for box, txt, sc in zip(res.boxes, res.txts, res.scores):
                     if sc < min_conf:
                         continue
+                    bx = np.array(box, dtype=float)
+                    if rot:                          # undo np.rot90: (x', y') -> (W-1-y', x')
+                        bx = np.stack([tile.shape[1] - 1 - bx[:, 1], bx[:, 0]], axis=1)
+                    x0 = (bx[:, 0].min() + tx) / scale
+                    y0 = (bx[:, 1].min() + ty) / scale
+                    x1 = (bx[:, 0].max() + tx) / scale
+                    y1 = (bx[:, 1].max() + ty) / scale
+                    if return_reads:
+                        reads.append({"text": txt.strip(), "conf": float(sc), "bbox": pymupdf.Rect(x0, y0, x1, y1)})
                     for fam, dims, raw in shapes.find_callouts(txt):
-                        bx = np.array(box, dtype=float)
-                        if rot:                      # undo np.rot90: (x', y') -> (W-1-y', x')
-                            bx = np.stack([tile.shape[1] - 1 - bx[:, 1], bx[:, 0]], axis=1)
-                        x0 = (bx[:, 0].min() + tx) / scale
-                        y0 = (bx[:, 1].min() + ty) / scale
-                        x1 = (bx[:, 0].max() + tx) / scale
-                        y1 = (bx[:, 1].max() + ty) / scale
                         hits.setdefault(shapes.norm(raw), []).append({
                             "raw": raw.strip(), "fam": fam, "dims": dims,
                             "bbox": pymupdf.Rect(x0, y0, x1, y1),
@@ -132,13 +137,30 @@ def ocr_callouts(page, dpi=300, rotations=(0, 90), clip=None, min_conf=0.6):
     # The same label is read by overlapping tiles and by both rotation passes:
     # keep the best read among boxes that overlap or nearly touch.
     out = []
-    for reads in hits.values():
-        reads.sort(key=lambda h: -h["ocr_conf"])
+    for group in hits.values():
+        group.sort(key=lambda h: -h["ocr_conf"])
         kept = []
-        for h in reads:
+        for h in group:
             grown = h["bbox"] + (-8, -8, 8, 8)
             if any(grown.intersects(k["bbox"]) for k in kept):
                 continue
             kept.append(h)
         out += kept
-    return out
+    if not return_reads:
+        return out
+    # dedupe reads the same way (same text, overlapping box), then reading order
+    by_text = {}
+    for r in reads:
+        by_text.setdefault(r["text"].upper(), []).append(r)
+    uniq = []
+    for group in by_text.values():
+        group.sort(key=lambda r: -r["conf"])
+        kept = []
+        for r in group:
+            grown = r["bbox"] + (-8, -8, 8, 8)
+            if any(grown.intersects(k["bbox"]) for k in kept):
+                continue
+            kept.append(r)
+        uniq += kept
+    uniq.sort(key=lambda r: (round(r["bbox"].y0 / 12), r["bbox"].x0))
+    return out, uniq

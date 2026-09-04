@@ -39,6 +39,20 @@ Revu locks an open PDF, so close the previous output or use a new `-o` name.
    read at 0.95-0.99 confidence, ~3.5 min per sheet). The title-block sheet
    number is OCR'd the same way. `--ocr off` disables it.
 
+## Scoping (what steel is on this set?)
+
+```
+python sidecar/scope.py "C:\path\to\bid.pdf" [-o report.md] [--all-sheets] [--ocr off]
+```
+
+Writes `<name>_SCOPE.md`: a one-screen rollup of steel members, connections
+and anchorage, finish and grade, miscellaneous/ornamental items, things that
+are not ours (existing, concrete, wood, aluminum), document status and scope
+notes, then shape callout counts per size, a per-sheet table and the matched
+lines. Vocabulary lives in `scope_vocab.py`; the review copy is
+`docs/scoping-vocabulary.md` (`python sidecar/scope_vocab.py --doc`). Meant
+for Samantha's go/no-go read of a bid set before any takeoff.
+
 ## Modules
 
 - `auto_takeoff.py` — CLI: classify sheets from the title block, find AISC
