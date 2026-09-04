@@ -110,6 +110,18 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
   stay high-level (stairs, rails, canopies, countertop supports), aluminum/stainless/bronze ARE
   Berger scope, and scope output should be Revu boxes, not markdown.
 
+## 2026-09-04 night: five sets, batch benchmark (`sidecar/benchmark.py` -> bid-samples/BENCHMARK.md)
+
+Within 2 ft of Todd's polylines, structural plans: CAB IAH100 77%, PAC 66%, Moody 60%
+(S-102C 65%, S-105A 80%, counter S-210 72%, elevation S-300 71% with no elevation logic),
+Rothko 39%, OXY Hanger 6% (raster canopy details, consistent +3 ft overshoot). HTX2 = misc-only
+markups on a 518-page permit set (scoping example). Fixes this round: sheet number = largest
+sheet-like token (2+ digits), Bluebeam labels override; markup files' own column order read
+for size; scaling windows from drawing clusters (PAC 19% -> 66%); raster test = tiles cover
+25% of sheet. Moody lesson: ~200 of 1,800 polylines are on framing plans; the rest are
+decorative WT columns on elevations (850), lintels/shelf angles on arch plans (358), stairs,
+countertop supports, elevator, partition supports -> elevations and arch-sheet misc are next.
+
 ## Goal
 
 First-pass structural steel takeoff from bid PDFs — member counts, tonnage, then lengths — ingested into the estimator through the existing importer. Bluebeam Revu remains the human review surface. This is not a new app and not a Bluebeam replacement.
