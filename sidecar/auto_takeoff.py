@@ -60,47 +60,58 @@ def title_block_clip(page):
 
 
 def sheet_info(page):
-    """(sheet_number, title, kind) from the title block; falls back to the
-    PDF page label when the block yields nothing."""
-    clip = title_block_clip(page)
+    """(sheet_number, title, kind).
+
+    The sheet number is the largest sheet-like token on the page (title
+    blocks print it big, wherever the block sits and however the page is
+    rotated).  The title comes from a Bluebeam page label when one names the
+    sheet, else from the largest plan/section/... line near the number."""
     lines = []
-    for b in page.get_text("dict", clip=clip)["blocks"]:
+    for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
             continue
         for l in b["lines"]:
             t = "".join(s["text"] for s in l["spans"]).strip()
             if t:
-                lines.append((l["bbox"][3], t))
-    lines.sort()
-    number, number_y = "", None
-    for y, t in lines:
-        if SHEET_NO.match(t.upper()) and not t.isdigit():
-            number, number_y = t.upper(), y          # keep the lowest one on the page
-    # Title: a short line naming a plan/section/etc., nearest the sheet number.
-    # Boilerplate (copyright, disclaimers) is long and ends in a period.
+                size = max(s["size"] for s in l["spans"])
+                x0, y0, x1, y1 = l["bbox"]
+                lines.append((t, size, (x0 + x1) / 2, (y0 + y1) / 2))
+    number, num_pos, num_size = "", None, 0.0
+    for t, size, x, y in lines:
+        u = t.upper()
+        # bubbles ("S3", "C3", "L1") are big too: a sheet number has 2+ digits
+        if SHEET_NO.match(u) and not t.isdigit() and len(re.sub(r"\D", "", u)) >= 2 \
+                and size > num_size and size >= 12:
+            number, num_pos, num_size = u, (x, y), size
+    if not number:                                   # small title blocks: lowest-placed token
+        for t, size, x, y in sorted(lines, key=lambda l: l[3]):
+            if SHEET_NO.match(t.upper()) and not t.isdigit():
+                number, num_pos = t.upper(), (x, y)
+    # Title: a plan/section/... line, largest font first, nearest the number
+    # second; boilerplate is long and ends in a period.
+    W, H = max(l[2] for l in lines) if lines else 1, max(l[3] for l in lines) if lines else 1
     cands = []
-    for y, t in lines:
-        if len(t) > 45 or t.endswith("."):
+    for t, size, x, y in lines:
+        if len(t) > 45 or t.endswith(".") or size < 7:
             continue
         for rank, (_, pat) in enumerate(KINDS):
             if re.search(pat, t.upper()):
-                dist = abs(y - number_y) if number_y is not None else y
-                cands.append((rank, dist, t))
+                near = 0 if num_pos is None else math.hypot((x - num_pos[0]) / W, (y - num_pos[1]) / H)
+                cands.append((near > 0.35, -size, rank, near, t))
                 break
-    title = min(cands)[2] if cands else ""
+    title = min(cands)[4] if cands else ""
     # A PDF page label of the form "S-61003 - STEEL FRAMING DETAILS - ROOF"
     # (Bluebeam-combined sets) names the sheet better than title-block
     # heuristics, which can latch onto a note like "EL COLUMN, RE: PLAN".
-    lab = page.get_label() or ""
-    m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?)\s*[-:]\s*(.+)$", lab.upper())
+    lab = (page.get_label() or "").strip()
+    lab_u = re.sub(r"^\[\d+\]\s*", "", lab.upper())          # "[1] C1.00 CIVIL SITE ..." (Revu index prefix)
+    m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?)\s*[-:]?\s*(.*)$", lab_u)
     if m:
-        number = number or m.group(1)
-        title = m.group(2).strip()
-    elif not number:
-        m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,3}(?:\.\d{1,2})?)", lab.upper())
-        if m:
-            number = m.group(1)
-            title = title or lab.split("-", 1)[-1].strip()
+        number = m.group(1)                                # a labelled set names its sheets reliably
+        if m.group(2).strip():
+            title = m.group(2).strip()
+    elif lab and not lab.isdigit() and re.search(r"[A-Z]{3,}", lab_u):
+        title = lab_u                                      # label is the sheet title itself
     kind = "other"
     up = title.upper()
     for k, pat in KINDS:
