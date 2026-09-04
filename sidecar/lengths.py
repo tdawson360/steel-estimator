@@ -71,53 +71,83 @@ def scale_notes(page):
     return out
 
 
-def scale_regions(page, row_gap=60.0):
-    """Drawing regions and their scales, the way an estimator sets Bluebeam
-    scaling windows: one window per plan on the sheet.
+def drawing_clusters(page, gap=24.0, min_size=120.0):
+    """Bounding boxes of the separate drawings on a sheet: vector paths
+    grouped by proximity (a plan is one big connected cluster of linework,
+    each detail its own).  Text is ignored so labels never bridge drawings."""
+    rects = [p["rect"] for p in page.get_drawings() if p["rect"].width + p["rect"].height > 2]
+    # coarse grid union-find
+    cell = gap
+    parent = list(range(len(rects)))
 
-    Scale notes sit under plan titles, so notes at the same height form a
-    row of plans; a row's window runs from just below the previous row's
-    notes down to its own notes, and a row with plans at different scales
-    is split at the midpoints between its notes.  Returns [(Rect, ppf)] in
-    page (y-down) coordinates; a sheet with one scale gets one window."""
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    grid = {}
+    for i, r in enumerate(rects):
+        for gx in range(int(r.x0 // cell), int(r.x1 // cell) + 1):
+            for gy in range(int(r.y0 // cell), int(r.y1 // cell) + 1):
+                grid.setdefault((gx, gy), []).append(i)
+    for members in grid.values():
+        first = members[0]
+        for j in members[1:]:
+            a, b = find(first), find(j)
+            if a != b:
+                parent[b] = a
+    boxes = {}
+    for i, r in enumerate(rects):
+        root = find(i)
+        boxes[root] = boxes[root] | r if root in boxes else pymupdf.Rect(r)
+    # the title block / border frame spans the sheet: drop clusters that are nearly the page
+    W, H = page.rect.width, page.rect.height
+    out = [b for b in boxes.values() if b.width >= min_size and b.height >= min_size
+           and not (b.width > 0.9 * W and b.height > 0.9 * H)]
+    out.sort(key=lambda b: -b.get_area())
+    return out
+
+
+def scale_regions(page):
+    """Drawing regions and their scales, the way an estimator sets Bluebeam
+    scaling windows: one window per drawing.  Each cluster of linework takes
+    the scale note nearest below it (scale notes sit under drawing titles);
+    a sheet with a single scale note gets one window over the whole page.
+    Returns [(Rect, ppf)] largest first, in page (y-down) coordinates."""
     r = page.rect
-    notes = sorted(scale_notes(page), key=lambda n: (n[1], n[0]))
+    notes = scale_notes(page)
     if not notes:
         return []
-    rows, cur = [], [notes[0]]
-    for n in notes[1:]:
-        if n[1] - cur[-1][1] <= row_gap:
-            cur.append(n)
-        else:
-            rows.append(cur)
-            cur = [n]
-    rows.append(cur)
+    if len({round(n[2], 3) for n in notes}) == 1:
+        return [(pymupdf.Rect(r), notes[0][2])]
     regions = []
-    top = r.y0
-    for row in rows:
-        row.sort(key=lambda n: n[0])
-        bottom = max(n[1] for n in row) + 20
-        if len({round(n[2], 3) for n in row}) == 1:
-            regions.append((pymupdf.Rect(r.x0, top, r.x1, bottom), row[0][2]))
-        else:
-            left = r.x0
-            for i, n in enumerate(row):
-                right = (n[0] + row[i + 1][0]) / 2 if i + 1 < len(row) else r.x1
-                regions.append((pymupdf.Rect(left, top, right, bottom), n[2]))
-                left = right
-        top = bottom
-    # whatever lies below the last row (title block strip etc.) keeps the last scale
-    if regions and regions[-1][0].y1 < r.y1:
-        last = regions[-1]
-        regions[-1] = (pymupdf.Rect(last[0].x0, last[0].y0, last[0].x1, r.y1), last[1])
+    for box in drawing_clusters(page):
+        best = None
+        for x, y, ppf in notes:
+            below = y - box.y1
+            inside_x = box.x0 - 40 <= x <= box.x1 + 40
+            if -20 <= below <= 220 and inside_x:
+                d = below + (0 if box.x0 <= x <= box.x1 else 100)
+            else:
+                d = math.hypot(max(box.x0 - x, 0, x - box.x1), max(box.y0 - y, 0, y - box.y1)) + 500
+            if best is None or d < best[0]:
+                best = (d, ppf)
+        regions.append((box, best[1]))
     return regions
 
 
 def region_for(regions, pt):
-    for rect, ppf in regions:
-        if rect.contains(pymupdf.Point(*pt)):
-            return rect, ppf
-    return (regions[0] if regions else (None, None))
+    """Smallest region containing pt (details nest inside nothing, but a
+    detail box can overlap a plan box), else the nearest region."""
+    p = pymupdf.Point(*pt)
+    inside = [(rect.get_area(), rect, ppf) for rect, ppf in regions if rect.contains(p)]
+    if inside:
+        _, rect, ppf = min(inside, key=lambda t: t[0])
+        return rect, ppf
+    if not regions:
+        return None, None
+    return min(regions, key=lambda rp: math.hypot(max(rp[0].x0 - p.x, 0, p.x - rp[0].x1), max(rp[0].y0 - p.y, 0, p.y - rp[0].y1)))
 
 
 # ── chains ────────────────────────────────────────────────────────────

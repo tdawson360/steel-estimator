@@ -336,11 +336,12 @@ def run(args):
                     extra, _, _ = raster.raster_polylines(page, dpi=args.raster_dpi)
                     rec["raster"] = len(extra)
             # one pass per scaling window, like Bluebeam's per-plan viewports
-            for rect, rppf in (regions or [(None, None)]):
-                group = [h for h in resolved if rect is None or rect.contains(
-                    pymupdf.Point((h["bbox"].x0 + h["bbox"].x1) / 2, (h["bbox"].y0 + h["bbox"].y1) / 2))]
-                if not group:
-                    continue
+            groups = {}
+            for h in resolved:
+                centre = ((h["bbox"].x0 + h["bbox"].x1) / 2, (h["bbox"].y0 + h["bbox"].y1) / 2)
+                rect, rppf = lengths.region_for(regions, centre) if regions else (None, None)
+                groups.setdefault((id(rect), rppf), (rect, rppf, []))[2].append(h)
+            for rect, rppf, group in groups.values():
                 lengths.measure(page, group, weights, rppf, extra_segments=extra)
                 for h in group:
                     h["ppf"] = rppf

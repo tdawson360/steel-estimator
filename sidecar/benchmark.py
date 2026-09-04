@@ -120,20 +120,22 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
     if len(page.get_images()) >= 4:                    # rasterised linework: add strokes from the tiles
         import raster
         extra, _, _ = raster.raster_polylines(page)
-    for rect, ppf in (regions or [(None, None)]):
-        group = [c for c in calls if rect is None or rect.contains(pymupdf.Point((c["bbox"].x0 + c["bbox"].x1) / 2, (c["bbox"].y0 + c["bbox"].y1) / 2))]
-        if group:
-            lengths.measure(page, group, weights, ppf, extra_segments=extra)
+    groups = {}
+    for c in calls:
+        centre = ((c["bbox"].x0 + c["bbox"].x1) / 2, (c["bbox"].y0 + c["bbox"].y1) / 2)
+        rect, ppf = lengths.region_for(regions, centre) if regions else (None, None)
+        groups.setdefault((id(rect), ppf), (rect, ppf, []))[2].append(c)
+    for rect, ppf, group in groups.values():
+        lengths.measure(page, group, weights, ppf, extra_segments=extra)
     vps = markup_viewports(mdoc, pno)
 
     def ppf_at(pt):
         for r, p in vps:
             if r.contains(pymupdf.Point(*pt)):
                 return p
-        for r, p in regions:
-            if r.contains(pymupdf.Point(*pt)):
-                return p
-        return regions[0][1] if regions else 9.0
+        if regions:
+            return lengths.region_for(regions, pt)[1]
+        return 9.0
 
     polys = markup_polylines(mdoc, pno, ppf_at, size_idx)
     res = {"callouts": len(calls), "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
