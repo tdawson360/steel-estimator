@@ -113,6 +113,10 @@ class Chain:
         out.append(self.point_at(s1))
         return _simplify(out)
 
+    def is_closed(self):
+        (x0, y0), (x1, y1) = self.pts[0], self.pts[-1]
+        return len(self.pts) > 2 and math.hypot(x1 - x0, y1 - y0) < 2.0
+
     def is_straight(self):
         if len(self.pts) < 3:
             return True
@@ -338,10 +342,12 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
     Solid strokes win over dashed ones at equal distance (dashed is usually
     existing or hidden work).  Falls back to the nearest multi-piece chain of
     any direction (curved edges, labels aligned to the curve)."""
-    best, fallback = None, None
+    best, fallback, second = None, None, None
     for ch in chains:
         if id(ch) in skip or (bbox is not None and looks_like_leader(ch, bbox)):
             continue
+        if ch.width == 0 or ch.is_closed():
+            continue                        # fills, symbols, column/opening outlines
         n = ch.nearest(*pt)
         if n is None or n[0] > max_lateral:
             continue
@@ -357,12 +363,53 @@ def anchor_chain(chains, pt, angle, max_lateral, bbox=None, skip=frozenset()):
                     fallback = (score, ch, s, d)
                 continue
         if best is None or score < best[0]:
+            if best is not None and (second is None or best[0] < second[0]):
+                second = best
             best = (score, ch, s, d)
+        elif second is None or score < second[0]:
+            second = (score, ch, s, d)
     if best:
-        return best[1], best[2], best[3], ""
+        return best[1], best[2], best[3], "", second
     if fallback:
-        return fallback[1], fallback[2], fallback[3], "line not parallel to label"
-    return None, None, None, "no member line near callout"
+        return fallback[1], fallback[2], fallback[3], "line not parallel to label", None
+    return None, None, None, "no member line near callout", None
+
+
+def resolve_conflicts(callouts, weights, ppf, near_ft=3.0):
+    """Two labels of different sizes cannot both name the same spot on one
+    line (a beam replacing a joist in a bay draws the neighbouring joist's
+    label onto the beam line).  Move whichever label is cheaper to move,
+    i.e. whose second-best line scored nearly as well, to that line."""
+    for _ in range(2):
+        moved = False
+        by_chain = {}
+        for c in callouts:
+            if c.get("chain") is not None:
+                by_chain.setdefault(id(c["chain"]), []).append(c)
+        for group in by_chain.values():
+            group.sort(key=lambda c: c["s"])
+            for a, b in zip(group, group[1:]):
+                if a.get("key") == b.get("key") or abs(a["s"] - b["s"]) > near_ft * ppf:
+                    continue
+                if a.get("moved") or b.get("moved"):
+                    continue
+                cands = []
+                for c in (a, b):
+                    sec = c.get("second")
+                    if sec:
+                        cands.append((sec[0] - c["lateral"], c, sec))
+                if not cands:
+                    continue
+                cost, c, sec = min(cands, key=lambda t: t[0])
+                old = c["chain"]
+                old.callouts = [t for t in old.callouts if t[3] is not c]
+                c["chain"], c["s"], c["lateral"] = sec[1], sec[2], sec[3]
+                c["second"], c["moved"] = None, True
+                c["anchor_note"] = "; ".join(n for n in (c["anchor_note"], "moved off a line another size had claimed") if n)
+                sec[1].callouts.append((sec[2], weights.get(c.get("key"), 0.0), c.get("key"), c))
+                moved = True
+        if not moved:
+            break
 
 
 # ── crossings ─────────────────────────────────────────────────────────
@@ -424,6 +471,7 @@ def local_weight(chain, s, reach):
 
 
 EXTEND_FT = 6.0     # ft: how far a free member end may reach out to the line it frames into
+MIN_CUTTER = 90.0   # pt at 1/8" scale (10 ft): an unlabelled stroke shorter than this cannot cut a member
 
 
 def ray_hits(p, u, reach, chains, exclude):
@@ -504,6 +552,8 @@ def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
                 continue
             if chain.width > 0 and other.width < 0.5 * chain.width:
                 continue                               # hidden/grid work, not a member
+            if other.length < max(MIN_CUTTER * (page_dim / 240 if page_dim else 9), 0.3 * chain.length):
+                continue                               # short attachment (curb angle, opening frame), not a support
         elif w < own_weight - 1e-6:
             continue
         if s < s_anchor - CUT_MARGIN:
@@ -534,19 +584,21 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
         tip = leader_tip(bb, tips, paths)
         if tip:
             c["anchor"], c["anchor_pt"] = "leader", tip
-            ch, s, d, note = anchor_chain(chains, tip, None, LEADER_TIP_MAX, bb, leaders)
+            ch, s, d, note, second = anchor_chain(chains, tip, None, LEADER_TIP_MAX, bb, leaders)
         else:
             centre = ((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2)
             c["anchor"], c["anchor_pt"] = "text", centre
-            ch, s, d, note = anchor_chain(chains, centre, -c["angle"], lateral_max, bb, leaders)
+            ch, s, d, note, second = anchor_chain(chains, centre, -c["angle"], lateral_max, bb, leaders)
         # HSS labels on a plan are usually columns or kickers seen end-on:
         # only trust a drawn line that is parallel and right beside the text.
         if str(c.get("key", "")).upper().startswith("HSS") and \
                 (ch is None or note or d > 4 * (ppf or 9) or ch.pieces < 2):
             ch, s, d, note = None, None, None, "HSS: length from sections, not plan"
         c["chain"], c["s"], c["lateral"], c["anchor_note"] = ch, s, d, note
+        c["second"] = second
         if ch is not None:
             ch.callouts.append((s, weights.get(c.get("key"), 0.0), c.get("key"), c))
+    resolve_conflicts(callouts, weights, ppf or 9)
     xcache = {}
     reach = 30 * (ppf or 9)
     for c in callouts:
