@@ -86,6 +86,26 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
 - "TYP" items Todd multiplies by hand (86 HSS5x5 kickers from 12 labels, 52 L6x6x1/2 RTU curb
   angles from 1 label, 13 HSS14x6x5/8 canopy beams) are the other big gap: needs pattern
   counting (repeated symbols/rectangles per label), not length logic.
+- Later the same evening: Todd's rule adopted - measure to the nearest intersecting line
+  (girder/grid centerline), not the drawn stroke end. Free member ends now extend up to 6 ft
+  to the nearest equal-or-heavier member, else a grid line, else any drawn line. Plus: labels
+  never anchor to fills/closed outlines; unlabelled strokes under 10 ft (curb angles, opening
+  frames) cannot cut a member; two different-size labels on one spot of a line are resolved by
+  moving the cheaper-to-move label to its second-best line. S-209: 67% within 2 ft, 166 of 286
+  within 1 ft; joists 4,380 of 5,030 LF; W21x48 30/30, W16x50 66/66, W36x135 51/52.
+  Still open: W24x68 264/360, W21x62 52/120, W18x60 17/30 (beams around the RTU openings),
+  L5x5 and W8x10 over-measured (kicker labels / penthouse detail at a different scale),
+  and the TYP multiplication problem (HSS5x5 x86, L6x6x1/2 x52, HSS14x6 x13 from few labels).
+
+- Later still (Todd's RTU/kicker feedback): L5x5x3/8 is a horizontal beam-to-beam (~5'-9")
+  plus a kicker shown dashed (section only); the horizontal now measures (its short parallel
+  line beside the label had been mistaken for a leader shoulder). HSS labelled along a line are
+  beams (13 HSS14x6 canopy beams measured). Per-plan scaling windows: scale notes under plan
+  titles -> rows -> viewports at each scale (matches Todd's two on S-209). Lengths are measured
+  on PLAN sheets only (Todd), via Bluebeam page labels. S-209: 75% within 2 ft, 194 within 1 ft.
+  Open: W24x68 with HSS5x5 collectors labelled on top of them (labels stacked; 3 of 9 lost),
+  W21x62 66/120, TYP multiplication (HSS5x5 x86, L6x6 x52).
+
 - Todd's verdict on the fringe sets: Weslayan/San Esteban were edge cases; scoping tool should
   stay high-level (stairs, rails, canopies, countertop supports), aluminum/stainless/bronze ARE
   Berger scope, and scope output should be Revu boxes, not markdown.

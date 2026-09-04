@@ -171,6 +171,19 @@ def feet_inches(ft):
     return f"{total_in // 12}'-{total_in % 12}\""
 
 
+def round_up_inch(seg, ft, ppf):
+    """Estimating rule (Todd): every length rounds UP to the next inch.  The
+    polyline itself is stretched so Revu's own [Length] agrees: its last
+    vertex moves outward along the final segment by the rounding gap."""
+    ft_r = math.ceil(ft * 12 - 1e-6) / 12.0
+    d = (ft_r - ft) * ppf
+    if d <= 0 or len(seg) < 2:
+        return seg, ft_r
+    (ax, ay), (bx, by) = seg[-2], seg[-1]
+    L = math.hypot(bx - ax, by - ay) or 1.0
+    return seg[:-1] + [(bx + (bx - ax) / L * d, by + (by - ay) / L * d)], ft_r
+
+
 def new_name():
     return "AUTO-" + uuid.uuid4().hex[:12].upper()
 
@@ -342,6 +355,8 @@ def run(args):
             row["length_ft"] = ft
             measure_xref = xrefs.get(h.get("ppf"))
             if ft and measure_xref and h.get("seg") and h.get("confident"):
+                h["seg"], ft = round_up_inch(h["seg"], ft, h.get("ppf") or ppf)
+                row["length_ft"] = ft
                 notes = "AUTO LEN" + (f" CHECK: {len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
