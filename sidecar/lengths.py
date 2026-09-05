@@ -772,7 +772,58 @@ def measure(page, callouts, weights, ppf, extra_segments=None, chains=None):
     resolve_conflicts(callouts, weights, ppf or 9)
     _extents(page, callouts, chains, weights, ppf)
     _riders(callouts, weights, ppf or 9)
+    _z_axis(callouts, tips, paths, ppf)
     return callouts
+
+
+Z_AXIS_DEG = 45.0   # members standing up out of the plan are drawn at this angle from their origin
+# an explicit length in a label: "HSS4x4x1/4 x 6'-0\"", "6'-0\" LONG", "6'-0\" LG."
+EXPLICIT_LEN_RE = re.compile(r"""(?:[xX]\s*|\bLENGTH\s*=?\s*)(\d{1,3})'\s*-?\s*(\d{1,2})?(?:\s+(\d)/(\d{1,2}))?\s*(?:"|'')?(?![\dx])|(\d{1,3})'\s*-?\s*(\d{1,2})?(?:\s+(\d)/(\d{1,2}))?\s*(?:"|'')?\s*(?:LONG|LG\b)""", re.I)
+
+
+def explicit_length(text):
+    """Feet from an explicit length written in a label, or None."""
+    for m in EXPLICIT_LEN_RE.finditer(text or ""):
+        g = m.groups()
+        ft, inch, num, den = (g[0], g[1], g[2], g[3]) if g[0] else (g[4], g[5], g[6], g[7])
+        val = int(ft) + (int(inch) if inch else 0) / 12 + ((int(num) / int(den)) if num else 0) / 12
+        if 0.5 <= val <= 80:
+            return val
+    return None
+
+
+def z_axis_seg(origin, ft, ppf):
+    """Polyline from origin at 45 degrees, ft long (Todd's z-axis convention)."""
+    a = math.radians(Z_AXIS_DEG)
+    x, y = origin
+    return [(x, y), (x + ft * ppf * math.cos(a), y - ft * ppf * math.sin(a))]
+
+
+def _z_axis(callouts, tips, paths, ppf):
+    """Kickers, posts, braces, hangers and struts stand out of the plan: their
+    plan line is not their length.  When the label states the length, draw it
+    from the label's leader tip (else the text) at 45 degrees; otherwise the
+    member stays count-only and says where its length lives."""
+    if not ppf:
+        return
+    for c in callouts:
+        text = c.get("line", "")
+        if not VERTICAL_RE.search(text) or c.get("column"):
+            continue
+        ft = explicit_length(text.replace(c.get("raw", ""), " ", 1))
+        bb = pymupdf.Rect(c["bbox"])
+        tip = leader_tip(bb, tips, paths)
+        origin = tip if tip else ((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2)
+        if c.get("chain") is not None:
+            c["chain"].callouts = [t for t in c["chain"].callouts if t[3] is not c]
+            c["chain"] = None
+        c["anchor"], c["anchor_pt"], c["z_axis"] = "z-axis", origin, True
+        if ft:
+            c["length_ft"], c["seg"], c["confident"] = ft, z_axis_seg(origin, ft, ppf), True
+            c["len_note"] = f"z-axis member: {ft:.2f} ft from the label, drawn at 45 degrees"
+        else:
+            c["length_ft"], c["seg"], c["confident"] = None, None, False
+            c["len_note"] = "z-axis member (kicker/post/brace): length from the section, not the plan"
 
 
 RIDER_FAMS = ("HSS", "L", "C", "MC", "WT")

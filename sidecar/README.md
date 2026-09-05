@@ -94,6 +94,14 @@ pier cap below the finished slab. Drawn as a polyline from the column centre
 at 45 degrees (the z-axis convention: it goes up, not along a grid) with an `AUTO COL` note naming the elevation used; the report lists them
 under "Columns".
 
+## Z-axis members (kickers, posts, braces, hangers, struts)
+
+Anything that stands up out of the plan is drawn from its origin (the
+label's leader tip, else the text) at 45 degrees, never along its plan line:
+columns and posts get the column height rule; a kicker/brace/hanger whose
+label states a length ("x 6'-0\"", "6'-0\" LONG") is drawn to it; one with no
+stated length stays a count-only box that says the length lives on the section.
+
 ## Known limits (2026-09-05)
 
 - Assemblies defined in a detail and only located on the plan (a "LOAD

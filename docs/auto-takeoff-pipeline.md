@@ -142,6 +142,13 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Z-axis rule (Todd, 2026-09-05): kickers and posts follow the 45-degree convention too.**
+`lengths._z_axis`: a KICKER/POST/BRACE/HANGER/STRUT label with a stated length is drawn from its
+leader tip at 45 degrees; without one it is a count-only box ("length from the section"). A
+POST/COLUMN label with no drawn squares becomes one column at its leader tip under the column
+height rule. None of the nine sample sets states a kicker length in the label, so today this is
+posts -> columns and kickers -> boxes.
+
 **Columns BUILT 2026-09-05 (`sidecar/columns.py`).** Todd's rule: columns bolt to the top of
 the pier cap and the slab is poured around them, so they run taller than the elevations show;
 carry +1'-0" with a note saying why. (1) `column_schedule`: the COLUMN SCHEDULE table

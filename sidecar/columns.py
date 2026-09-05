@@ -242,6 +242,22 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                                 "conf": lab.get("conf", 1.0), "note": "",
                                 "bbox": pymupdf.Rect(x - L / 2, y - L / 2, x + L / 2, y + L / 2), "angle": 0,
                                 "line": lab.get("line", ""), "column": True, "col_label": lab, "at": (x, y)})
+    # 2b. a POST / COLUMN label with no drawn squares and no stated length is
+    # one column where its leader points (a canopy post, a lone column)
+    for lab in callouts:
+        if id(lab) in consumed or not lab.get("key") or lab.get("column"):
+            continue
+        if not re.search(r"\b(COL(?:UMN|S|\.)?|POST)\b", lab.get("line", ""), re.I):
+            continue
+        if lengths.explicit_length(lab.get("line", "").replace(lab.get("raw", ""), " ", 1)):
+            continue
+        r = pymupdf.Rect(lab["bbox"])
+        tip = lengths.leader_tip(r, tips, paths)
+        x, y = tip if tip else ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+        consumed.add(id(lab))
+        columns.append({"raw": lab["raw"], "fam": lab["fam"], "dims": lab["dims"], "key": lab["key"],
+                        "conf": lab.get("conf", 1.0), "note": "", "bbox": r, "angle": 0,
+                        "line": lab.get("line", ""), "column": True, "col_label": None, "at": (x, y)})
     # the same columns drawn on two plans of one sheet (framing above,
     # foundation below) count once: sets that are translations of each other
     columns = _dedupe_plans(columns, ppf or 9)
@@ -292,17 +308,13 @@ def _where(p, pno):
     return "this sheet" if p == pno else f"page {p + 1}"
 
 
-Z_AXIS_DEG = 45.0   # members that stand up out of the plan are drawn at this angle from the column centre
-
-
 def _set_height(c, ft, ppf, src, confident):
     h = ft + PIER_ALLOWANCE_FT
     x, y = c["at"]
     c["length_ft"], c["confident"] = h, confident
     # origin on the column, leg at 45 degrees: reads as "this one goes up",
     # never mistaken for a beam along a grid line (Todd, 2026-09-05)
-    a = math.radians(Z_AXIS_DEG)
-    c["seg"] = [(x, y), (x + h * ppf * math.cos(a), y - h * ppf * math.sin(a))]
+    c["seg"] = lengths.z_axis_seg((x, y), h, ppf)
     c["len_note"] = f"column {fmt_feet(ft)} from {src} + {fmt_feet(PIER_ALLOWANCE_FT)} pier cap below finished slab"
 
 
