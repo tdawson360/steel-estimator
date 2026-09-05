@@ -171,7 +171,7 @@ export default function DrawingSetPage() {
                   </span>
                   <button disabled={busy} onClick={() => runJob('SCOPE')} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Architectural + structural sheets">Re-scope</button>
                   <button disabled={busy} onClick={() => runJob('SCOPE', { allSheets: true })} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Every discipline, slower">Re-scope entire set</button>
-                  {!set.projectId && (set.prospectStatus !== 'PASS'
+                  {!set.projectId && set.prospectStatus !== 'DELETED' && (set.prospectStatus !== 'PASS'
                     ? <button onClick={() => pass(true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Pass</button>
                     : <button onClick={() => pass(false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>)}
                 </div>

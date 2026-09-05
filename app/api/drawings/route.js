@@ -31,7 +31,7 @@ export async function GET(request) {
   const projectId = searchParams.get('projectId');
   const where = projectId
     ? { projectId: parseInt(projectId, 10) }
-    : { projectId: null, prospectStatus: searchParams.get('passed') ? 'PASS' : { not: 'PASS' } };
+    : { projectId: null, prospectStatus: searchParams.get('passed') ? 'PASS' : { notIn: ['PASS', 'DELETED'] } };
   if (!projectId && !canManageDrawings(user)) {
     return NextResponse.json({ error: 'Prospects are for estimators' }, { status: 403 });
   }
@@ -73,7 +73,11 @@ export async function POST(request) {
       await prisma.drawingSet.delete({ where: { id: set.id } });
       return NextResponse.json({ error: 'That file is not a PDF' }, { status: 400 });
     }
-    const duplicate = await prisma.drawingSet.findFirst({ where: { sha256, id: { not: set.id } }, select: { id: true, name: true } });
+    const duplicate = await prisma.drawingSet.findFirst({
+      where: { sha256, id: { not: set.id } },
+      select: { id: true, name: true, prospectStatus: true, passedAt: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
     const updated = await prisma.drawingSet.update({
       where: { id: set.id },
       data: { storagePath: path.relative(drawingsDir(), dest), sizeBytes: bytes, sha256 },

@@ -4,7 +4,7 @@
 // estimator chases it (phase 2) or passes on it. docs/drawings-page-plan.md
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Upload, Loader2, FileText, XCircle, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Upload, Loader2, FileText, XCircle, CheckCircle2, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
 import AppHeader from '../../components/AppHeader';
 import { apiFetch } from '../../lib/api-client';
 
@@ -70,7 +70,13 @@ function UploadZone({ onDone }) {
       if (xhr.status === 201) {
         let body = null;
         try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
-        if (body?.duplicateOf) setError(`Uploaded, but this looks identical to "${body.duplicateOf.name}".`);
+        if (body?.duplicateOf) {
+          const d = body.duplicateOf;
+          const whenTxt = (v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          setError(d.prospectStatus === 'PASS' || d.prospectStatus === 'DELETED'
+            ? `Heads up: this is the same file as "${d.name}", which was passed on ${whenTxt(d.passedAt || d.createdAt)}.`
+            : `Uploaded, but this looks identical to "${d.name}" (${whenTxt(d.createdAt)}).`);
+        }
         onDone(body);
       } else {
         let msg = `Upload failed (${xhr.status})`;
@@ -151,6 +157,13 @@ export default function DrawingsPage() {
       load();
     } catch (e) { setErr(e.message); }
   };
+  const remove = async (set) => {
+    if (!window.confirm(`Delete the PDF and all job outputs for "${set.name}"? A stub stays so a re-upload of the same file is recognised.`)) return;
+    try {
+      await apiFetch(`/api/drawings/${set.id}`, { method: 'DELETE' });
+      load();
+    } catch (e) { setErr(e.message); }
+  };
 
   const canManage = session?.user && (session.user.role === 'ADMIN' || session.user.role === 'ESTIMATOR');
 
@@ -214,7 +227,10 @@ export default function DrawingsPage() {
                         <button onClick={() => pass(set, true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1" title="Not chasing this one"><XCircle size={14} />Pass</button>
                       )}
                       {canManage && set.prospectStatus === 'PASS' && (
-                        <button onClick={() => pass(set, false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>
+                        <>
+                          <button onClick={() => pass(set, false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>
+                          <button onClick={() => remove(set)} className="px-2.5 py-1 rounded border border-red-300 text-red-700 dark:border-red-500/40 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 inline-flex items-center gap-1" title="Delete the PDF and job outputs; keep a stub"><Trash2 size={14} />Delete files</button>
+                        </>
                       )}
                     </div>
                   </div>
