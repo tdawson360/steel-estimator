@@ -339,19 +339,23 @@ def _raw_chains(page, extra_segments=None):
     return chains
 
 
-LABEL_GAP = 70.0        # pt: a member line broken around its own label rejoins across this
+LABEL_GAP = 130.0       # pt: a member line broken around a label (its own, or a crossing member's) rejoins across this
 
 
 def merge_collinear_chains(chains, boxes, gap=LABEL_GAP, off_tol=1.5, ang_tol=1.0):
     """Join straight chains that lie on one line with a short gap between
-    them when a text label sits in that gap (CAD breaks a member line where
-    its label is placed).  Same width only; gaps without text stay gaps, so
-    collinear beams in adjacent bays are not glued together."""
+    them when text sits in that gap (CAD breaks a member line where a label
+    is placed: the member's own, or a perpendicular member's label running
+    across it).  Same width only; gaps without text stay gaps, so collinear
+    beams in adjacent bays are not glued together."""
     def gap_has_text(ux, uy, rho, ta, tb):
-        tm = (ta + tb) / 2
-        mx, my = tm * ux - rho * uy, tm * uy + rho * ux
-        p = pymupdf.Point(mx, my)
-        return any((bx + (-4, -4, 4, 4)).contains(p) for bx in boxes)
+        # sample along the gap: a long gap may hold the label near one end
+        for f in (0.2, 0.35, 0.5, 0.65, 0.8):
+            t = ta + (tb - ta) * f
+            p = pymupdf.Point(t * ux - rho * uy, t * uy + rho * ux)
+            if any((bx + (-4, -4, 4, 4)).contains(p) for bx in boxes):
+                return True
+        return False
 
     straight = [c for c in chains if c.is_straight()]
     other = [c for c in chains if not c.is_straight()]

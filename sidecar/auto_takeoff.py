@@ -270,6 +270,7 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
     nm = new_name()
     x = annot.xref
     doc.xref_set_key(x, "NM", pdf_string(nm))
+    doc.xref_set_key(x, "BM", "/Multiply")               # Revu "highlight" blend: the drawn line shows through
     doc.xref_set_key(x, "IT", "/PolyLineDimension")
     doc.xref_set_key(x, "Measure", f"{measure_xref} 0 R")
     doc.xref_set_key(x, "MeasurementTypes", "130")
