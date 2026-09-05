@@ -130,9 +130,9 @@ export default function DrawingSetPage() {
   }, [set, load]);
 
   const canManage = session?.user && (session.user.role === 'ADMIN' || session.user.role === 'ESTIMATOR');
-  const runJob = async (kind) => {
+  const runJob = async (kind, extra = {}) => {
     try {
-      await apiFetch(`/api/drawings/${id}/jobs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, options: { lengths } }) });
+      await apiFetch(`/api/drawings/${id}/jobs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, options: { lengths, ...extra } }) });
       load();
     } catch (e) { setErr(e.message); }
   };
@@ -165,7 +165,8 @@ export default function DrawingSetPage() {
                 <div className="flex items-center gap-2 text-sm flex-wrap">
                   <label className="inline-flex items-center gap-1"><input type="checkbox" checked={lengths} onChange={e => setLengths(e.target.checked)} /> lengths</label>
                   <button disabled={busy} onClick={() => runJob('MEASURE')} className="px-2.5 py-1 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">Measure</button>
-                  <button disabled={busy} onClick={() => runJob('SCOPE')} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50">Re-scope</button>
+                  <button disabled={busy} onClick={() => runJob('SCOPE')} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Architectural + structural sheets">Re-scope</button>
+                  <button disabled={busy} onClick={() => runJob('SCOPE', { allSheets: true })} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Every discipline, slower">Re-scope entire set</button>
                   {!set.projectId && (set.prospectStatus !== 'PASS'
                     ? <button onClick={() => pass(true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Pass</button>
                     : <button onClick={() => pass(false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>)}

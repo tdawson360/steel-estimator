@@ -52,6 +52,7 @@ function UploadZone({ onDone }) {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(null);      // { name, pct }
   const [error, setError] = useState('');
+  const [allSheets, setAllSheets] = useState(false);
   const inputRef = useRef(null);
 
   const send = useCallback((file) => {
@@ -62,6 +63,7 @@ function UploadZone({ onDone }) {
     xhr.open('POST', '/api/drawings');
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
     xhr.setRequestHeader('Content-Type', 'application/pdf');
+    if (allSheets) xhr.setRequestHeader('X-Scope-All', '1');
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) setBusy({ name: file.name, pct: Math.round(100 * e.loaded / e.total) }); };
     xhr.onload = () => {
       setBusy(null);
@@ -79,7 +81,7 @@ function UploadZone({ onDone }) {
     xhr.onerror = () => { setBusy(null); setError('Upload failed: network error'); };
     setBusy({ name: file.name, pct: 0 });
     xhr.send(file);
-  }, [onDone]);
+  }, [onDone, allSheets]);
 
   return (
     <div
@@ -105,6 +107,10 @@ function UploadZone({ onDone }) {
           Drop a bid set here (the full combined PDF, as received). Scoping starts on its own.
         </div>
       )}
+      <label className="mt-3 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-zinc-500 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={allSheets} onChange={(e) => setAllSheets(e.target.checked)} />
+        review entire set (all disciplines; default is architectural + structural only)
+      </label>
       {error && <div className="mt-2 text-sm text-amber-700 dark:text-amber-300">{error}</div>}
     </div>
   );

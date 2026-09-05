@@ -79,7 +79,9 @@ export async function POST(request) {
       data: { storagePath: path.relative(drawingsDir(), dest), sizeBytes: bytes, sha256 },
       include: LIST_INCLUDE,
     });
-    const job = await enqueue({ setId: set.id, kind: 'SCOPE', options: {}, userId: parseInt(user.id, 10) });
+    // Default scope = architectural + structural sheets; X-Scope-All: 1 reviews every discipline.
+    const options = request.headers.get('x-scope-all') === '1' ? { allSheets: true } : {};
+    const job = await enqueue({ setId: set.id, kind: 'SCOPE', options, userId: parseInt(user.id, 10) });
     return NextResponse.json({ ...shape(updated), latestJob: job, duplicateOf: duplicate }, { status: 201 });
   } catch (err) {
     await fs.rm(setDir(set.id), { recursive: true, force: true }).catch(() => {});

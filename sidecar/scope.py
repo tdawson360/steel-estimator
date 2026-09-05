@@ -43,8 +43,10 @@ KIND_COLOR = {"misc": (0.85, 0.2, 0.55), "material": (0.55, 0.3, 0.85), "finish"
 THIN_TEXT = 60          # words: below this a structural sheet is probably stroke-font -> OCR
 
 
-def page_lines(page, use_ocr, ocr_dpi):
-    """([{text, bbox}] in reading order, [block strings], source, callouts-or-None)."""
+def page_lines(page, use_ocr, ocr_dpi, label=""):
+    """([{text, bbox}] in reading order, [block strings], source, callouts-or-None).
+    OCR (slow: minutes per sheet) only when use_ocr and the text layer is too
+    thin to be real; the caller restricts that to structural plans."""
     lines, blocks = [], []
     for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
@@ -59,6 +61,7 @@ def page_lines(page, use_ocr, ocr_dpi):
             blocks.append(" ".join(btxt))
     if not (use_ocr and len(" ".join(l["text"] for l in lines).split()) < THIN_TEXT):
         return lines, blocks, "text", None
+    print(f"PROGRESS {label} (reading with OCR, a few minutes)", flush=True)
     import ocr
     callouts, reads = ocr.ocr_callouts(page, dpi=ocr_dpi, return_reads=True)
     lines += [{"text": r["text"], "bbox": r["bbox"]} for r in reads if r["conf"] >= 0.7]
@@ -95,14 +98,19 @@ def run(args):
     doc = pymupdf.open(src)
     sheets, boxes, facts = [], 0, []
     n = doc.page_count
+    wanted = {d.strip().upper() for d in args.disciplines.split(",") if d.strip()}
     for pno, page in enumerate(doc):
         number, title, kind = sheet_info(page)
-        print(f"PROGRESS {pno + 1}/{n} {number or ''}", flush=True)
+        print(f"PROGRESS {pno + 1}/{n} {number or 'unnumbered'}", flush=True)
         discipline = re.match(r"[A-Z]*", number).group(0)[-1:]
-        structural = discipline == "S" or not number
-        if not (structural or args.all_sheets):
+        structural = discipline == "S"
+        # Default: architectural + structural only (M/E/P/C/L are never steel
+        # scope); unnumbered pages are read from their text layer but never
+        # OCR'd; OCR is reserved for structural plans with no readable callouts.
+        if not (args.all_sheets or discipline in wanted or not number):
             continue
-        lines, blocks, source, callouts = page_lines(page, args.ocr != "off" and structural, args.ocr_dpi)
+        use_ocr = args.ocr != "off" and structural and kind == "plan"
+        lines, blocks, source, callouts = page_lines(page, use_ocr, args.ocr_dpi, f"{pno + 1}/{n} {number}")
         found = scope_vocab.scan([l["text"] for l in lines], extra=blocks)
         if structural and not facts and kind == "plan":
             facts = title_block_facts(page)
@@ -136,8 +144,9 @@ def run(args):
                 annot.update()
                 boxes += 1
         sheets.append({"page": pno + 1, "sheet": number or f"p{pno + 1}", "title": title, "kind": kind,
-                       "source": source, "lines": len(lines), "found": found, "sizes": sizes})
+                       "discipline": discipline, "source": source, "lines": len(lines), "found": found, "sizes": sizes})
     summary = build_summary(src, doc.page_count, sheets, facts, boxes)
+    summary["scanned"] = "entire set" if args.all_sheets else f"disciplines {args.disciplines}"
     insert_summary_page(doc, summary)
     doc.save(out, garbage=3, deflate=True)
     if args.json:
@@ -164,7 +173,7 @@ def build_summary(src, pages, sheets, facts, boxes):
     size_rows = []
     for k, cnt in sorted(sizes.items(), key=lambda kv: (-kv[1], kv[0])):
         size_rows.append({"size": k, "callouts": cnt, "lbft": shapes.weight(k)})
-    plans = [s["sheet"] for s in sheets if s["kind"] == "plan"]
+    plans = [s["sheet"] for s in sheets if s["kind"] == "plan" and s.get("discipline") == "S"]
     doc_status = [e for c, v in cats.items() if v["kind"] == "status" for e in v["examples"]]
     return {
         "file": src.name, "pages": pages, "run": dt.datetime.now().isoformat(timespec="minutes"),
@@ -174,14 +183,14 @@ def build_summary(src, pages, sheets, facts, boxes):
         "categories": {cat: v for cat, v in cats.items()},
         "kinds_present": [k for k in KIND_ORDER if any(v["kind"] == k for v in cats.values())],
         "sizes": size_rows,
-        "sheets": [{"page": s["page"], "sheet": s["sheet"], "kind": s["kind"], "title": s["title"], "read": s["source"],
+        "sheets": [{"page": s["page"], "sheet": s["sheet"], "kind": s["kind"], "discipline": s.get("discipline", ""), "title": s["title"], "read": s["source"],
                     "lines": s["lines"], "hits": {k: len(v["hits"]) for k, v in s["found"].items()}} for s in sheets],
     }
 
 
 def summary_lines(summary):
-    L = [f"SCOPE SUMMARY  {summary['file']}", f"{summary['pages']} pages, {summary['structural_sheets']} structural sheets scanned, "
-         f"plans: {', '.join(summary['plans'][:12]) or 'none'}", ""]
+    L = [f"SCOPE SUMMARY  {summary['file']}", f"{summary['pages']} pages, {summary['structural_sheets']} sheets scanned "
+         f"({summary.get('scanned', 'architectural + structural')}), structural plans: {', '.join(summary['plans'][:12]) or 'none'}", ""]
     if summary["title_block"]["lines"]:
         L += ["Title block: " + " | ".join(summary["title_block"]["lines"][:5]), ""]
     if summary["document_status"]:
@@ -224,7 +233,8 @@ def main():
     ap.add_argument("-o", "--output", help="Revu-readable scope PDF (default: <name>_SCOPE.pdf)")
     ap.add_argument("--json", help="write the summary JSON here")
     ap.add_argument("--md", help="also write a Markdown report here")
-    ap.add_argument("--all-sheets", action="store_true", help="scan every sheet, not just structural")
+    ap.add_argument("--all-sheets", action="store_true", help="scan every sheet of every discipline")
+    ap.add_argument("--disciplines", default="S,A", help="discipline letters to scan (default S,A)")
     ap.add_argument("--ocr", choices=["auto", "off"], default="auto")
     ap.add_argument("--ocr-dpi", type=int, default=300)
     args = ap.parse_args()
