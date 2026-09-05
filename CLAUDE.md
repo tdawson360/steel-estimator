@@ -45,6 +45,8 @@ Takeoffs are done in-house with Bluebeam Revu; Todd shares the profile/toolkit w
 - Markups list → CSV export → **Import CSV** in the app (`/api/import-csv`, logic in `lib/estimating/import-takeoff.js`).
 - **Auto takeoff** (`sidecar/`, Python + PyMuPDF; plan in `docs/auto-takeoff-pipeline.md`): counts AISC callouts on structural framing plans and writes Revu-readable annotations carrying the v1.7 custom columns. Validates sizes against `sidecar/aisc-shapes.json` (regenerate with `node scripts/export-aisc-shapes.mjs`). Bid PDFs live outside the repo (`C:\Projects\bid-samples`).
 
+- **Drawings page** (`/drawings`, plan in `docs/drawings-page-plan.md`): drop a combined bid set → stored under `DRAWINGS_DIR` (env; default `..\steel-estimator-drawings`, outside the repo) → a SCOPE job runs the sidecar via the in-process single-worker runner (`lib/drawings/runner.js`, started by `instrumentation.js`; `SIDECAR_PYTHON` env picks the interpreter) → Prospects list with the summary; Pass hides it. Models `DrawingSet`/`DrawingJob`. Chase → project and MEASURE jobs are phase 2. Rule: creating a project from a prospect sets the name only — never autofill Project Info. `GET /api/drawings/health` reports whether Python + pymupdf are installed.
+
 ### CSV contract (essentials)
 
 One row = one piece. Grouped by `Item_Number`; `Member_Mark` parent/child dotting ("45", "45.1") nests subparts under members. `Length_Ft` (typed) OR `Measured_Length` (measured) suffices; drawn dimension strings are parsed and reconciled to the nearest inch. `Page_Label` and `Drawing_Ref` merge into the item's Dwg Ref.

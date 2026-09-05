@@ -39,6 +39,8 @@ model User {
   projects            Project[] @relation("CreatedBy")
   publishedProjects   Project[] @relation("PublishedBy")
   estimatedProjects   Project[] @relation("EstimatorProjects")
+  drawingUploads      DrawingSet[] @relation("DrawingUploads")
+  drawingJobRequests  DrawingJob[] @relation("DrawingJobRequests")
   lockedProjects      Project[] @relation("LockedBy")
   lastSavedProjects   Project[] @relation("LastSavedBy")
   notifications       Notification[] @relation("UserNotifications")
@@ -102,6 +104,9 @@ model Project {
   // Supplier stock-length availability per size, JSON: { "W12x26": [40,60], ... }
   // Absent size = category standard lengths.
   stockLengthOverrides String @default("{}")
+
+  // Drawing sets dropped on the Drawings page and chased into this project
+  drawingSets      DrawingSet[]
 
   // ── DASHBOARD / BID BOARD FIELDS ─────────────────────────────────────────
   // dashboardStatus tracks where this project sits in the bid pipeline.
@@ -896,4 +901,58 @@ model HandlingClass {
   sortOrder       Int      @default(0)
   active          Boolean  @default(true)
   updatedAt       DateTime @updatedAt
+}
+
+// =============================================================================
+// DRAWINGS — bid sets dropped on the Drawings page (docs/drawings-page-plan.md)
+// =============================================================================
+// The PDF itself lives under DRAWINGS_DIR (outside the repo; client data).
+// A set starts as a prospect (no project); Chase links it to a project.
+// Jobs run the Python sidecar (sidecar/): SCOPE writes a Revu-boxed scope
+// PDF + summary JSON, MEASURE writes the auto-takeoff PDF.
+
+model DrawingSet {
+  id             Int       @id @default(autoincrement())
+  name           String
+  originalName   String
+  storagePath    String                      // relative to DRAWINGS_DIR, e.g. "12/original.pdf"
+  markupPath     String?                     // "12/markup.pdf" once the estimator's Bluebeam copy is uploaded
+  sizeBytes      Int       @default(0)
+  pageCount      Int       @default(0)
+  sha256         String?
+  titleBlock     String    @default("{}")    // JSON read off the set for display only (never autofills a project)
+  prospectStatus String    @default("NEW")   // NEW | SCOPED | CHASE | PASS
+  passedAt       DateTime?
+  passedById     Int?
+  projectId      Int?
+  project        Project?  @relation(fields: [projectId], references: [id])
+  uploadedById   Int
+  uploadedBy     User      @relation("DrawingUploads", fields: [uploadedById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  jobs           DrawingJob[]
+
+  @@index([prospectStatus])
+  @@index([projectId])
+}
+
+model DrawingJob {
+  id            Int       @id @default(autoincrement())
+  setId         Int
+  set           DrawingSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  kind          String                        // SCOPE | MEASURE
+  status        String    @default("QUEUED")  // QUEUED | RUNNING | DONE | FAILED | CANCELLED
+  options       String    @default("{}")      // JSON: { lengths, ocr, sheets }
+  progress      String    @default("")        // last "PROGRESS i/n sheet" line from the sidecar
+  summary       String    @default("{}")      // JSON summary the sidecar writes with --json
+  outputs       String    @default("[]")      // JSON: [{ name, path, bytes }]
+  log           String    @default("")        // tail of stdout+stderr (capped)
+  requestedById Int
+  requestedBy   User      @relation("DrawingJobRequests", fields: [requestedById], references: [id])
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([setId, createdAt])
+  @@index([status])
 }

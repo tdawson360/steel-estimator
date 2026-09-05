@@ -298,6 +298,7 @@ def run(args):
     sheets, hits, exceptions, labels = [], [], [], []
     for pno, page in enumerate(doc):
         number, title, kind = sheet_info(page)
+        print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
         chars = len(page.get_text().strip())
         labels.append(number or page.get_label() or str(pno + 1))
         discipline = re.match(r"[A-Z]*", number).group(0)[-1:]      # "LRS2.11" -> "S"
@@ -395,7 +396,33 @@ def run(args):
 
     write_report(out, src, pname, tname, sheets, hits, exceptions, weights)
     write_csv(out, hits + exceptions)
+    if getattr(args, "json", None):
+        write_json(Path(args.json), src, sheets, hits, exceptions, weights)
     return out, sheets, hits, exceptions
+
+
+def write_json(path, src, sheets, hits, exceptions, weights):
+    """Machine summary for the estimator app's job runner."""
+    import json
+    groups = {}
+    for h in hits:
+        g = groups.setdefault(h["label"], {"size": h["label"], "key": h["key"], "count": 0, "drawn": 0, "drawn_lf": 0.0,
+                                           "draft": 0, "draft_lf": 0.0, "lbft": weights.get(h["key"])})
+        g["count"] += 1
+        if h.get("length_ft") and h.get("confident"):
+            g["drawn"] += 1
+            g["drawn_lf"] += h["length_ft"]
+        elif h.get("length_ft"):
+            g["draft"] += 1
+            g["draft_lf"] += h["length_ft"]
+    tons = sum((g["drawn_lf"] + g["draft_lf"]) * (g["lbft"] or 0) for g in groups.values()) / 2000
+    summary = {
+        "file": src.name, "run": dt.datetime.now().isoformat(timespec="minutes"),
+        "sheets": [{k: v for k, v in s.items() if k != "raster"} for s in sheets if s["annotated"] or s["hits"]],
+        "members": len(hits), "exceptions": len(exceptions), "tons_measured": round(tons, 1),
+        "sizes": sorted(groups.values(), key=lambda g: -g["count"]),
+    }
+    path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
 
 
 def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
@@ -482,6 +509,7 @@ def main():
     ap.add_argument("--raster", choices=["auto", "off"], default="auto",
                     help="with --lengths: also measure strokes recovered from image tiles")
     ap.add_argument("--raster-dpi", type=int, default=200)
+    ap.add_argument("--json", help="write a machine summary here (for the estimator app)")
     ap.add_argument("--profile", help=".bpx to take the column contract from (default: newest in repo)")
     ap.add_argument("--toolkit", help=".btx to take subjects/colours from (default: newest in repo)")
     args = ap.parse_args()
