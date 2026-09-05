@@ -163,8 +163,12 @@ export default function DrawingSetPage() {
               </div>
               {canManage && (
                 <div className="flex items-center gap-2 text-sm flex-wrap">
-                  <label className="inline-flex items-center gap-1"><input type="checkbox" checked={lengths} onChange={e => setLengths(e.target.checked)} /> lengths</label>
-                  <button disabled={busy} onClick={() => runJob('MEASURE')} className="px-2.5 py-1 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">Measure</button>
+                  <span className="inline-flex items-center rounded border border-gray-300 dark:border-zinc-700 overflow-hidden">
+                    <button disabled={busy} onClick={() => runJob('MEASURE')} className="px-2.5 py-1 bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50" title="Auto-takeoff: a box on every shape callout on the structural plans, with your columns filled">Measure</button>
+                    <label className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 dark:text-zinc-400 cursor-pointer" title="Also draft polylines for members the tool is confident about (experimental)">
+                      <input type="checkbox" checked={lengths} onChange={e => setLengths(e.target.checked)} /> draft lengths
+                    </label>
+                  </span>
                   <button disabled={busy} onClick={() => runJob('SCOPE')} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Architectural + structural sheets">Re-scope</button>
                   <button disabled={busy} onClick={() => runJob('SCOPE', { allSheets: true })} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Every discipline, slower">Re-scope entire set</button>
                   {!set.projectId && (set.prospectStatus !== 'PASS'
