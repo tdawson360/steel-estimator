@@ -152,7 +152,9 @@ drawing cluster is a column; the same set drawn on two plans of one sheet counts
 (translation match), odd ones are flagged "drawn on one plan only". (3) Height = the highest
 elevation note within 80 ft on any structural plan (B/DECK, T/STL, T.O. xxx; two-line Revit
 tags joined) + 1 ft; beyond 80 ft a draft; no plan notes -> the single T.O. elevation on the
-section sheets; else count only. Drawn as the vertical polyline Todd draws, note `AUTO COL`
+section sheets; else count only. Drawn from the column centre at 45 degrees (Todd's z-axis
+convention, 2026-09-05: anything standing up out of the plan is drawn at 45 so it never reads as
+a beam), note `AUTO COL`
 naming the elevation used; report section "Columns". IAH100 S-20100: 40/40 columns, 72%
 within 2 ft (highest-note rule: 28 of 40 heights match; the rest sit where only the canopy's
 `(B/ STL 10'-1")` notes are within reach, and the 4 S1 canopy columns on S-209 get the roof

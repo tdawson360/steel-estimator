@@ -90,8 +90,8 @@ for Samantha's go/no-go read of a bid set before any takeoff.
 Counted from COLUMN SCHEDULE marks on the plan or from "COLUMN TYP." labels
 beside drawn squares; height = the highest elevation note within 80 ft on the
 structural plans (or the one T.O. elevation on the sections) + 1'-0" for the
-pier cap below the finished slab. Drawn as a vertical polyline at the column
-with an `AUTO COL` note naming the elevation used; the report lists them
+pier cap below the finished slab. Drawn as a polyline from the column centre
+at 45 degrees (the z-axis convention: it goes up, not along a grid) with an `AUTO COL` note naming the elevation used; the report lists them
 under "Columns".
 
 ## Known limits (2026-09-05)

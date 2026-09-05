@@ -292,11 +292,17 @@ def _where(p, pno):
     return "this sheet" if p == pno else f"page {p + 1}"
 
 
+Z_AXIS_DEG = 45.0   # members that stand up out of the plan are drawn at this angle from the column centre
+
+
 def _set_height(c, ft, ppf, src, confident):
     h = ft + PIER_ALLOWANCE_FT
     x, y = c["at"]
     c["length_ft"], c["confident"] = h, confident
-    c["seg"] = [(x, y), (x, y - h * ppf)]
+    # origin on the column, leg at 45 degrees: reads as "this one goes up",
+    # never mistaken for a beam along a grid line (Todd, 2026-09-05)
+    a = math.radians(Z_AXIS_DEG)
+    c["seg"] = [(x, y), (x + h * ppf * math.cos(a), y - h * ppf * math.sin(a))]
     c["len_note"] = f"column {fmt_feet(ft)} from {src} + {fmt_feet(PIER_ALLOWANCE_FT)} pier cap below finished slab"
 
 
