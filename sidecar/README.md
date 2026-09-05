@@ -73,7 +73,24 @@ for Samantha's go/no-go read of a bid set before any takeoff.
   linking into polylines. Extraction is clean; turning strokes into member
   extents that match an estimator's judgment is not solved yet.
 
-## Known limits (2026-09-04)
+## One label, many members (2026-09-05)
+
+- **TYP**: a label saying TYP on a member-weight line lends its size to every
+  unlabelled stroke of the same line weight and similar length within 60 ft
+  (plan-scale regions only). Polylines carry an `AUTO TYP` note; the report
+  lists them under "Typical members".
+- **Tag legends**: `... DESIGNATED AS "J.S."` makes every "J.S." on the sheet a
+  callout of that size.
+- **Riders**: an HSS/angle/channel labelled right on a heavier member's line
+  takes that member's stretch (collectors on a beam). Columns, posts, kickers,
+  braces and hangers never ride.
+
+## Known limits (2026-09-05)
+
+- Assemblies defined in a detail and only located on the plan (a "LOAD
+  DISTRIBUTION TRUSS TYP." whose chords are sized in detail 3/S-101) are not
+  expanded. Columns are counted, not measured: their height lives on the
+  column schedule, sections or elevations (see docs/auto-takeoff-pipeline.md).
 
 - Lengths: per-piece agreement with a human takeoff is ~10-20% on the Weslayan
   set under every rule tried, vector or raster. Continuous edge members are one

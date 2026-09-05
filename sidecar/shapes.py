@@ -61,7 +61,7 @@ def _to_fraction(tok):
 # Open-web steel joists (SJI): depth + series + section, e.g. 20LH04, 24K4,
 # 24LHSP (special, weight from the joist supplier).  Approximate lb/ft from
 # the SJI load tables; LHSP/DLH specials carry no weight until quoted.
-JOIST = re.compile(r"(?<![A-Z0-9])(\d{2})\s?(LHSP|DLHSP|KCS|DLH|LH|K)\s?(\d{1,2})?(?![A-Z0-9/])", re.I)
+JOIST = re.compile(r"(?<![A-Z0-9.])(\d{1,2}(?:\.5)?)\s?(LHSP|DLHSP|KCS|DLH|LH|K)\s?(\d{1,2})?(?![A-Z0-9/])", re.I)
 JOIST_WEIGHTS = {
     "8K1": 5.1, "10K1": 5.0, "12K1": 5.0, "12K3": 5.7, "12K5": 7.1, "14K1": 5.2, "14K3": 6.0, "14K4": 6.7, "14K6": 7.7,
     "16K2": 5.5, "16K3": 6.3, "16K4": 7.0, "16K5": 7.5, "16K6": 8.1, "16K7": 8.6, "16K9": 10.0,

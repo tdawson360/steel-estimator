@@ -133,6 +133,7 @@ def page_callouts(page):
     for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
             continue
+        block = " / ".join("".join(s["text"] for s in l["spans"]).strip() for l in b["lines"])
         for l in b["lines"]:
             bbox = pymupdf.Rect(l["bbox"])
             if bbox.intersects(tb):
@@ -142,7 +143,7 @@ def page_callouts(page):
             angle = round(math.degrees(math.atan2(-dy, dx)))
             for fam, dims, raw in shapes.find_callouts(text):
                 out.append({"raw": raw.strip(), "fam": fam, "dims": dims, "bbox": bbox,
-                            "angle": angle, "line": text.strip()})
+                            "angle": angle, "line": text.strip(), "block": block})
     return out
 
 
@@ -338,15 +339,22 @@ def run(args):
                     extra, _, _ = raster.raster_polylines(page, dpi=args.raster_dpi)
                     rec["raster"] = len(extra)
             # one pass per scaling window, like Bluebeam's per-plan viewports
+            chains = lengths.extract_chains(page, extra)
             groups = {}
             for h in resolved:
                 centre = ((h["bbox"].x0 + h["bbox"].x1) / 2, (h["bbox"].y0 + h["bbox"].y1) / 2)
                 rect, rppf = lengths.region_for(regions, centre) if regions else (None, None)
                 groups.setdefault((id(rect), rppf), (rect, rppf, []))[2].append(h)
             for rect, rppf, group in groups.values():
-                lengths.measure(page, group, weights, rppf, extra_segments=extra)
-                for h in group:
+                lengths.measure(page, group, weights, rppf, chains=chains)
+                # members drawn but not labelled: tags defined by a legend
+                # line, and strokes covered by a "TYP" label
+                typ = lengths.tag_instances(page, group, weights, rppf, chains)
+                typ += lengths.typ_instances(page, group + typ, weights, rppf, chains, all_callouts=resolved)
+                for h in group + typ:
                     h["ppf"] = rppf
+                found.extend(typ)
+                rec["typ"] = rec.get("typ", 0) + len(typ)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         for h in found:
             row = {**rec, **h}
@@ -371,7 +379,8 @@ def run(args):
             if ft and measure_xref and h.get("seg") and h.get("confident"):
                 h["seg"], ft = round_up_inch(h["seg"], ft, h.get("ppf") or ppf)
                 row["length_ft"] = ft
-                notes = "AUTO LEN" + (f" CHECK: {len_note}" if len_note else "")
+                tag = "AUTO TYP" if h.get("typ_from") or h.get("tag_from") else "AUTO LEN"
+                notes = tag + (f" CHECK: {len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
                           "Measured_Length": f"{ft:.2f}", "Weight_Per_Ft": f"{lbft:g}",
@@ -461,7 +470,21 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         tot_lb += (lfd + lfr) * lbft
         lines.append(f"| {sheet} | {label} | {n} | {nd} | {lfd:.1f} | {nr} | {lfr:.1f} | {lbft:g} |")
     lines += ["", f"Total members counted: {len(hits)}. Drawn + draft tonnage: {tot_lb / 2000:.1f} tons (excludes members with no length)."]
-    checks = [h for h in hits if h.get("len_note") or h["conf"] < 1]
+    typ = {}
+    for h in hits:
+        lab = h.get("typ_from") or h.get("tag_from")
+        if lab:
+            g = typ.setdefault((h["sheet"], lab.get("line", "")[:50], h["label"]), [0, 0.0])
+            g[0] += 1
+            g[1] += h.get("length_ft") or 0.0
+    if typ:
+        lines += ["", "## Typical members", "",
+                  "Unlabelled strokes of the same line weight and rough length as a member whose label says TYP; "
+                  "each is drawn as its own polyline with an AUTO TYP note.", "",
+                  "| Sheet | TYP label | Shape | Instances | LF |", "|---|---|---|---|---|"]
+        for (sheet, line, label), (n, lf) in sorted(typ.items()):
+            lines.append(f"| {sheet} | {line} | {label} | {n} | {lf:.1f} |")
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

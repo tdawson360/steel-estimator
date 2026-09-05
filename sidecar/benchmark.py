@@ -125,8 +125,13 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         centre = ((c["bbox"].x0 + c["bbox"].x1) / 2, (c["bbox"].y0 + c["bbox"].y1) / 2)
         rect, ppf = lengths.region_for(regions, centre) if regions else (None, None)
         groups.setdefault((id(rect), ppf), (rect, ppf, []))[2].append(c)
+    chains = lengths.extract_chains(page, extra)
+    typ_all = []
     for rect, ppf, group in groups.values():
-        lengths.measure(page, group, weights, ppf, extra_segments=extra)
+        lengths.measure(page, group, weights, ppf, chains=chains)
+        tags = lengths.tag_instances(page, group, weights, ppf, chains)
+        typ_all += tags + lengths.typ_instances(page, group + tags, weights, ppf, chains, all_callouts=calls)
+    calls = calls + typ_all
     vps = markup_viewports(mdoc, pno)
 
     def ppf_at(pt):
@@ -138,7 +143,7 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         return 9.0
 
     polys = markup_polylines(mdoc, pno, ppf_at, size_idx)
-    res = {"callouts": len(calls), "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
+    res = {"callouts": len(calls) - len(typ_all), "typ": len(typ_all), "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
            "lf_auto": collections.defaultdict(float), "lf_todd": collections.defaultdict(float),
            "n_auto": collections.Counter(), "n_todd": collections.Counter()}
     for p in polys:
@@ -178,7 +183,7 @@ def run(root, jobs, use_ocr):
         doc, mdoc = pymupdf.open(sets[0]), pymupdf.open(marks[0])
         size_idx = size_column_indexes(mdoc)
         lines += [f"## {d.name}", "", f"`{sets[0].name}` ({doc.page_count} pages) vs `{marks[0].name}`", "",
-                  "| Page | Sheet | Title | Callouts | Measured | Todd polylines | Matched | ≤1 ft | ≤2 ft |", "|---|---|---|---|---|---|---|---|---|"]
+                  "| Page | Sheet | Title | Callouts | Typ | Measured | Todd polylines | Matched | ≤1 ft | ≤2 ft |", "|---|---|---|---|---|---|---|---|---|---|"]
         job = collections.Counter()
         per_size_auto, per_size_todd = collections.defaultdict(float), collections.defaultdict(float)
         for pno in range(min(doc.page_count, mdoc.page_count)):
@@ -204,7 +209,7 @@ def run(root, jobs, use_ocr):
             for k, v in r["lf_todd"].items():
                 per_size_todd[k] += v
             pct = lambda n: f"{100 * n / r['matched']:.0f}%" if r["matched"] else "-"
-            lines.append(f"| {pno + 1} | {number} | {title[:32]} | {r['callouts']} | {r['measured']} | {r['polylines']} | {r['matched']} | {pct(r['in1'])} | {pct(r['in2'])} |")
+            lines.append(f"| {pno + 1} | {number} | {title[:32]} | {r['callouts']} | {r.get('typ', 0)} | {r['measured']} | {r['polylines']} | {r['matched']} | {pct(r['in1'])} | {pct(r['in2'])} |")
         m = job["matched"] or 1
         lines += ["", f"**{d.name}:** {job['callouts']} callouts, {job['measured']} measured, {job['polylines']} of Todd's polylines, "
                       f"{job['matched']} matched, {100 * job['in1'] / m:.0f}% within 1 ft, {100 * job['in2'] / m:.0f}% within 2 ft.", "",

@@ -19,6 +19,7 @@ splitting drawn chains rather than from reading individual entities:
 Callouts whose only nearby line is their own leader (HSS kicker/column
 labels, for instance) get no length: those come from sections.
 """
+import collections
 import math
 import re
 from dataclasses import dataclass, field
@@ -520,6 +521,7 @@ def _move(c, sec, weights, note):
 def _detach(c, note):
     old = c["chain"]
     old.callouts = [t for t in old.callouts if t[3] is not c]
+    c["rode"], c["rode_s"] = old, c["s"]
     c["chain"], c["s"], c["second"], c["moved"] = None, None, None, True
     c["anchor_note"] = "; ".join(n for n in (c["anchor_note"], note) if n)
 
@@ -726,15 +728,18 @@ def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
 
 # ── main entry ────────────────────────────────────────────────────────
 
-def measure(page, callouts, weights, ppf, extra_segments=None):
+def measure(page, callouts, weights, ppf, extra_segments=None, chains=None):
     """Attach chain/extent/length to each callout dict (in place).
 
     callouts: dicts with bbox, angle (deg, y-up as page_callouts gives), key.
     extra_segments: (x0, y0, x1, y1, width) strokes recovered from raster
     tiles, treated as solid drawn lines alongside the vector paths.
+    chains: prebuilt extract_chains() output (shared across scale regions
+    and with typ_instances); built here when not given.
     Sets c['length_ft'], c['seg'] (vertex list), c['len_note'], c['anchor']."""
     paths = page.get_drawings()
-    chains = extract_chains(page, extra_segments)
+    if chains is None:
+        chains = extract_chains(page, extra_segments)
     tips = arrowheads(paths)
     lateral_max = LATERAL_FT * ppf if ppf else 100.0
     # any short single stroke ending at an arrowhead is a leader, never a member
@@ -765,6 +770,163 @@ def measure(page, callouts, weights, ppf, extra_segments=None):
         if ch is not None:
             ch.callouts.append((s, weights.get(c.get("key"), 0.0), c.get("key"), c))
     resolve_conflicts(callouts, weights, ppf or 9)
+    _extents(page, callouts, chains, weights, ppf)
+    _riders(callouts, weights, ppf or 9)
+    return callouts
+
+
+RIDER_FAMS = ("HSS", "L", "C", "MC", "WT")
+
+
+def _riders(callouts, weights, ppf):
+    """A light member labelled right on a heavier member's line, with no
+    line of its own, runs with that member: HSS collectors sitting on a
+    beam, angles bolted along a girder.  It takes the same stretch the
+    heavier label measured.  Joists never ride (a joist label beside a beam
+    is a neighbour, not an attachment)."""
+    for c in callouts:
+        old = c.get("rode")
+        if old is None or c.get("chain") is not None or c.get("length_ft"):
+            continue
+        if str(c.get("fam", "")).upper() not in RIDER_FAMS or VERTICAL_RE.search(c.get("line", "")):
+            continue
+        if c.get("lateral") is None or c["lateral"] > 1.5 * ppf:
+            continue
+        heavy = [(abs(s - c["rode_s"]), o) for s, _, _, o in old.callouts if o is not c and o.get("seg")]
+        if not heavy:
+            continue
+        _, o = min(heavy, key=lambda t: t[0])
+        c["seg"], c["length_ft"], c["confident"] = list(o["seg"]), o["length_ft"], bool(o.get("confident"))
+        c["rider_of"] = o.get("key")
+        c["len_note"] = f"rides on {o.get('key')}: same stretch"
+
+
+TYP_RE = re.compile(r"\bTYP(?:ICAL)?\b", re.I)
+TYP_REACH_FT = 60.0     # ft: how far a typical label's rule carries
+TYP_RATIO = (0.4, 2.5)  # an instance's drawn length relative to the labelled one
+TYP_MAX_PPF = 50.0      # pt/ft: 1/2" = 1'-0" and coarser is a plan; finer is a detail
+# members standing up or leaning out of the plan: their plan line is not their length
+VERTICAL_RE = re.compile(r"\b(COL(?:UMN|S|\.)?|POST|KICKER|BRACE|BRACING|HANGER|STRUT)\b", re.I)
+# a legend line that names a tag drawn at every instance: DESIGNATED AS "J.S."
+TAG_RE = re.compile(r'(?:DESIGNATED|MARKED|NOTED|LABELED|LABELLED|SHOWN)\s+AS\s+"([^"]{1,8})"', re.I)
+
+
+def mode_width(chains):
+    """The sheet's hairline: the most common stroke width among open chains."""
+    ws = collections.Counter(round(c.width, 2) for c in chains if c.width > 0 and not c.is_closed() and c.length >= 9)
+    return ws.most_common(1)[0][0] if ws else 0.0
+
+
+def typ_instances(page, callouts, weights, ppf, chains, all_callouts=None):
+    """Members drawn but never labelled because one label says TYP.
+
+    Drafters draw every curb angle, kicker and lintel but label one of them
+    "L6x6x1/2 TYP".  Line weight is the drafter's own signature for a member
+    class, so every unlabelled single stroke of member weight that matches
+    the labelled member's weight and rough length, within reach of the
+    label, is an instance of it.  Returns new measured callout dicts (with
+    'typ_from' pointing at the label) — nothing is written in place."""
+    if not ppf or ppf >= TYP_MAX_PPF:
+        return []                            # details and sections: never propagate there
+    # thin is judged against every label on the sheet, not just this scale
+    # region, and the sheet's hairline never counts as member weight
+    thin_below = max(0.5 * member_width(chains, all_callouts or callouts), mode_width(chains) + 0.01)
+    # only a label sitting on a member-weight line carries a rule; a TYP
+    # label on hairline work (a chord inside a truss detail) proves nothing
+    labels = [c for c in callouts if c.get("chain") is not None and c.get("length_ft")
+              and c["chain"].width >= thin_below and TYP_RE.search(c.get("line", ""))
+              and not VERTICAL_RE.search(c.get("line", ""))]
+    if not labels:
+        return []
+    page_dim = min(page.rect.width, page.rect.height)
+    taken = [c["chain"] for c in callouts if c.get("chain") is not None]
+    out = []
+    for ch in chains:
+        if ch.callouts or ch.is_closed() or ch.width == 0 or ch.width < thin_below or ch.pieces > 1:
+            continue
+        if ch.length < 0.8 * ppf or ch.length > 0.6 * page_dim:
+            continue
+        if any(_same_stroke(ch, o) for o in taken):
+            continue
+        mx, my = ch.point_at(ch.length / 2)
+        best = None
+        for lab in labels:
+            if abs(lab["chain"].width - ch.width) > 0.05:
+                continue
+            ratio = ch.length / max(1.0, lab["length_ft"] * ppf)
+            if not TYP_RATIO[0] <= ratio <= TYP_RATIO[1]:
+                continue
+            bb = lab["bbox"]
+            d = math.hypot(mx - (bb.x0 + bb.x1) / 2, my - (bb.y0 + bb.y1) / 2)
+            if d <= TYP_REACH_FT * ppf and (best is None or d < best[0]):
+                best = (d, lab)
+        if best is None:
+            continue
+        d, lab = best
+        taken.append(ch)
+        n = ch.nearest(mx, my)
+        c = {k: lab[k] for k in ("raw", "fam", "dims", "key", "conf", "note") if k in lab}
+        c.update({"bbox": pymupdf.Rect(mx - 2, my - 2, mx + 2, my + 2), "angle": -n[2],
+                  "line": lab.get("line", ""), "typ_from": lab, "typ_dist_ft": d / ppf,
+                  "anchor": "typ", "anchor_pt": (mx, my), "anchor_note": "",
+                  "chain": ch, "s": n[1], "lateral": 0.0, "second": None})
+        ch.callouts.append((n[1], weights.get(c.get("key"), 0.0), c.get("key"), c))
+        out.append(c)
+    _extents(page, out, chains, weights, ppf)
+    for c in out:
+        c["len_note"] = "; ".join(n for n in (
+            f"typical of '{c['typ_from'].get('line', '')[:40]}' {c['typ_dist_ft']:.0f} ft away", c.get("len_note", "")) if n)
+    return out
+
+
+def tag_instances(page, callouts, weights, ppf, chains):
+    """A label that defines a tag — '2.5K3 JOIST SUBSTITUTION DESIGNATED AS
+    "J.S."' — stands for every "J.S." drawn on the sheet.  Each tag becomes
+    a callout of the labelled size at the tag's position and reading
+    direction, and measures like a label would.  Returns the new callouts."""
+    defs = []
+    for c in callouts:
+        m = TAG_RE.search(c.get("block", "") or c.get("line", ""))
+        if m and c.get("key"):
+            defs.append((m.group(1).strip().upper(), c))
+    if not defs:
+        return []
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        for l in b["lines"]:
+            t = "".join(sp["text"] for sp in l["spans"]).strip().strip('"').strip().upper()
+            for tag, lab in defs:
+                if t != tag:
+                    continue
+                bbox = pymupdf.Rect(l["bbox"])
+                if bbox.intersects(pymupdf.Rect(lab["bbox"])):
+                    continue                     # the definition itself
+                dx, dy = l["dir"]
+                c = {k: lab[k] for k in ("raw", "fam", "dims", "key", "conf", "note") if k in lab}
+                c.update({"bbox": bbox, "angle": round(math.degrees(math.atan2(-dy, dx))),
+                          "line": f'"{tag}" = {lab.get("line", "")}', "tag_from": lab})
+                out.append(c)
+    if out:
+        measure(page, out, weights, ppf, chains=chains)
+        for c in out:
+            c["len_note"] = "; ".join(n for n in (
+                f"tag of '{c['tag_from'].get('line', '')[:40]}'", c.get("len_note", "")) if n)
+    return out
+
+
+def _same_stroke(a, b, tol=3.0):
+    """Both ends of a lie on b: a duplicate or a sub-stroke of the same line."""
+    for pt in (a.pts[0], a.pts[-1]):
+        n = b.nearest(*pt)
+        if n is None or n[0] > tol:
+            return False
+    return True
+
+
+def _extents(page, callouts, chains, weights, ppf):
+    """Cut, snap and gate each anchored callout's stretch of its chain."""
     xcache = {}
     reach = 30 * (ppf or 9)
     for c in callouts:

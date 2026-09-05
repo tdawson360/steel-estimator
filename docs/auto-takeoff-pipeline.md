@@ -1,7 +1,7 @@
 # Auto-Takeoff Pipeline — Phase 1.5 Plan
 
 Location: `docs/auto-takeoff-pipeline.md`; code in `sidecar/` (Python, PyMuPDF).
-Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #9 fixed
+Status: STEP 1 BUILT 2026-09-04; lengths + TYP/tag/rider rules 2026-09-05; columns scoped (see 2026-09-05 section). The two original blockers are closed (finding #9 fixed
 2026-09-02 in 587a85c/840aa13; calc-extraction and main now ship together, no merge gate).
 
 ## 2026-09-04 findings from the first real set (2929 Weslayan, SCA Engineers)
@@ -109,6 +109,44 @@ Status: STEP 1 BUILT 2026-09-04. The two original blockers are closed (finding #
 - Todd's verdict on the fringe sets: Weslayan/San Esteban were edge cases; scoping tool should
   stay high-level (stairs, rails, canopies, countertop supports), aluminum/stainless/bronze ARE
   Berger scope, and scope output should be Revu boxes, not markdown.
+
+## 2026-09-05: TYP members, tag legends, riders; columns scoped
+
+Three rules now turn one label into every member it stands for (`lengths.py`):
+
+- **TYP propagation** (`typ_instances`): a label whose text says TYP/TYPICAL and sits on a
+  member-weight line lends its size to every unlabelled single stroke of the *same line
+  weight* and 0.4-2.5x its length within 60 ft, on plan-scale regions only (finer than
+  1/2" = 1'-0" is a detail). Line weight is the drafter's signature for a member class (IAH100:
+  0.24 hairline, 1.2 joists/angles/light HSS, 1.68 beams, 2.04 girders). Duplicate strokes and
+  labels on hairline work are skipped. IAH100 S-209: L6x6x1/2 curb angle 58 -> 185 LF of Todd's
+  219 (20 instances, notes `AUTO TYP`). The rest of his 52 pieces sit on hairline strokes inside
+  the MAU/exhaust openings, which nothing distinguishes from dimension lines.
+- **Tag legends** (`tag_instances`): `2.5K3 JOIST SUBSTITUTION DESIGNATED AS "J.S."` makes
+  every "J.S." on the sheet a 2.5K3 callout at the tag's position. MKT S-100: 15 tags,
+  103/103 LF; S-100 82% within 1 ft, 89% within 2 ft.
+- **Riders** (`_riders`): an HSS/angle/channel label sitting right on a heavier member's line
+  with no line of its own runs with that member and takes the same stretch (HSS5x5 collectors
+  on W24x68: 282 -> 402 LF of Todd's 435; Todd cuts collectors into 5 ft pieces per joist bay,
+  the tool gives the run). Column/post/kicker/brace/hanger labels never ride.
+
+Benchmarks after: IAH100 74% (S-209 75%), MKT 85%, PAC 66% (unchanged). Not solved:
+assemblies defined in a detail and only located on the plan (MKT "LOAD DISTRIBUTION TRUSS
+TYP." = HSS2-1/2 chords 299 LF + L2x2 chords 336 LF taken from detail 3/S-101), curb angles
+on hairline strokes, HSS4x4 columns.
+
+**Columns (how Todd takes them off, from the markups):** one vertical polyline per column on
+the foundation/framing plan whose *length is the column height*, not anything drawn on the
+plan. IAH100 S-20100: 40 columns (39 `S2` marks = HSS6x6x3/8, 3 `S3` = HSS7x5x1/2 from the
+COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the nearest
+`B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
+EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
+symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+Proposed build: (1) column marks/symbols on plans -> count + location per type, sizes from
+the schedule table or the TYP label; (2) height = nearest elevation note (B/DECK, T/STL,
+T.O. xxx) at that grid location on the framing plan above, plus an allowance Todd sets, or a
+flat per-sheet height typed into the Measure options when no notes exist; (3) output = the
+same vertical polyline he draws, with an `AUTO COL` note showing the elevation it came from.
 
 ## 2026-09-04 night: five sets, batch benchmark (`sidecar/benchmark.py` -> bid-samples/BENCHMARK.md)
 
