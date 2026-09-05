@@ -34,6 +34,8 @@ NEAR_FT = 80.0                  # ft: the highest elevation note this close is t
 FAR_FT = 120.0                  # ft: beyond NEAR, the highest note within reach is only a draft
 FEET_RE = re.compile(r"""(?<![\d.])(\d{1,3})'\s*-?\s*(?:(\d{1,2})(?:\s+(\d)/(\d{1,2}))?\s*(?:"|'')?)?(?![\dx])""", re.I)
 SCHEDULE_RE = re.compile(r"COLUMN\s+SCHEDULE", re.I)
+# the table's own title, not a sentence that mentions one ("REFER TO S-61X FOR CONCRETE COLUMN SCHEDULE.")
+SCHEDULE_TITLE_RE = re.compile(r"^(?:STEEL\s+)?COLUMN\s+SCHEDULE\.?$", re.I)
 
 
 def feet(m):
@@ -74,7 +76,7 @@ def column_schedule(doc, pages=None):
                 if t:
                     lines.append((t, pymupdf.Rect(l["bbox"])))
         # the table: from the heading down to the next heading or the end
-        heads = [i for i, (t, _) in enumerate(lines) if SCHEDULE_RE.search(t)]
+        heads = [i for i, (t, _) in enumerate(lines) if SCHEDULE_TITLE_RE.match(t.strip())]
         for h in heads:
             hx, hy = lines[h][1].x0, lines[h][1].y0
             rows = []
@@ -85,7 +87,7 @@ def column_schedule(doc, pages=None):
                     continue
                 rows.append((t, r))
             # marks and sizes alternate row by row ("S1", "HSS4X4X3/8", "S2", ...)
-            pending = None
+            pending, found_here = None, 0
             for t, r in rows:
                 u = t.strip().upper()
                 if MARK_RE.match(u) and u not in ("TYPE", "MARK"):
@@ -98,8 +100,9 @@ def column_schedule(doc, pages=None):
                         key = shapes.resolve(fam, dims)[0]
                         if key:
                             marks[pending] = (key, raw.strip(), fam, dims)
+                            found_here += 1
                     pending = None
-            if rows:
+            if rows and found_here:
                 box = pymupdf.Rect(lines[h][1])
                 for _, r in rows:
                     box |= r
