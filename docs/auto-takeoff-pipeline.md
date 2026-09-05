@@ -142,11 +142,22 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
-Proposed build: (1) column marks/symbols on plans -> count + location per type, sizes from
-the schedule table or the TYP label; (2) height = nearest elevation note (B/DECK, T/STL,
-T.O. xxx) at that grid location on the framing plan above, plus an allowance Todd sets, or a
-flat per-sheet height typed into the Measure options when no notes exist; (3) output = the
-same vertical polyline he draws, with an `AUTO COL` note showing the elevation it came from.
+**Columns BUILT 2026-09-05 (`sidecar/columns.py`).** Todd's rule: columns bolt to the top of
+the pier cap and the slab is poured around them, so they run taller than the elevations show;
+carry +1'-0" with a note saying why. (1) `column_schedule`: the COLUMN SCHEDULE table
+(mark -> size) anywhere in the set; marks on a plan ("S2" bubbles, located at the leader tip)
+become columns; the table's own size texts are dropped from the callouts. (2) "HSS 4X4X3/8
+COLUMN TYP." labels: every square of four heavy strokes with the HSS's side in the label's
+drawing cluster is a column; the same set drawn on two plans of one sheet counts once
+(translation match), odd ones are flagged "drawn on one plan only". (3) Height = the highest
+elevation note within 80 ft on any structural plan (B/DECK, T/STL, T.O. xxx; two-line Revit
+tags joined) + 1 ft; beyond 80 ft a draft; no plan notes -> the single T.O. elevation on the
+section sheets; else count only. Drawn as the vertical polyline Todd draws, note `AUTO COL`
+naming the elevation used; report section "Columns". IAH100 S-20100: 40/40 columns, 72%
+within 2 ft (highest-note rule: 28 of 40 heights match; the rest sit where only the canopy's
+`(B/ STL 10'-1")` notes are within reach, and the 4 S1 canopy columns on S-209 get the roof
+height instead of Todd's 10 ft). MKT S-100: 14 columns + 2 flagged, 12'-10" from the S-300
+`T.O. MEZZANINE 11'-10"` (Todd 10'-10" / 11'-10").
 
 ## 2026-09-04 night: five sets, batch benchmark (`sidecar/benchmark.py` -> bid-samples/BENCHMARK.md)
 

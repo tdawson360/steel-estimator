@@ -85,12 +85,23 @@ for Samantha's go/no-go read of a bid set before any takeoff.
   takes that member's stretch (collectors on a beam). Columns, posts, kickers,
   braces and hangers never ride.
 
+## Columns (2026-09-05, `columns.py`)
+
+Counted from COLUMN SCHEDULE marks on the plan or from "COLUMN TYP." labels
+beside drawn squares; height = the highest elevation note within 80 ft on the
+structural plans (or the one T.O. elevation on the sections) + 1'-0" for the
+pier cap below the finished slab. Drawn as a vertical polyline at the column
+with an `AUTO COL` note naming the elevation used; the report lists them
+under "Columns".
+
 ## Known limits (2026-09-05)
 
 - Assemblies defined in a detail and only located on the plan (a "LOAD
   DISTRIBUTION TRUSS TYP." whose chords are sized in detail 3/S-101) are not
-  expanded. Columns are counted, not measured: their height lives on the
-  column schedule, sections or elevations (see docs/auto-takeoff-pipeline.md).
+  expanded.
+- Column heights follow the highest note nearby, so a canopy column under a
+  lower `(B/ STL ...)` note gets the roof height; the note says which
+  elevation was used.
 
 - Lengths: per-piece agreement with a human takeoff is ~10-20% on the Weslayan
   set under every rule tried, vector or raster. Continuous edge members are one

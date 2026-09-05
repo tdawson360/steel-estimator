@@ -30,6 +30,7 @@ from pathlib import Path
 import pymupdf
 
 sys.path.insert(0, str(Path(__file__).parent))
+import columns as column_step                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -298,8 +299,17 @@ def run(args):
     wanted = {s.strip().upper() for s in args.sheets.split(",")} if args.sheets else None
 
     sheets, hits, exceptions, labels = [], [], [], []
+    infos = [sheet_info(page) for page in doc]
+    # columns: the schedule and the elevation notes live on other sheets
+    def disc(n):
+        return re.match(r"[A-Z]*", n).group(0)[-1:]
+    plan_pages = [i for i, (n, t, k) in enumerate(infos) if k == "plan" and disc(n) == "S"]
+    other_s = [i for i, (n, t, k) in enumerate(infos) if k != "plan" and disc(n) == "S"]
+    col_schedule, col_blocks = column_step.column_schedule(doc, plan_pages)
+    notes_by_page = {i: column_step.elevation_notes(doc[i]) for i in plan_pages}
+    section_heights = column_step.section_elevations(doc, other_s)
     for pno, page in enumerate(doc):
-        number, title, kind = sheet_info(page)
+        number, title, kind = infos[pno]
         print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
         chars = len(page.get_text().strip())
         labels.append(number or page.get_label() or str(pno + 1))
@@ -331,6 +341,7 @@ def run(args):
         for h in found:
             h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
         resolved = [h for h in found if h["key"]]
+        chains = None
         if args.lengths and resolved:
             extra = None
             if args.raster != "off":
@@ -355,6 +366,23 @@ def run(args):
                     h["ppf"] = rppf
                 found.extend(typ)
                 rec["typ"] = rec.get("typ", 0) + len(typ)
+        # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
+        # from the elevation notes (+1 ft pier cap), drawn as vertical polylines
+        if structural and (col_schedule or any(column_step.COLUMN_LABEL_RE.search(h.get("line", "")) for h in resolved)):
+            if chains is None:
+                chains = lengths.extract_chains(page)
+            ppf0 = regions[0][1] if regions else None
+            cols, consumed = column_step.columns_on_page(page, pno, number, resolved, chains, ppf0, col_schedule,
+                                                     col_blocks.get(pno), notes_by_page, plan_pages, section_heights)
+            if consumed:
+                found = [h for h in found if id(h) not in consumed]
+            for h in cols:
+                rect, rppf = lengths.region_for(regions, h["at"]) if regions else (None, None)
+                h["ppf"] = rppf
+                if not args.lengths:
+                    h["length_ft"], h["seg"], h["confident"] = None, None, False
+            found.extend(cols)
+            rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         for h in found:
             row = {**rec, **h}
@@ -379,7 +407,7 @@ def run(args):
             if ft and measure_xref and h.get("seg") and h.get("confident"):
                 h["seg"], ft = round_up_inch(h["seg"], ft, h.get("ppf") or ppf)
                 row["length_ft"] = ft
-                tag = "AUTO TYP" if h.get("typ_from") or h.get("tag_from") else "AUTO LEN"
+                tag = "AUTO COL" if h.get("column") else "AUTO TYP" if h.get("typ_from") or h.get("tag_from") else "AUTO LEN"
                 notes = tag + (f" CHECK: {len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
@@ -390,7 +418,7 @@ def run(args):
             else:
                 draft = f"draft {ft:.1f} ft" if ft else ""
                 why = "; ".join(n for n in (draft, len_note) if n)
-                notes = "AUTO COUNT ONLY" + (f": {why}" if why else "")
+                notes = ("AUTO COL COUNT ONLY" if h.get("column") else "AUTO COUNT ONLY") + (f": {why}" if why else "")
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes}
                 row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject), label,
                                     columns, values, dashed=h["conf"] < 1)
@@ -484,7 +512,26 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                   "| Sheet | TYP label | Shape | Instances | LF |", "|---|---|---|---|---|"]
         for (sheet, line, label), (n, lf) in sorted(typ.items()):
             lines.append(f"| {sheet} | {line} | {label} | {n} | {lf:.1f} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from"))]
+    cols = {}
+    for h in hits:
+        if h.get("column"):
+            g = cols.setdefault((h["sheet"], h["label"]), [0, 0, 0.0, set()])
+            g[0] += 1
+            if h.get("length_ft") and h.get("confident"):
+                g[1] += 1
+                g[2] += h["length_ft"]
+            m = re.search(r"from '(.*?)' \(", h.get("len_note", ""))
+            if m:
+                g[3].add(m.group(1)[:30])
+    if cols:
+        lines += ["", "## Columns", "",
+                  "Counted from schedule marks or COLUMN TYP. labels on the plan; height = the highest elevation note "
+                  "near the column + 1'-0\" (columns bolt to the pier cap below the finished slab). "
+                  "Drawn as vertical polylines with an AUTO COL note naming the elevation used.", "",
+                  "| Sheet | Shape | Columns | Drawn | LF | Elevations used |", "|---|---|---|---|---|---|"]
+        for (sheet, label), (n, nd, lf, srcs) in sorted(cols.items()):
+            lines.append(f"| {sheet} | {label} | {n} | {nd} | {lf:.1f} | {'; '.join(sorted(srcs))[:80]} |")
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

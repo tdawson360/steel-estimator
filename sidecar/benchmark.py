@@ -24,6 +24,7 @@ from pathlib import Path
 import pymupdf
 
 sys.path.insert(0, str(Path(__file__).parent))
+import columns                                  # noqa: E402
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from auto_takeoff import page_callouts, sheet_info   # noqa: E402
@@ -106,6 +107,24 @@ def nearest_poly(polys, c, same_size_reach=150, any_size_reach=25):
     return None
 
 
+_CTX = {}
+
+
+def _doc_context(doc):
+    """Column schedule, plan pages and elevation notes, once per document."""
+    key = id(doc)
+    if key not in _CTX:
+        infos = [sheet_info(p) for p in doc]
+        disc = lambda n: (re.match(r"[A-Z]*", n).group(0)[-1:]) if n else ""
+        plans = [i for i, (n, t, k) in enumerate(infos) if k == "plan" and disc(n) == "S"]
+        others = [i for i, (n, t, k) in enumerate(infos) if k != "plan" and disc(n) == "S"]
+        schedule, blocks = columns.column_schedule(doc, plans)
+        _CTX[key] = {"plans": plans, "schedule": schedule, "blocks": blocks,
+                     "notes": {i: columns.elevation_notes(doc[i]) for i in plans},
+                     "sections": columns.section_elevations(doc, others)}
+    return _CTX[key]
+
+
 def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
     page = doc[pno]
     calls = page_callouts(page)
@@ -132,6 +151,15 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         tags = lengths.tag_instances(page, group, weights, ppf, chains)
         typ_all += tags + lengths.typ_instances(page, group + tags, weights, ppf, chains, all_callouts=calls)
     calls = calls + typ_all
+    ctx = _doc_context(doc)
+    if pno in ctx["plans"]:
+        ppf0 = regions[0][1] if regions else None
+        cols, consumed = columns.columns_on_page(page, pno, "", calls, chains, ppf0, ctx["schedule"],
+                                                 ctx["blocks"].get(pno), ctx["notes"], ctx["plans"], ctx["sections"])
+        calls = [c for c in calls if id(c) not in consumed] + cols
+        res_columns = len(cols)
+    else:
+        res_columns = 0
     vps = markup_viewports(mdoc, pno)
 
     def ppf_at(pt):
@@ -143,7 +171,7 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         return 9.0
 
     polys = markup_polylines(mdoc, pno, ppf_at, size_idx)
-    res = {"callouts": len(calls) - len(typ_all), "typ": len(typ_all), "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
+    res = {"callouts": len(calls) - len(typ_all) - res_columns, "typ": len(typ_all) + res_columns, "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
            "lf_auto": collections.defaultdict(float), "lf_todd": collections.defaultdict(float),
            "n_auto": collections.Counter(), "n_todd": collections.Counter()}
     for p in polys:
