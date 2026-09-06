@@ -142,6 +142,16 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Deck / grating areas BUILT 2026-09-06 (`sidecar/deck.py`):** Todd: "build the deck area markup as a
+starting polygon; decking and grating are different items; item 1 = all structural steel, item 2 =
+decking". Type from notes, area = outer footprint of the measured members per drawing cluster
+(OpenCV close + contour; computed before the markups are written, from labelled chains only,
+existing members excluded), Revu PolygonDimension with MeasurementTypes 225 and the same /Measure
+dict (A.C = 1 like Todd's own area markups). IAH100 S-209 32,477 sf roof + penthouse pieces; MKT
+S-100 mezzanine 1,221 + 1,396 sf, S-101 (existing roof) none. Grating: sheets that mention grating
+write small footprints as item 3. Next: Advance Steel / IFC export (ifcopenshell) is the natural
+consumer of the measured geometry (Todd has Advance Steel).
+
 **Stairs in scope (Todd 2026-09-06: "the number of treads or risers ... usually noted on the
 elevation drawings"):** `scope.stair_counts` reads "N (EQ) RISERS/TREADS (@ size)" from every text
 block on sheets mentioning stairs, boxes them (Scope: Stairs / ladders) and tallies per sheet;

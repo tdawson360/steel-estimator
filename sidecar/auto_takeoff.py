@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import baseplates                   # noqa: E402  (run() has a local named columns)
 import columns as column_step                   # noqa: E402  (run() has a local named columns)
 import connections                   # noqa: E402  (run() has a local named columns)
+import deck                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -216,6 +217,25 @@ def add_box(doc, page, rect, subject, color, content, columns, values, dashed=Fa
     return nm
 
 
+def add_area(doc, page, pts, subject, color, sf, columns, values, measure_xref):
+    """A Revu area measurement (Polygon + PolygonDimension) in page points."""
+    annot = page.add_polygon_annot([pymupdf.Point(x, y) for x, y in pts])
+    annot.set_border(width=2)
+    annot.set_colors(stroke=color, fill=color)
+    annot.set_opacity(0.25)
+    annot.set_info(title=AUTHOR, subject=subject, content=f"A = {sf:,.0f} sf")
+    annot.update()
+    nm = new_name()
+    x = annot.xref
+    doc.xref_set_key(x, "NM", pdf_string(nm))
+    doc.xref_set_key(x, "IT", "/PolygonDimension")
+    doc.xref_set_key(x, "Measure", f"{measure_xref} 0 R")
+    doc.xref_set_key(x, "MeasurementTypes", "225")
+    doc.xref_set_key(x, "DepthUnit", f"[<< /Type /NumberFormat /U (') /C {TARGET_UNIT} /D 100 /FD true /SS () >>]")
+    doc.xref_set_key(x, "BSIColumnData", column_data(columns, values))
+    return nm
+
+
 def add_dot(doc, page, centre, radius, subject, color, content, columns, values):
     """A filled, translucent circle (Revu ellipse markup): the hardware dot,
     visibly different from the member boxes and lines."""
@@ -303,6 +323,8 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
 # ── main ───────────────────────────────────────────────────────────────────
 
 PLATE_SUBJECT = "Stl Pl/Bar"
+DECK_SUBJECT, DECK_COLOR = "Mtl Deck", (0.2, 0.5, 0.9)
+GRATING_SUBJECT, GRATING_COLOR = "Stl Grating", (0.1, 0.6, 0.4)
 HARDWARE_SUBJECT = "Hardware"
 HARDWARE_COLOR = (0.55, 0.0, 0.55)
 
@@ -347,9 +369,16 @@ def run(args):
     base_details = baseplates.find_details(doc, plan_pages + other_s, {i: n for i, (n, t, k) in enumerate(infos)})
     base_spec = baseplates.choose(base_details)
     col_marks = 0
+    deck_polys = {}
     # how this engineer connects beams: every framed end of a W or C is one
     # connection of the typical kind (Todd keeps the takeoff generic)
     conn_spec = connections.typical(doc, other_s + plan_pages, {i: n for i, (n, t, k) in enumerate(infos)})
+    # deck type from the set's notes (a plan's own note wins when it has one)
+    set_deck = []
+    for i in other_s + plan_pages:
+        for label, raw in deck.page_deck_notes(doc[i]):
+            if label not in [l for l, _, _ in set_deck]:
+                set_deck.append((label, raw, infos[i][0]))
     for pno, page in enumerate(doc):
         number, title, kind = infos[pno]
         print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
@@ -430,6 +459,9 @@ def run(args):
             rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         triangles = connections.moment_triangles(page, chains) if args.lengths else []
+        if args.lengths and not getattr(args, "no_deck", False) and structural and kind == "plan" and chains and regions:
+            deck_polys[pno] = deck.plan_footprints(page, regions, chains,
+                                                   lambda r: lengths.region_for(regions, ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))[1])
         for h in found:
             row = {**rec, **h, "conn_spec": conn_spec}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
@@ -516,6 +548,7 @@ def run(args):
                     hits.append(rrow)
 
     install_columns(doc, columns)
+    write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, weights)
     try:
         doc.set_page_labels([{"startpage": i, "prefix": lab, "style": "", "firstpagenum": 1}
                              for i, lab in enumerate(labels)])
@@ -554,6 +587,43 @@ def write_json(path, src, sheets, hits, exceptions, weights):
     path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
 
 
+def write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, weights):
+    """Item 2 DECKING / item 3 GRATING: one starting area polygon per framed
+    drawing (the outer footprint of the measured members), carrying the deck
+    type read from the plan or the set's notes.  The estimator trims it to
+    the real deck extent; the note says so."""
+    for pno, polys in deck_polys.items():
+        if not polys:
+            continue
+        page = doc[pno]
+        number = infos[pno][0]
+        own = deck.page_deck_notes(page)
+        grating = deck.page_has_grating(page)
+        notes_src = own or set_deck
+        label = notes_src[0][0] if notes_src else "Metal Deck (type per notes)"
+        src = (f"'{notes_src[0][1][:50]}'" + ("" if own else f" on {notes_src[0][2]}")) if notes_src else "no deck note found"
+        for pts, sf, ppf in polys:
+            if grating and sf < 2000:
+                item, desc, subj, color, kind = "3", "GRATING", GRATING_SUBJECT, GRATING_COLOR, "grating"
+                lab = "Bar Grating (type per notes)"
+            else:
+                item, desc, subj, color, kind = "2", "DECKING", DECK_SUBJECT, DECK_COLOR, "deck"
+                lab = label
+            notes = (f"AUTO {kind.upper()} AREA: starting polygon from the framed footprint, {sf:,.0f} sf; "
+                     f"trim to the {kind} extent; type from {src}")
+            lbsf = weights.get(lab, 0) or 0
+            values = {"Item_Number": item, "Item_Description": desc, "Drawing_Ref": number, "Shape_Size": lab,
+                      "Quantity": "1", "Length_Ft": f"{sf:.0f}", "Notes": notes,
+                      "Weight_Per_Ft": f"{lbsf:g}" if lbsf else "", "Total_Length_Ft": f"{sf:.0f}",
+                      "Total_Weight_Lbs": f"{sf * lbsf:.0f}" if lbsf else ""}
+            nm = add_area(doc, page, pts, subj, color, sf, columns, values, scale.measure_xref(ppf))
+            hits.append({"page": pno + 1, "sheet": number, "raw": lab, "fam": "DECK", "dims": [], "key": lab,
+                         "conf": 1.0, "note": "", "label": lab, "subject": subj, "length_ft": None, "area_sf": sf,
+                         "area_kind": kind, "line": notes, "angle": 0, "anchor": "area", "len_note": "",
+                         "confident": True, "nm": nm, "bbox": pymupdf.Rect(pts[0][0], pts[0][1], pts[0][0] + 1, pts[0][1] + 1),
+                         "title": infos[pno][1], "kind": "plan"})
+
+
 def collections_counter(it):
     return dict(Counter(v for v in it if v))
 
@@ -579,8 +649,8 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
               "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
     groups = {}
     for h in hits:
-        if h.get("base_plate") or h.get("anchor_rods"):
-            continue                                     # listed under "Base plates"
+        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf"):
+            continue                                     # listed under their own sections
         g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
         g[0] += 1
         if h.get("length_ft") and h.get("confident"):
@@ -642,6 +712,15 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
             lines.append(f"| {k} | {n} |")
+    areas = [h for h in hits if h.get("area_sf")]
+    if areas:
+        lines += ["", "## Deck and grating areas (items 2 / 3)", "",
+                  "One starting polygon per framed plan region, traced from the framing's outer footprint; "
+                  "trim it to the real extent in Revu. Length_Ft carries the square feet so the profile's weight formula "
+                  "(Quantity x Length x Shape_Size lb/sf) works.", "",
+                  "| Sheet | Item | Type | sf |", "|---|---|---|---|"]
+        for h in areas:
+            lines.append(f"| {h['sheet']} | {'2 DECKING' if h['area_kind'] == 'deck' else '3 GRATING'} | {h['label']} | {h['area_sf']:,.0f} |")
     rods = [h for h in hits if h.get("anchor_rods")]
     plates = [h for h in hits if h.get("base_plate")]
     if plates:
@@ -665,7 +744,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                       "| Sheet | Rod | Qty |", "|---|---|---|"]
             for (sheet, label), n in sorted(byr.items()):
                 lines.append(f"| {sheet} | {label} | {n} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods"))]
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:
@@ -704,10 +783,11 @@ def main():
     ap.add_argument("pdf")
     ap.add_argument("-o", "--output")
     ap.add_argument("--sheets", help="comma-separated sheet numbers to annotate (default: structural plans)")
-    # Todd, 2026-09-06: auto markups carry no item number or description; the
-    # estimator defines the items from the scope in Revu before exporting
-    ap.add_argument("--item", default="", help="Item_Number for every auto row (default blank)")
-    ap.add_argument("--desc", default="", help="Item_Description for every auto row (default blank)")
+    # Todd, 2026-09-06: structural steel is item 1, decking item 2, grating
+    # item 3; anything the tool cannot place stays for the estimator to group
+    ap.add_argument("--item", default="1", help="Item_Number for the structural steel rows (default 1)")
+    ap.add_argument("--desc", default="STRUCTURAL STEEL", help="Item_Description for the structural steel rows")
+    ap.add_argument("--no-deck", action="store_true", help="skip the deck / grating area markups (items 2 / 3)")
     ap.add_argument("--lengths", action="store_true",
                     help="also draft member lengths from the line work (experimental; off by default)")
     ap.add_argument("--ocr", choices=["auto", "off"], default="auto",

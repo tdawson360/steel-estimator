@@ -152,6 +152,19 @@ counted by hand with the Revu count tool lands the same way. The pier-cap
 allowance under a column comes from the drawings too: a `T/PLINTH -1'-8"` note at the column, else the
 set's `TOP OF FOOTING EL -1'-0" UNO` note, else 1'-0".
 
+## Decking and grating (2026-09-06, `deck.py`)
+
+Item 2 DECKING / item 3 GRATING. The deck type is read from the plan or the
+set's notes ("1.5B 22 DECK" -> `1.5 B22 Roof Deck`, "0.6C FORM DECK" ->
+`0.6 C Deck (gauge per notes)`), the area is a **starting polygon**: the
+outer footprint of the measured members on each drawing (rasterized, bays
+closed, outer contour), written as a Revu area measurement (PolygonDimension,
+`A = n sf`) for the estimator to trim. Existing members ("EX. W16X26") and
+plans with nothing measured (a foundation plan) yield no area; a sheet that
+mentions grating writes small footprints as grating. `Length_Ft` carries the
+square feet so the profile's weight formula (Quantity x Length x lb/sf) works.
+Structural steel rows are item 1 STRUCTURAL STEEL. `--no-deck` skips it.
+
 ## Z-axis members (kickers, posts, braces, hangers, struts)
 
 Anything that stands up out of the plan is drawn from its origin (the
