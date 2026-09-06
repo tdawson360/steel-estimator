@@ -142,6 +142,12 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Todd 2026-09-06 corrections:** EX = existing (never exterior): EX / (E) / EXISTING members get no
+markup at all (`auto_takeoff.EXISTING_RE`, MKT S-101 skips its 4 existing beams). Deck constraints
+for later: 3 ft wide sheets x 42 ft max, span direction from the deck arrow on the plan; area is
+good enough for now. Accuracy: more paired markups on standard sets are the main lever (see
+memory / reply of 2026-09-06).
+
 **Deck / grating areas BUILT 2026-09-06 (`sidecar/deck.py`):** Todd: "build the deck area markup as a
 starting polygon; decking and grating are different items; item 1 = all structural steel, item 2 =
 decking". Type from notes, area = outer footprint of the measured members per drawing cluster

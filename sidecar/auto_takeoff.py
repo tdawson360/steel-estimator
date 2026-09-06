@@ -322,6 +322,8 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
 
 # ── main ───────────────────────────────────────────────────────────────────
 
+# "EX." / "(E)" / "EXIST" / "EXISTING" on a label = existing member, not ours
+EXISTING_RE = re.compile(r"(?:\bEX\.?(?=\s|$)|\(E\)|\bEXIST(?:ING)?\b)", re.I)
 PLATE_SUBJECT = "Stl Pl/Bar"
 DECK_SUBJECT, DECK_COLOR = "Mtl Deck", (0.2, 0.5, 0.9)
 GRATING_SUBJECT, GRATING_COLOR = "Stl Grating", (0.1, 0.6, 0.4)
@@ -411,6 +413,12 @@ def run(args):
             continue
         for h in found:
             h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
+        # existing work is never in the takeoff (Todd, 2026-09-06): "EX. W16X26",
+        # "(E) W12X26", "EXISTING BEAM" get no markup at all
+        existing = [h for h in found if EXISTING_RE.search(h.get("line", ""))]
+        if existing:
+            rec["existing"] = len(existing)
+            found = [h for h in found if not EXISTING_RE.search(h.get("line", ""))]
         resolved = [h for h in found if h["key"]]
         chains = None
         if args.lengths and resolved:
@@ -641,6 +649,10 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
             src += f" + {s['raster']} raster strokes"
         lines.append(f"| {s['page']} | {s['sheet']} | {s['kind']} | {s['title']} | {s['scale']} | "
                      f"{'yes' if s['chars'] else 'NO TEXT'} | {s['hits']} | {src} | {'yes' if s['annotated'] else ''} |")
+    skipped = sum(s.get("existing", 0) for s in sheets)
+    if skipped:
+        lines += ["", f"Existing members skipped (EX. / (E) / EXISTING labels): {skipped} - "
+                      + ", ".join(f"{s['sheet']} {s['existing']}" for s in sheets if s.get("existing"))]
     notext = [s for s in sheets if not s["chars"]]
     if notext:
         lines += ["", f"Pages with no text layer (need OCR): {', '.join(str(s['page']) for s in notext)}"]
