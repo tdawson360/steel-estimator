@@ -142,6 +142,21 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Two more standard sets 2026-09-06 (Harris Health urgent care, Alamo Colleges Veterans Center),
+Todd's markups on both.** First scores: Harris 56% within 2 ft, Veterans 42% -> 49% after the day's
+rules. What they taught: (1) **keynotes** - Harris S4 puts HSS4x4 hangers, HSS6x6 carried columns
+and L3x3 braces in a numbered note list with hexagon tags on the plan (`keynotes.py`, 6 notes ->
+count boxes); (2) **column schedule by grid location** - Harris S10 lists columns as "25-R" with
+per-column base plate and anchor bolts (`columns.location_schedule` + `grid_axes` from the grid
+bubbles; 28 columns, plates and 162 rods); (3) **BP designations** - Veterans S-201 labels each
+column "HSS5x5x1/4 / BP-5B" and S-410 details the plates by designation (`baseplates.bp_details`;
+29 columns); (4) **bay-typical joists** - Veterans labels 4 of 15 30K7 joists (bay twins in
+`typ_instances`: 30K7 101 -> 371 LF). Still open on these sets, the biggest lever left:
+**typical details multiplied by a count** (Harris L6x6x5/16 x65 clips, HSS6x6x1/4 x64 6 ft pieces;
+Veterans HSS5x2x3/16 "BTWN" joists x76, L2x2 "AT EACH" joist x80, W5x19 x58 posts at 5'-0" OC) -
+the detail says "at each joist" / a spacing note says "(9)-SPA @ 5'-0"", the plan gives the
+count. Also Veterans W5x19 cut short by a crossing W14x22 (Todd measures through).
+
 **Todd 2026-09-06 corrections:** EX = existing (never exterior): EX / (E) / EXISTING members get no
 markup at all (`auto_takeoff.EXISTING_RE`, MKT S-101 skips its 4 existing beams). Deck constraints
 for later: 3 ft wide sheets x 42 ft max, span direction from the deck arrow on the plan; area is

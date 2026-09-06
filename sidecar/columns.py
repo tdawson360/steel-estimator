@@ -27,6 +27,7 @@ OTHER_SHEET_PENALTY_FT = 10.0   # a note on another plan sheet at the same spot 
 MIN_HEIGHT_FT, MAX_HEIGHT_FT = 6.0, 80.0
 
 MARK_RE = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?$")
+BP_TAG_RE = re.compile(r"BP-?\d+[A-Z]*", re.I)
 COLUMN_LABEL_RE = re.compile(r"\b(COL(?:UMN|S|\.)?|POST)\b", re.I)
 # an elevation is named as such; a bare "MEZZANINE 60'-9"" is a plan dimension
 ELEV_KEY_RE = re.compile(r"(\bT/|T\.O\.?\s|\bTOS\b|TOP OF|\bB/|B\.O\.?\s|BOT(?:TOM)? OF|\bEL\b|\bEL\.|ELEV)", re.I)
@@ -108,6 +109,116 @@ def column_schedule(doc, pages=None):
                     box |= r
                 blocks.setdefault(pno, []).append(box)
     return marks, blocks
+
+
+# ── schedule keyed by grid location ───────────────────────────────────
+# "STEEL COLUMN, BASE PLATE & ANCHOR BOLT SCHEDULE": a header row of grid
+# pairs ("25-R", "11.2-N"), then a size row, a base plate row
+# ("1 3/4\" x 16\" x 1'-4\""), a type row and an anchor bolt row
+# ("(6) 1\" DIA") under each.  Columns sit at the grid intersections.
+LOC_RE = re.compile(r"^(\d{1,2}(?:\.\d)?|[A-Z]{1,2}(?:\.\d)?)\s*-\s*(\d{1,2}(?:\.\d)?|[A-Z]{1,2}(?:\.\d)?)$")
+BOLTS_RE = re.compile(r"\((\d+)\)\s*(\d[\d\s/\-]*)\s*\"?\s*(?:DIA|Ø)", re.I)
+PLATE_RE = re.compile(r"(\d[\d\s/\-]*)\s*\"\s*x\s*(\d[\d\s/\-]*)\s*\"\s*x\s*(\d+'\s*-?\s*\d*\s*\"?|\d[\d\s/\-]*\s*\")", re.I)
+
+
+def location_schedule(doc, pages):
+    """{page: {loc: {key, raw, fam, dims, plate:(t,w,l) in, bolts:(n, dia_in)}}}
+    for every schedule whose header cells are grid pairs."""
+    import shapes
+    out = {}
+    for pno in pages:
+        page = doc[pno]
+        if not re.search(r"COLUMN[^\n]{0,40}SCHEDULE", page.get_text(), re.I):
+            continue
+        cells = []
+        for b in page.get_text("dict")["blocks"]:
+            if b.get("type") != 0:
+                continue
+            for l in b["lines"]:
+                t = "".join(sp["text"] for sp in l["spans"]).strip()
+                if t:
+                    cells.append((t, pymupdf.Rect(l["bbox"])))
+        locs = [(t, r) for t, r in cells if LOC_RE.match(t.replace(" ", ""))]
+        if len(locs) < 3:
+            continue
+        # header row = the y band holding most location cells
+        band = {}
+        for t, r in locs:
+            band.setdefault(round(r.y0 / 12), []).append((t, r))
+        header = max(band.values(), key=len)
+        if len(header) < 3:
+            continue
+        sched = {}
+        for t, r in header:
+            cx = (r.x0 + r.x1) / 2
+            col = [(c, cr) for c, cr in cells if cr.y0 > r.y1 and abs((cr.x0 + cr.x1) / 2 - cx) <= max(12, r.width * 0.8)]
+            col.sort(key=lambda c: c[1].y0)
+            key = raw = fam = None; dims = []; plate = None; bolts = None
+            for c, cr in col:
+                if key is None:
+                    for f, d, rw in shapes.find_callouts(c):
+                        k = shapes.resolve(f, d)[0]
+                        if k:
+                            key, raw, fam, dims = k, rw.strip(), f, d
+                            break
+                if plate is None:
+                    m = PLATE_RE.search(c)
+                    if m:
+                        import baseplates
+                        vals = [baseplates.frac(m.group(1)), baseplates.frac(m.group(2)), baseplates.inches(m.group(3).strip()) or baseplates.frac(m.group(3).replace('"', ''))]
+                        if all(v for v in vals):
+                            plate = tuple(sorted(vals))
+                if bolts is None:
+                    m = BOLTS_RE.search(c)
+                    if m:
+                        import baseplates
+                        bolts = (int(m.group(1)), baseplates.frac(m.group(2).strip()))
+            if key:
+                sched[t.replace(" ", "")] = {"key": key, "raw": raw, "fam": fam, "dims": dims, "plate": plate, "bolts": bolts}
+        if sched:
+            out[pno] = sched
+    return out
+
+
+def grid_axes(page):
+    """{name: x} for the vertical grids and {name: y} for the horizontal ones,
+    from the grid bubbles (a circle round a short label at the sheet edge)."""
+    W, H = page.rect.width, page.rect.height
+    circles = [p["rect"] for p in page.get_drawings()
+               if [it[0] for it in p["items"]].count("c") >= 4 and 12 <= p["rect"].width <= 44 and abs(p["rect"].width - p["rect"].height) < 2]
+    toks = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        for l in b["lines"]:
+            t = "".join(sp["text"] for sp in l["spans"]).strip()
+            if not re.fullmatch(r"\d{1,2}(?:\.\d)?|[A-Z]{1,2}(?:\.\d)?", t):
+                continue
+            r = pymupdf.Rect(l["bbox"])
+            cx, cy = (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2
+            if any(math.hypot((c.x0 + c.x1) / 2 - cx, (c.y0 + c.y1) / 2 - cy) < 9 for c in circles):
+                toks.append((t, cx, cy, min(cy, H - cy) / H < min(cx, W - cx) / W))   # True = top/bottom edge
+    # letters and numbers each run one way: majority vote per class
+    def axis(cls):
+        votes = [tb for t, _, _, tb in toks if cls(t)]
+        return (sum(votes) > len(votes) / 2) if votes else None
+    num_tb, let_tb = axis(lambda t: t[0].isdigit()), axis(lambda t: t[0].isalpha())
+    xs, ys = {}, {}
+    for t, cx, cy, tb in toks:
+        vertical = num_tb if t[0].isdigit() else let_tb
+        if vertical is None:
+            vertical = tb
+        (xs if vertical else ys).setdefault(t, cx if vertical else cy)
+    return xs, ys
+
+
+def grid_point(loc, xs, ys):
+    a, b = loc.split("-")
+    if a in xs and b in ys:
+        return (xs[a], ys[b])
+    if b in xs and a in ys:
+        return (xs[b], ys[a])
+    return None
 
 
 # ── elevation notes ───────────────────────────────────────────────────
@@ -239,7 +350,7 @@ def section_elevations(doc, pages):
 
 
 def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_blocks, notes_by_page, plan_pages,
-                    section_heights=(), piers_by_page=None):
+                    section_heights=(), piers_by_page=None, loc_schedule=None, foundation=False):
     """Column callouts for one plan page.
 
     schedule: column_schedule() marks; schedule_blocks: its table rects on
@@ -256,6 +367,30 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
         if any(b.intersects(pymupdf.Rect(c["bbox"])) for b in blocks):
             consumed.add(id(c))
     claimed = set()
+    # 0. a schedule keyed by grid location: one column per entry, at the
+    # intersection of its two grids (when both bubbles are on this sheet)
+    if loc_schedule and ppf:
+        xs, ys = grid_axes(page)
+        placed = 0
+        for loc, spec in loc_schedule.items():
+            pt = grid_point(loc, xs, ys)
+            if pt is None:
+                continue
+            x, y = pt
+            sym = _nearest_symbol(paths, spec["dims"], ppf, (x, y), thin_w=0.5, reach_ft=3.0)
+            if sym:
+                x, y = sym
+            claimed.add((round(x), round(y)))
+            columns.append({"raw": spec["raw"], "fam": spec["fam"], "dims": spec["dims"], "key": spec["key"], "conf": 1.0,
+                            "note": "", "bbox": pymupdf.Rect(x - 6, y - 6, x + 6, y + 6), "angle": 0,
+                            "line": f"{loc} = {spec['raw']} (column schedule by location)", "column": True,
+                            "col_mark": loc, "at": (x, y), "on_symbol": bool(sym),
+                            "plate": spec.get("plate"), "bolts": spec.get("bolts")})
+            placed += 1
+        if placed:
+            for c in callouts:
+                if any(b.intersects(pymupdf.Rect(c["bbox"])) for b in blocks):
+                    consumed.add(id(c))
     # 1. schedule marks on the plan
     if schedule:
         for b in page.get_text("dict")["blocks"]:
@@ -283,8 +418,12 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                                 "column": True, "col_mark": t, "at": (x, y), "on_symbol": bool(sym)})
     # 1b. drawn column symbols of a scheduled size that no mark claimed: a
     # column the plan shows but never bubbled (or a bubble the text layer
-    # lost).  Counted as that size with a CHECK note.
-    if schedule and ppf:
+    # lost).  Counted as that size with a CHECK note.  Only on a sheet that
+    # carries marks: the roof plan draws the same columns without bubbles.
+    # (the foundation plan, or the sheet holding the schedule table; the
+    # roof plan draws the same columns without bubbles)
+    marks_here = sum(1 for c in columns if c.get("col_mark"))
+    if schedule and ppf and marks_here and (schedule_blocks or foundation):
         by_size = {}
         for mk, (key, raw, fam, dims) in schedule.items():
             by_size.setdefault(key, (mk, raw, fam, dims))
@@ -330,6 +469,29 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                                 "conf": lab.get("conf", 1.0), "note": "",
                                 "bbox": pymupdf.Rect(x - L / 2, y - L / 2, x + L / 2, y + L / 2), "angle": 0,
                                 "line": lab.get("line", ""), "column": True, "col_label": lab, "at": (x, y)})
+    # 2a. an HSS label with a base plate designation beside it ("HSS5x5x1/4 /
+    # BP-5B" on a foundation plan) is a column at that spot
+    for lab in callouts:
+        if id(lab) in consumed or not lab.get("key") or lab.get("column") or str(lab.get("fam", "")).upper() != "HSS":
+            continue
+        if not BP_TAG_RE.search(lab.get("block", "") or ""):
+            continue
+        r = pymupdf.Rect(lab["bbox"])
+        tip = lengths.leader_tip(r, tips, paths)
+        x, y = tip if tip else ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+        sym = _nearest_symbol(paths, lab["dims"], ppf, (x, y), thin_w=0.5, reach_ft=6.0) if ppf else None
+        if sym:
+            x, y = sym
+        if any(abs(x - cx) <= 3 and abs(y - cy) <= 3 for cx, cy in claimed):
+            consumed.add(id(lab))
+            continue
+        claimed.add((round(x), round(y)))
+        consumed.add(id(lab))
+        bp = BP_TAG_RE.search(lab.get("block", "")).group(0)
+        columns.append({"raw": lab["raw"], "fam": lab["fam"], "dims": lab["dims"], "key": lab["key"],
+                        "conf": lab.get("conf", 1.0), "note": "", "bbox": r, "angle": 0,
+                        "line": f"{lab.get('line', '')} ({bp})", "column": True, "col_label": None, "col_mark": bp,
+                        "at": (x, y), "on_symbol": bool(sym), "bp_tag": bp})
     # 2b. a POST / COLUMN label with no drawn squares and no stated length is
     # one column where its leader points (a canopy post, a lone column)
     for lab in callouts:

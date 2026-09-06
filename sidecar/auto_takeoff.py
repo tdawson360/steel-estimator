@@ -34,6 +34,7 @@ import baseplates                   # noqa: E402  (run() has a local named colum
 import columns as column_step                   # noqa: E402  (run() has a local named columns)
 import connections                   # noqa: E402  (run() has a local named columns)
 import deck                   # noqa: E402  (run() has a local named columns)
+import keynotes                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -364,12 +365,17 @@ def run(args):
     plan_pages = [i for i, (n, t, k) in enumerate(infos) if k == "plan" and disc(n) == "S"]
     other_s = [i for i, (n, t, k) in enumerate(infos) if k != "plan" and disc(n) == "S"]
     col_schedule, col_blocks = column_step.column_schedule(doc, plan_pages)
+    loc_schedules = column_step.location_schedule(doc, plan_pages + other_s)
+    loc_schedule = {}
+    for sch in loc_schedules.values():
+        loc_schedule.update(sch)
     notes_by_page = {i: column_step.elevation_notes(doc[i]) for i in plan_pages}
     section_heights = column_step.section_elevations(doc, other_s)
     piers_by_page = {i: column_step.pier_notes(doc[i]) for i in plan_pages + other_s}
     # the typical column base plate detail: one nested plate per column
     base_details = baseplates.find_details(doc, plan_pages + other_s, {i: n for i, (n, t, k) in enumerate(infos)})
     base_spec = baseplates.choose(base_details)
+    bp_specs = baseplates.bp_details(doc, other_s + plan_pages)      # BP-5B style designations
     col_marks = 0
     deck_polys = {}
     # how this engineer connects beams: every framed end of a W or C is one
@@ -447,13 +453,15 @@ def run(args):
                 rec["typ"] = rec.get("typ", 0) + len(typ)
         # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
         # from the elevation notes (+1 ft pier cap), drawn as vertical polylines
-        if structural and (col_schedule or any(column_step.COLUMN_LABEL_RE.search(h.get("line", "")) for h in resolved)):
+        if structural and kind == "plan" and (col_schedule or loc_schedule or any(
+                column_step.COLUMN_LABEL_RE.search(h.get("line", "")) or column_step.BP_TAG_RE.search(h.get("block", "") or "") for h in resolved)):
             if chains is None:
                 chains = lengths.extract_chains(page)
             ppf0 = regions[0][1] if regions else None
             cols, consumed = column_step.columns_on_page(page, pno, number, resolved, chains, ppf0, col_schedule,
                                                      col_blocks.get(pno), notes_by_page, plan_pages, section_heights,
-                                                     piers_by_page)
+                                                     piers_by_page, loc_schedule,
+                                                     foundation="FOUNDATION" in (title or "").upper())
             if consumed:
                 found = [h for h in found if id(h) not in consumed]
             for h in cols:
@@ -461,12 +469,40 @@ def run(args):
                 h["ppf"] = rppf
                 col_marks += 1
                 h["mark"] = f"C{col_marks}"
+                if h.get("bp_tag") and bp_specs.get(h["bp_tag"].upper().replace(" ", "")):
+                    h["bp_spec"] = bp_specs[h["bp_tag"].upper().replace(" ", "")]
                 if not args.lengths:
                     h["length_ft"], h["seg"], h["confident"] = None, None, False
             found.extend(cols)
             rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         triangles = connections.moment_triangles(page, chains) if args.lengths else []
+        # keynotes: "16. HSS6X6X1/4 CARRIED COLUMN ..." + hexagon tags on the plan
+        if structural and kind == "plan":
+            for n, note, r in keynotes.instances(page):
+                base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
+                if note["shapes"]:
+                    for j, (fam, dims, raw, key) in enumerate(note["shapes"]):
+                        label, subject = labeler.label(key, fam, dims)
+                        ktext = f"AUTO KEYNOTE {n}: {note['text'][:90]}"
+                        vals = {**base, "Shape_Size": label, "Quantity": "1", "Notes": ktext}
+                        if note.get("length_ft"):
+                            vals["Length_Ft"] = f"{note['length_ft']:.2f}"
+                        bb = r + (-4 + 10 * j, -4 + 10 * j, 4 + 10 * j, 4 + 10 * j)
+                        nm = add_box(doc, page, bb, subject, labeler.color(subject), label, columns, vals)
+                        hits.append({**rec, "raw": raw, "fam": fam, "dims": dims, "key": key, "conf": 1.0, "note": "",
+                                     "label": label, "subject": subject, "length_ft": note.get("length_ft"), "keynote": n,
+                                     "tag_id": (round(r.x0), round(r.y0)),
+                                     "line": note["text"][:120], "bbox": bb, "angle": 0, "anchor": "keynote",
+                                     "len_note": "", "confident": False, "nm": nm})
+                else:
+                    ktext = f"AUTO KEYNOTE {n} (size per detail): {note['text'][:90]}"
+                    nm = add_box(doc, page, r, EXCEPTION_SUBJECT, (1, 0, 0), f"KEYNOTE {n}", columns,
+                                 {**base, "Shape_Size": "", "Quantity": "1", "Notes": ktext}, dashed=True)
+                    exceptions.append({**rec, "raw": f"KEYNOTE {n}", "fam": "", "dims": [], "key": None, "conf": 0.0,
+                                       "note": note["text"][:120], "label": f"KEYNOTE {n}", "subject": EXCEPTION_SUBJECT,
+                                       "length_ft": None, "keynote": n, "line": note["text"][:120], "bbox": r,
+                                       "angle": 0, "nm": nm})
         if args.lengths and not getattr(args, "no_deck", False) and structural and kind == "plan" and chains and regions:
             deck_polys[pno] = deck.plan_footprints(page, regions, chains,
                                                    lambda r: lengths.region_for(regions, ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))[1])
@@ -522,13 +558,14 @@ def run(args):
                 row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject), label,
                                     columns, values, dashed=h["conf"] < 1)
             hits.append(row)
-            if h.get("column") and base_spec:
+            col_spec = baseplates.column_spec(base_spec, h) if h.get("column") else None
+            if h.get("column") and col_spec:
                 # the base connection: a plate nested under the column
                 # (Member_Mark C7 -> C7.1) with holes for the anchor rods
-                pv, plate_lb = baseplates.plate_row(base_spec, h["mark"])
-                checks = [] if base_spec.get("rod_n_stated") else ["rod count assumed 4 (drawn, not written)"]
-                pnotes = (f"AUTO BASE PL: {baseplates.describe(base_spec)} from '{base_spec['title']}' on "
-                          f"{base_spec.get('sheet') or 'p' + str(base_spec['page'] + 1)}"
+                pv, plate_lb = baseplates.plate_row(col_spec, h["mark"])
+                checks = [] if col_spec.get("rod_n_stated") else ["rod count assumed 4 (drawn, not written)"]
+                pnotes = (f"AUTO BASE PL: {baseplates.describe(col_spec)} from '{col_spec['title']}' on "
+                          f"{col_spec.get('sheet') or 'p' + str(col_spec.get('page', 0) + 1)}"
                           + (f" CHECK: {'; '.join(checks)}" if checks else ""))
                 x, y = h["at"]
                 prow = {**rec, "raw": pv["Shape_Size"], "fam": "PL", "dims": [], "key": pv["Shape_Size"], "conf": 1.0,
@@ -540,16 +577,16 @@ def run(args):
                 hits.append(prow)
                 # the anchor rods: a count markup beside the plate carrying the
                 # hardware catalog label, so the import prices them per each
-                rod = baseplates.rod_label(base_spec)
+                rod = baseplates.rod_label(col_spec)
                 if rod:
                     rlabel, rfamily, rgalv = rod
-                    rnotes = (f"AUTO ANCHOR RODS for {h['mark']}: ({base_spec['rod_n']}) {rlabel}"
-                              f" per '{base_spec['title']}'" + (" CHECK: rod count assumed 4" if not base_spec.get("rod_n_stated") else ""))
-                    rvals = {**base, "Shape_Size": rlabel, "Quantity": str(base_spec["rod_n"]), "Part_Label": "ANCHOR RODS",
+                    rnotes = (f"AUTO ANCHOR RODS for {h['mark']}: ({col_spec['rod_n']}) {rlabel}"
+                              f" per '{col_spec['title']}'" + (" CHECK: rod count assumed 4" if not col_spec.get("rod_n_stated") else ""))
+                    rvals = {**base, "Shape_Size": rlabel, "Quantity": str(col_spec["rod_n"]), "Part_Label": "ANCHOR RODS",
                              "Galvanized": "Yes" if rgalv else "", "Notes": rnotes}
                     rrow = {**rec, "raw": rlabel, "fam": "HW", "dims": [], "key": rlabel, "conf": 1.0, "note": "",
                             "label": rlabel, "subject": HARDWARE_SUBJECT, "length_ft": None, "anchor_rods": True,
-                            "rod_n": base_spec["rod_n"], "line": rnotes, "bbox": pymupdf.Rect(x + 12, y - 8, x + 28, y + 8),
+                            "rod_n": col_spec["rod_n"], "line": rnotes, "bbox": pymupdf.Rect(x + 12, y - 8, x + 28, y + 8),
                             "column_mark": h["mark"], "angle": 0, "anchor": "column", "len_note": "", "confident": False}
                     rrow["nm"] = add_dot(doc, page, (x + 20, y), 7, HARDWARE_SUBJECT, HARDWARE_COLOR, rlabel,
                                          columns, rvals)
@@ -605,7 +642,7 @@ def write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, we
             continue
         page = doc[pno]
         number = infos[pno][0]
-        own = deck.page_deck_notes(page)
+        own = deck.page_deck_notes(page) or deck.deck_notes(" | ".join(v["text"] for v in keynotes.keynotes(page).values()))
         grating = deck.page_has_grating(page)
         notes_src = own or set_deck
         label = notes_src[0][0] if notes_src else "Metal Deck (type per notes)"
@@ -724,6 +761,20 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
             lines.append(f"| {k} | {n} |")
+    kn = {}
+    for h in hits + exceptions:
+        if h.get("keynote") is not None:
+            g = kn.setdefault((h["sheet"], h["keynote"], h["line"][:70]), [set(), set()])
+            g[0].add(h.get("tag_id", id(h)))
+            g[1].add(h["label"])
+    kn = {k: [len(v[0]), v[1]] for k, v in kn.items()}
+    if kn:
+        lines += ["", "## Keynotes", "",
+                  "Numbered notes on the sheet with a tag at every place they apply: one count-only box per tag "
+                  "(dashed when the note names steel without a size, priced from the detail).", "",
+                  "| Sheet | Note | Tags | Members |", "|---|---|---|---|"]
+        for (sheet, n, text), (cnt, labels) in sorted(kn.items()):
+            lines.append(f"| {sheet} | {n}. {text} | {cnt} | {', '.join(sorted(labels))} |")
     areas = [h for h in hits if h.get("area_sf")]
     if areas:
         lines += ["", "## Deck and grating areas (items 2 / 3)", "",

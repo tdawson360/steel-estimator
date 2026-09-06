@@ -871,6 +871,7 @@ TYP_RE = re.compile(r"\bTYP(?:ICAL)?\b", re.I)
 TYP_REACH_FT = 60.0     # ft: how far a typical label's rule carries
 TYP_RATIO = (0.4, 2.5)  # an instance's drawn length relative to the labelled one
 TYP_MAX_PPF = 50.0      # pt/ft: 1/2" = 1'-0" and coarser is a plan; finer is a detail
+BAY_REACH_FT = 30.0     # ft: a bay-typical joist/beam stays this close to its labelled twin
 # members standing up or leaning out of the plan: their plan line is not their length
 VERTICAL_RE = re.compile(r"\b(COL(?:UMN|S|\.)?|POST|KICKER|BRACE|BRACING|HANGER|STRUT)\b", re.I)
 # a legend line that names a tag drawn at every instance: DESIGNATED AS "J.S."
@@ -902,14 +903,24 @@ def typ_instances(page, callouts, weights, ppf, chains, all_callouts=None):
     labels = [c for c in callouts if c.get("chain") is not None and c.get("length_ft")
               and c["chain"].width >= thin_below and TYP_RE.search(c.get("line", ""))
               and not VERTICAL_RE.search(c.get("line", ""))]
-    if not labels:
+    # bay-typical: a joist or beam labelled once in a bay of identical
+    # unlabelled strokes (Veterans "30K7" x4 labels for 15 joists, W5x19 x6
+    # for 58 posts).  No TYP word needed, but the match is strict: parallel,
+    # same weight, same length within 8%, within 30 ft.
+    # (joists only: beams have too many look-alike strokes on a busy plan;
+    # IAH100 lost 6 points when W beams were allowed to spawn twins)
+    bay = [c for c in callouts if c.get("chain") is not None and c.get("length_ft")
+           and c["chain"].width >= thin_below and str(c.get("fam", "")).upper() == "JOIST"]
+    if not labels and not bay:
         return []
     page_dim = min(page.rect.width, page.rect.height)
     taken = [c["chain"] for c in callouts if c.get("chain") is not None]
     out = []
     for ch in chains:
-        if ch.callouts or ch.is_closed() or ch.width == 0 or ch.width < thin_below or ch.pieces > 1:
+        if ch.callouts or ch.is_closed() or ch.width == 0 or ch.width < thin_below or ch.pieces > 2:
             continue
+        if ch.pieces > 1 and not bay:
+            continue                                     # a broken stroke only counts as a joist twin
         if ch.length < 0.8 * ppf or ch.length > 0.6 * page_dim:
             continue
         if any(_same_stroke(ch, o) for o in taken):
@@ -926,6 +937,23 @@ def typ_instances(page, callouts, weights, ppf, chains, all_callouts=None):
             d = math.hypot(mx - (bb.x0 + bb.x1) / 2, my - (bb.y0 + bb.y1) / 2)
             if d <= TYP_REACH_FT * ppf and (best is None or d < best[0]):
                 best = (d, lab)
+        if best is None and (ch.pieces == 1 or bay):
+            n0 = ch.nearest(mx, my)
+            for lab in bay:
+                if abs(lab["chain"].width - ch.width) > 0.05:
+                    continue
+                # twins are drawn alike: compare drawn stroke to drawn stroke
+                # (the labelled one may have been cut short by a crossing member)
+                ratio = ch.length / max(1.0, lab["chain"].length)
+                if not 0.92 <= ratio <= 1.08:
+                    continue
+                n1 = lab["chain"].nearest(*lab["anchor_pt"]) if lab.get("anchor_pt") else None
+                if n0 and n1 and min(abs(n0[2] - n1[2]), 180 - abs(n0[2] - n1[2])) > 3:
+                    continue
+                bb = lab["bbox"]
+                d = math.hypot(mx - (bb.x0 + bb.x1) / 2, my - (bb.y0 + bb.y1) / 2)
+                if d <= BAY_REACH_FT * ppf and (best is None or d < best[0]):
+                    best = (d, lab)
         if best is None:
             continue
         d, lab = best

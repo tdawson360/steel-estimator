@@ -165,6 +165,26 @@ mentions grating writes small footprints as grating. `Length_Ft` carries the
 square feet so the profile's weight formula (Quantity x Length x lb/sf) works.
 Structural steel rows are item 1 STRUCTURAL STEEL. `--no-deck` skips it.
 
+## Keynotes (2026-09-06, `keynotes.py`)
+
+A numbered note list on the sheet ("16. HSS6X6X1/4 CARRIED COLUMN ...") with
+a hexagon or circle tag wherever it applies: every tag is one count-only
+box per member the note names (`AUTO KEYNOTE n`), or a dashed exception box
+when the note talks about steel without a size ("HSS BRACE PER DETAIL").
+Existing work is skipped only when EX / EXISTING precedes the shape.
+
+## Column schedules by grid location, BP tags, bay twins (2026-09-06)
+
+- A schedule whose header cells are grid pairs ("25-R") places one column
+  at each grid intersection (bubbles at the sheet edges give the axes),
+  with that column's own base plate and anchor bolts (Harris Health S10).
+- An HSS label with a base plate designation beside it ("HSS5x5x1/4 /
+  BP-5B") on a foundation plan is a column; "BP-xx" details give its plate
+  and bolts (Veterans S-201 / S-410).
+- A joist labelled once in a bay of identical unlabelled strokes spawns
+  its twins (parallel, same weight, same drawn length within 8%, within
+  30 ft). Beams do not: too many look-alike strokes on a busy plan.
+
 ## Z-axis members (kickers, posts, braces, hangers, struts)
 
 Anything that stands up out of the plan is drawn from its origin (the

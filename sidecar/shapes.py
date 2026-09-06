@@ -61,7 +61,9 @@ def _to_fraction(tok):
 # Open-web steel joists (SJI): depth + series + section, e.g. 20LH04, 24K4,
 # 24LHSP (special, weight from the joist supplier).  Approximate lb/ft from
 # the SJI load tables; LHSP/DLH specials carry no weight until quoted.
-JOIST = re.compile(r"(?<![A-Z0-9.])(\d{1,2}(?:\.5)?)\s?(LHSP|DLHSP|KCS|DLH|LH|K)\s?(\d{1,2})?(?![A-Z0-9/])", re.I)
+# K / LH / DLH always carry a section number (24K4, 20LH06); the specials
+# (LHSP, DLHSP, KCS) may not.  "12K" alone is a dimension fragment, not a joist.
+JOIST = re.compile(r"(?<![A-Z0-9.])(\d{1,2}(?:\.5)?)\s?(?:(LHSP|DLHSP|KCS)(\d{1,2})?|(DLH|LH|K)\s?(\d{1,2}))(?![A-Z0-9/.])", re.I)
 JOIST_WEIGHTS = {
     "8K1": 5.1, "10K1": 5.0, "12K1": 5.0, "12K3": 5.7, "12K5": 7.1, "14K1": 5.2, "14K3": 6.0, "14K4": 6.7, "14K6": 7.7,
     "16K2": 5.5, "16K3": 6.3, "16K4": 7.0, "16K5": 7.5, "16K6": 8.1, "16K7": 8.6, "16K9": 10.0,
@@ -90,7 +92,9 @@ def find_callouts(text):
         dims = [d.strip() for d in m.groups()[1:] if d]
         yield fam, dims, m.group(0)
     for m in JOIST.finditer(t):
-        desig = (m.group(1) + m.group(2) + (m.group(3) or "")).upper()
+        series = m.group(2) or m.group(4)
+        section = m.group(3) if m.group(2) else m.group(5)
+        desig = (m.group(1) + series + (section or "")).upper()
         yield "JOIST", [desig], m.group(0)
 
 

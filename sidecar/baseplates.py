@@ -31,8 +31,8 @@ FRAC = r"\d+(?:\s*-\s*\d+/\d+|\s+\d+/\d+|/\d+)?"
 FEET_IN_RE = re.compile(rf"(?<![\d/.])(\d{{1,2}})'\s*-?\s*({FRAC})?\s*(?:\"|'')?(?![\dx/])")
 INCH_RE = re.compile(rf"(?<![\d/.'])({FRAC})\s*\"")
 THICK_RE = re.compile(rf"({FRAC})\s*\"\s*(?:THICK|THK)?\.?\s*(?:BASE\s*)?PL(?:ATE)?\b|PL(?:ATE)?\s*({FRAC})\s*\"?\s*(?:THICK|THK)\b", re.I)
-PL_DIMS_RE = re.compile(rf"(?:BASE\s*)?PL(?:ATE)?\.?\s*({FRAC})\s*\"?\s*[xX]\s*({FRAC})\s*\"?\s*[xX]\s*({FRAC})\s*\"?", re.I)
-ROD_RE = re.compile(rf"(?:\((\d+)\)\s*|(\d+)\s*-\s*)?({FRAC})\s*\"?\s*(?:DIA\.?|Ø|⌀|∅)?\s*(?:\(MIN\.?\)\s*)?(?:(ASTM\s*)?(F1554(?:[- ]?(?:GR\.?\s*)?\d+)?|A307|A36|A325N?)\s*)?(HILTI\s+KWIK\s+BOLT(?:\s+TZ2?)?|KWIK\s+BOLT(?:\s+TZ2?)?|ANCHOR\s+RODS?|ANCHOR\s+BOLTS?|ANCHORS\b|EXPANSION\s+ANCHORS?)", re.I)
+PL_DIMS_RE = re.compile(rf"(?:BASE\s*)?PL(?:ATE)?\.?\s*({FRAC})\s*\"?\s*[xX]\s*({FRAC})\s*\"?\s*[xX]\s*(\d{{1,2}}'\s*-?\s*(?:{FRAC})?\s*\"?|{FRAC})\s*\"?", re.I)
+ROD_RE = re.compile(rf"(?:\((\d+)\)\s*|(\d+)\s*-\s*)?({FRAC})\s*\"?\s*(?:DIA\.?|Ø|⌀|∅)?\s*(?:\(MIN\.?\)\s*)?(?:(ASTM\s*)?(F1554(?:[- ]?(?:GR\.?\s*)?\d+)?|A307|A36|A325N?)\s*)?(HILTI\s+KWIK\s+BOLT(?:\s+TZ2?)?|KWIK\s+BOLT(?:\s+TZ2?)?|ANCHOR\s+RODS?|ANCHOR\s+BOLTS?|ANCHORS\b|EXPANSION\s+ANCHORS?|AB-?\d+)", re.I)
 ROD_RE2 = re.compile(rf"(?:\((\d+)\)\s*)?({FRAC})\s*\"\s*(?:DIA\.?|Ø|⌀)\s*(?:ASTM\s*)?(F1554(?:[- ]?(?:GR\.?\s*)?\d+)?)", re.I)
 EMBED_RE = re.compile(rf"(\d{{1,2}}'\s*-?\s*(?:{FRAC})?\s*\"?|{FRAC}\s*\")\s*(?:MIN\.?\s*)?EMBED|EMBED(?:MENT)?\s*(?:DEPTH\s*)?=?\s*(\d{{1,2}}'\s*-?\s*(?:{FRAC})?\s*\"?|{FRAC}\s*\")", re.I)
 WELD_RE = re.compile(rf"({FRAC})\s*(?:/|\s)\s*(?:TYP\s*)?(?:HSS\s+|W\s+)?COL(?:UMN)?\.?\s+TO\s+(?:BASE\s+)?PL", re.I)
@@ -59,7 +59,7 @@ def inches(text):
     """A feet-inch or inch dimension string -> inches."""
     m = FEET_IN_RE.fullmatch(text.strip())
     if m:
-        return int(m.group(1)) * 12 + (frac(m.group(2)) or 0)
+        return int(m.group(1)) * 12 + ((frac(m.group(2)) or 0) if m.group(2) else 0)
     m = INCH_RE.fullmatch(text.strip())
     if m:
         return frac(m.group(1))
@@ -155,8 +155,10 @@ def parse_spec(text):
             "rod_dia_in": None, "rod_spec": "", "embed_in": None, "weld_in": None}
     m = PL_DIMS_RE.search(text)
     if m:
-        dims = sorted(frac(g) for g in m.groups())
-        spec["thick_in"], spec["w_in"], spec["l_in"] = dims[0], dims[1], dims[2]
+        vals = [inches(g.strip()) if "'" in g else frac(g) for g in m.groups()]
+        if all(v for v in vals):
+            dims = sorted(vals)
+            spec["thick_in"], spec["w_in"], spec["l_in"] = dims[0], dims[1], dims[2]
     else:
         m = THICK_RE.search(text)
         if m:
@@ -165,7 +167,7 @@ def parse_spec(text):
         # the two largest distinct values; one value -> square plate
         vals = []
         for mm in FEET_IN_RE.finditer(text):
-            v = int(mm.group(1)) * 12 + (frac(mm.group(2)) or 0)
+            v = int(mm.group(1)) * 12 + ((frac(mm.group(2)) or 0) if mm.group(2) else 0)
             if 6 <= v <= 36:
                 vals.append(round(v, 3))
         if vals:
@@ -243,7 +245,7 @@ def rod_label(spec):
     galv = bool(re.search(r"GALV|HDG", (spec.get("text") or "").upper()))
     if "KWIK" in text:
         family, csv_name, proj = "Kwik Bolt", "kwik-bolt-tz2.csv", ANCHOR_PROJECTION_IN
-    elif "F1554" in text or "ANCHOR" in text:
+    elif "F1554" in text or "ANCHOR" in text or re.match(r"AB-?\d", text):
         g = re.search(r"F1554\D*(\d+)", text)
         grade = g.group(1) if g else "36"
         family, csv_name, proj = f"F1554 Gr{grade}", "f1554-anchor-rods.csv", ROD_PROJECTION_IN
@@ -257,6 +259,58 @@ def rod_label(spec):
         return None
     pick = next(((L, s) for L, s in lengths if L >= need), lengths[-1])
     return f'{dia}" {family} x {pick[1]}"', family, galv
+
+
+BP_TITLE_RE = re.compile(r"^BP-?\d+[A-Z]*$", re.I)
+
+
+def bp_details(doc, pages):
+    """{BP-5B: spec} from base plate details titled by designation: the
+    plate text nearest below each "BP-xx" title ("PL3/4\"x9\" x1'-0\" W/
+    (4)-3/4\"Ø AB-1 EMBEDDED 1'-0\" INTO CONCRETE")."""
+    out = {}
+    for pno in pages:
+        page = doc[pno]
+        blocks = _blocks(page)
+        titles = [(r, t.strip().upper().replace(" ", "")) for r, t, _ in blocks if BP_TITLE_RE.match(t.strip().replace(" ", ""))]
+        if not titles:
+            continue
+        for r, tag in titles:
+            cx = (r.x0 + r.x1) / 2
+            near = [(br, bt) for br, bt, _ in blocks if br.y0 > r.y1 - 2 and br.y0 < r.y1 + 320 and abs((br.x0 + br.x1) / 2 - cx) < 260
+                    and re.search(r"PL\s*\d|PLATE|\(\d\)", bt, re.I)]
+            if not near:
+                continue
+            joined = "  |  ".join(bt for _, bt in sorted(near, key=lambda b: b[0].y0)).replace(" / ", " ")
+            spec = parse_spec(joined)
+            if not spec.get("thick_in"):
+                continue
+            spec.update({"page": pno, "sheet": "", "title": tag, "box": r, "typical": False, "text": joined[:300], "braced": False})
+            out.setdefault(tag, spec)
+    return out
+
+
+def column_spec(base_spec, col):
+    """The plate spec for one column: the schedule's own plate / bolts when
+    the location schedule gave them, else the typical detail."""
+    bp = col.get("bp_spec")
+    if bp:
+        return bp
+    if not col.get("plate") and not col.get("bolts"):
+        return base_spec
+    spec = dict(base_spec or {"thick_in": None, "w_in": None, "l_in": None, "rod_n": 4, "rod_n_stated": False,
+                              "rod_dia_in": None, "rod_spec": "", "embed_in": None, "weld_in": None,
+                              "title": "column schedule", "sheet": "", "page": 0, "text": ""})
+    if col.get("plate"):
+        t, w, l = col["plate"]
+        spec.update({"thick_in": t, "w_in": w, "l_in": l})
+        spec["title"] = "column schedule"
+    if col.get("bolts"):
+        n, dia = col["bolts"]
+        spec.update({"rod_n": n, "rod_n_stated": True, "rod_dia_in": dia})
+        if not spec.get("rod_spec"):
+            spec["rod_spec"] = "ANCHOR RODS"
+    return spec if spec.get("thick_in") else base_spec
 
 
 def plate_row(spec, mark):
