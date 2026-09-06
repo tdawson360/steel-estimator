@@ -17,6 +17,7 @@ but not applied.
 """
 import math
 import re
+from pathlib import Path
 
 import pymupdf
 
@@ -199,6 +200,63 @@ def describe(spec):
         if spec.get("embed_in"):
             rods += f" x {fmt_in(spec['embed_in'])} embed"
     return s + rods
+
+
+# ── anchor rods as hardware ───────────────────────────────────────────
+
+_SEED = Path(__file__).resolve().parent.parent / "docs" / "hardware-seed"
+ROD_PROJECTION_IN = 2.5     # nuts, washer and thread above the plate
+ANCHOR_PROJECTION_IN = 1.0  # expansion anchor above the plate
+
+
+def _seed_lengths(csv_name, diameter):
+    """Catalog lengths (in) offered for a diameter, from the seed sheet."""
+    import csv
+    out = []
+    try:
+        with open(_SEED / csv_name, newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                if r.get("diameter") == diameter:
+                    out.append((float(r.get("length_in") or 0), r.get("length")))
+    except OSError:
+        pass
+    return sorted(set(out))
+
+
+def _dia_token(v):
+    from fractions import Fraction
+    f = Fraction(v).limit_denominator(16)
+    if f.denominator == 1:
+        return str(f.numerator)
+    whole, num = divmod(f.numerator, f.denominator)
+    return f"{whole}-{num}/{f.denominator}" if whole else f"{num}/{f.denominator}"
+
+
+def rod_label(spec):
+    """The hardware catalog label for this detail's anchor: (label, family,
+    galvanized) or None when the catalog has no such family.  Length = the
+    smallest standard length covering embedment + plate + projection."""
+    if not spec.get("rod_dia_in"):
+        return None
+    dia = _dia_token(spec["rod_dia_in"])
+    text = (spec.get("rod_spec") or "").upper()
+    galv = bool(re.search(r"GALV|HDG", (spec.get("text") or "").upper()))
+    if "KWIK" in text:
+        family, csv_name, proj = "Kwik Bolt", "kwik-bolt-tz2.csv", ANCHOR_PROJECTION_IN
+    elif "F1554" in text or "ANCHOR" in text:
+        g = re.search(r"F1554\D*(\d+)", text)
+        grade = g.group(1) if g else "36"
+        family, csv_name, proj = f"F1554 Gr{grade}", "f1554-anchor-rods.csv", ROD_PROJECTION_IN
+    else:
+        return None
+    need = (spec.get("embed_in") or 12.0) + (spec.get("thick_in") or 1.0) + proj
+    lengths = _seed_lengths(csv_name, dia)
+    if family.startswith("F1554"):
+        lengths = [(L, s) for L, s in lengths] or [(12.0, "12"), (18.0, "18"), (24.0, "24"), (36.0, "36")]
+    if not lengths:
+        return None
+    pick = next(((L, s) for L, s in lengths if L >= need), lengths[-1])
+    return f'{dia}" {family} x {pick[1]}"', family, galv
 
 
 def plate_row(spec, mark):

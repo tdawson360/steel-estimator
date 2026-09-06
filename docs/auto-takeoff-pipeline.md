@@ -142,6 +142,17 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**2026-09-06, built on Todd's answers:** (a) Gr55 rods seeded (32 items; 96 F1554 rods total);
+(b) importer hardware path: `lib/hardware.js matchHardwareLabel` (token-multiset match of a
+Shape_Size to a catalog label, HDG variant for a galvanized row or an HDG/galv word) +
+`import-takeoff.annotateHardware` (server annotates `member.hardware`, clears fab ops, promotes a
+nested hardware child to top level) + the estimator builds a Hardware material (category,
+hardwareItemId, unitPrice, weightEach, priceBy EA, no galv dip line); tests in
+`tests/hardware-label.test.js`; (c) sidecar writes an anchor-rod count markup per column with
+the catalog label (length = smallest seed length >= embed + plate + 2.5" projection);
+(d) web holes default to the AISC Part 10 rows-by-depth table from the Berger Standard
+Connections draft (artifact ce1b2718), x shear ends, none for CJP ends.
+
 **2026-09-06 morning, Todd's corrections:** (1) holes must come from the W/C connection
 category templates (Sam to fill), not a blanket 4 -> Hole_Qty no longer written until the app
 passes per-category counts; (2) moment connections are the solid black triangle at a member's

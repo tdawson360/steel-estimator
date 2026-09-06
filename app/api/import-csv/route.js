@@ -4,7 +4,7 @@ import { authOptions } from '../../../lib/auth';
 import prisma from '../../../lib/db';
 import { DEFAULT_PRICING_RATES } from '../../../lib/estimating/rates';
 import { normalizeBeamSizeKey as normalizeToBeamSizeKey, getShapeTypeFromKey, enrichOp } from '../../../lib/estimating/connection-pricing';
-import { parseTakeoffCSV, aggregateTakeoffData } from '../../../lib/estimating/import-takeoff';
+import { parseTakeoffCSV, aggregateTakeoffData, annotateHardware } from '../../../lib/estimating/import-takeoff';
 
 // ── CONNECTION PRICING ENRICHMENT ─────────────────────────────────────────────
 // The cost rules (getConnxCost, enrichOp, key normalization, field maps) live
@@ -92,6 +92,10 @@ export async function POST(request) {
     }
 
     const result = aggregateTakeoffData(rawRows);
+    // Shape_Size naming a hardware catalog item (anchor rods, bolts, anchors)
+    // imports as a priced Hardware row instead of a zero-weight Custom row
+    const catalog = await prisma.hardwareItem.findMany({ where: { active: true } });
+    result.stats.hardwareRows = annotateHardware(result.items, catalog);
     await enrichItemsWithPricing(result.items);
 
     return NextResponse.json({ success: true, ...result });

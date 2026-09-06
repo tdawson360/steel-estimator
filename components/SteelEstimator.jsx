@@ -2117,7 +2117,7 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         const unmatched = new Map(); // size string -> { size, rowCount, locations[] }
         const walkMembers = (members, itemNumber) => {
           for (const m of members) {
-            if (m.size && !translateSizeToAISC(m.size).matched) {
+            if (m.size && !m.hardware && !translateSizeToAISC(m.size).matched) {
               const entry = unmatched.get(m.size) || { size: m.size, rowCount: 0, locations: [] };
               entry.rowCount += 1;
               const loc = `Item ${itemNumber} / Mark ${m.mark}`;
@@ -2199,19 +2199,23 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         seqIndex++;
 
         const matId = Date.now() + Math.random();
+        // A row the server matched to the hardware catalog (anchor rods, bolt
+        // sets, anchors): priced per each from the catalog, never nested
+        const hw = member.hardware || null;
         const newMat = {
           id: matId,
           sequence: seq,
-          parentMaterialId: parentMaterialId || null,
-          description: member.description || translated.size || member.size,
-          category: translated.category,
-          size: translated.size || member.size,
-          customWeight: translated.category === 'Custom' ? 0 : null,
+          parentMaterialId: hw ? null : (parentMaterialId || null),
+          description: member.description || (hw ? hw.label : (translated.size || member.size)),
+          category: hw ? 'Hardware' : translated.category,
+          size: hw ? hw.label : (translated.size || member.size),
+          hardwareItemId: hw ? hw.id : null,
+          customWeight: hw ? (hw.weightEach || 0) : (translated.category === 'Custom' ? 0 : null),
           pieces: member.pieces || 1,
-          length: member.length || 0,
+          length: hw ? (hw.lengthIn || 0) : (member.length || 0),
           stockLength: null,
-          priceBy: 'LB',
-          unitPrice: 0,
+          priceBy: hw ? 'EA' : 'LB',
+          unitPrice: hw ? (hw.unitPrice || 0) : 0,
           galvanized: member.galvanized || false,
           // Plate dimensions — dual fields: frontend calc + DB save
           plateThickness: translated.plateThickness || null,
@@ -2239,7 +2243,8 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         };
         const calcMat = calculateMaterial(newMat);
         // Auto-generate galv fab row when import marks material as galvanized
-        if (calcMat.galvanized) {
+        // (hardware is bought galvanized: the catalog's HDG variant, no dip)
+        if (calcMat.galvanized && !hw) {
           calcMat.fabrication.push({
             id: Date.now() + Math.random(),
             operation: 'Galvanizing',

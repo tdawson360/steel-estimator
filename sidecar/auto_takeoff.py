@@ -287,6 +287,8 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
 # ── main ───────────────────────────────────────────────────────────────────
 
 PLATE_SUBJECT = "Stl Pl/Bar"
+HARDWARE_SUBJECT = "Hardware"
+HARDWARE_COLOR = (0.55, 0.0, 0.55)
 
 
 def column_fields(h, base_spec):
@@ -445,6 +447,8 @@ def run(args):
                     notes += f" | connx: {connx['Connection_Type']} x{connx['Connection_Qty']} (ends: {connections.describe_ends(h)})"
                     if h.get("moment_ends") == 1:
                         notes += " | other end: typical shear connection, add by hand"
+                    if h.get("holes_note"):
+                        notes += f" | holes: {h['holes_note']}"
                     if h.get("free_ends"):
                         notes += f" CHECK: {h['free_ends']} end(s) frame into nothing drawn"
                     row["connx"] = f"{connx['Connection_Type']} x{connx['Connection_Qty']}"
@@ -478,6 +482,22 @@ def run(args):
                 prow["nm"] = add_box(doc, page, prow["bbox"], PLATE_SUBJECT, labeler.color(PLATE_SUBJECT), pv["Shape_Size"],
                                      columns, {**base, **pv, "Notes": pnotes})
                 hits.append(prow)
+                # the anchor rods: a count markup beside the plate carrying the
+                # hardware catalog label, so the import prices them per each
+                rod = baseplates.rod_label(base_spec)
+                if rod:
+                    rlabel, rfamily, rgalv = rod
+                    rnotes = (f"AUTO ANCHOR RODS for {h['mark']}: ({base_spec['rod_n']}) {rlabel}"
+                              f" per '{base_spec['title']}'" + (" CHECK: rod count assumed 4" if not base_spec.get("rod_n_stated") else ""))
+                    rvals = {**base, "Shape_Size": rlabel, "Quantity": str(base_spec["rod_n"]), "Part_Label": "ANCHOR RODS",
+                             "Galvanized": "Yes" if rgalv else "", "Notes": rnotes}
+                    rrow = {**rec, "raw": rlabel, "fam": "HW", "dims": [], "key": rlabel, "conf": 1.0, "note": "",
+                            "label": rlabel, "subject": HARDWARE_SUBJECT, "length_ft": None, "anchor_rods": True,
+                            "rod_n": base_spec["rod_n"], "line": rnotes, "bbox": pymupdf.Rect(x + 12, y - 8, x + 28, y + 8),
+                            "column_mark": h["mark"], "angle": 0, "anchor": "column", "len_note": "", "confident": False}
+                    rrow["nm"] = add_box(doc, page, rrow["bbox"], HARDWARE_SUBJECT, HARDWARE_COLOR, rlabel,
+                                         columns, rvals)
+                    hits.append(rrow)
 
     install_columns(doc, columns)
     try:
@@ -543,7 +563,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
               "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
     groups = {}
     for h in hits:
-        if h.get("base_plate"):
+        if h.get("base_plate") or h.get("anchor_rods"):
             continue                                     # listed under "Base plates"
         g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
         g[0] += 1
@@ -606,6 +626,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
             lines.append(f"| {k} | {n} |")
+    rods = [h for h in hits if h.get("anchor_rods")]
     plates = [h for h in hits if h.get("base_plate")]
     if plates:
         by = {}
@@ -620,7 +641,15 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                   "| Sheet | Plate | Count | lb |", "|---|---|---|---|"]
         for (sheet, label), (n, lb) in sorted(by.items()):
             lines.append(f"| {sheet} | {label} | {n} | {lb:.0f} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate"))]
+        if rods:
+            byr = {}
+            for h in rods:
+                byr[(h["sheet"], h["label"])] = byr.get((h["sheet"], h["label"]), 0) + h.get("rod_n", 0)
+            lines += ["", "Anchor rods (count markups with the hardware catalog label; the import prices them per each):", "",
+                      "| Sheet | Rod | Qty |", "|---|---|---|"]
+            for (sheet, label), n in sorted(byr.items()):
+                lines.append(f"| {sheet} | {label} | {n} |")
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

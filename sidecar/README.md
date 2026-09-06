@@ -103,10 +103,11 @@ measured W or C beam then carries Todd's generic markup: `End_1/End_2
 Straight`, `Connection_Type "WF Bolted"` (or `C Bolted`, `WF Welded`) x 2.
 A solid black triangle drawn on the member line just short of its support
 is the drafter's moment mark: that end becomes `WF CJP` (one triangle: CJP
-x1 and the note says the other end is the typical shear connection). Holes
-are NOT written (Todd, 2026-09-06): the hole count belongs to the W / C
-connection category templates on Global Pricing Data, to be passed in once
-Sam fills them. HSS, angles, WT and pipe are `Loose`; joists get nothing. The end-snap step records what each
+x1 and the note says the other end is the typical shear connection). Web holes
+follow the AISC Part 10 default (one bolt row per ~3" of depth, minimum 2:
+W8-10 2, W12-14 3, W16-18 4, W21 5, W24 6 ... C6-8 2, C9-12 3, C15 4) times
+the shear ends; a CJP end adds none. Todd, 2026-09-06: this is the default
+until the W / C connection category templates carry Berger's own counts. HSS, angles, WT and pipe are `Loose`; joists get nothing. The end-snap step records what each
 end frames into (a crossing member, a grid line, an unlabelled line, or
 nothing) and the note says so; an end that frames into nothing drawn is a
 CHECK. The report lists the details read and the connection counts.
@@ -122,8 +123,14 @@ column with `Member_Mark C7.1`, `Shape_Size "PL 1 x 14"` (thickness x width, a
 custom width the app prices as such), `Length_Ft` the other plan dimension,
 `Holes Drill` x rod count (assumed 4 with a CHECK note unless written), and
 an `AUTO BASE PL` note naming the detail and the rods. Braced-frame base
-details are recognised and left alone. The pier-cap allowance under a column
-comes from the drawings too: a `T/PLINTH -1'-8"` note at the column, else the
+details are recognised and left alone. Beside the plate a count markup carries the
+anchor rods with their hardware catalog label (`3/4" F1554 Gr55 x 18"`,
+`1/2" Kwik Bolt x 5-1/2"`; length = the smallest standard length covering
+embedment + plate + projection, from the seed sheets in docs/hardware-seed),
+Quantity = rod count, Part_Label ANCHOR RODS; the app's import turns any
+Shape_Size that names a catalog item into a priced Hardware row, so a rod
+counted by hand with the Revu count tool lands the same way. The pier-cap
+allowance under a column comes from the drawings too: a `T/PLINTH -1'-8"` note at the column, else the
 set's `TOP OF FOOTING EL -1'-0" UNO` note, else 1'-0".
 
 ## Z-axis members (kickers, posts, braces, hangers, struts)

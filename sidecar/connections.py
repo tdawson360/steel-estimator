@@ -21,10 +21,26 @@ NOISE_RE = re.compile(r"^\d+\.|SHALL|SEE\b|REFER|NOTE|DESIGN|WHERE|PRIOR|HARDWAR
 BOLT_RE = re.compile(r"\bBOLT|A325|A490|SHEAR\s*TAB|SINGLE\s*PL|DOUBLE\s*ANGLE|CLIP\s*L|\bL\s*\d\s*X", re.I)
 WELD_RE = re.compile(r"\bWELD|\bCJP\b|\bPJP\b|FILLET|E70", re.I)
 
-# Holes per framed end.  Todd, 2026-09-06: the count must come from the W /
-# C connection category templates on Global Pricing Data (Sam to fill in),
-# not a blanket 4 -> no holes are written until the app passes them in.
-HOLES_PER_END = 0
+# Holes in the member web per shear connection: the AISC Manual Part 10
+# convention of one bolt row per ~3" of depth, minimum 2 (Berger Standard
+# Connections draft A, 2026-08-31; Todd 2026-09-06: default to this table
+# until the connection category templates carry Berger's own counts).
+# (max depth, rows)
+BOLT_ROWS_W = [(10, 2), (14, 3), (18, 4), (21, 5), (24, 6), (27, 7), (30, 8), (33, 9), (36, 10), (40, 11), (99, 12)]
+BOLT_ROWS_C = [(8, 2), (13, 3), (99, 4)]
+
+
+def bolt_rows(key):
+    """Bolt rows (= member web holes) per connection for a W / S / C / MC key."""
+    m = re.match(r"(W|S|HP|MC|C)\s*(\d+)", str(key or ""), re.I)
+    if not m:
+        return 0
+    depth = int(m.group(2))
+    table = BOLT_ROWS_C if m.group(1).upper() in ("C", "MC") else BOLT_ROWS_W
+    for max_depth, rows in table:
+        if depth <= max_depth:
+            return rows
+    return table[-1][1]
 
 
 def _title_blocks(page):
@@ -163,8 +179,12 @@ def assign(c, spec, triangles=None):
         c["free_ends"] = sum(1 for e in (lo, hi) if e and e.get("kind") == "free")
         out = {"End_1_Labor": "Straight", "End_2_Labor": "Straight",
                "Connection_Type": f"{prefix} {kind}", "Connection_Qty": str(n)}
-        if HOLES_PER_END:
-            out.update({"Holes": "Drill", "Hole_Qty": str(HOLES_PER_END * 2)})
+        # web holes: AISC rows x shear connections (a CJP end has no standard holes)
+        shear_ends = 2 - (m if kind == "CJP" else 0)
+        rows = bolt_rows(c.get("key"))
+        if rows and shear_ends:
+            out.update({"Holes": "Drill", "Hole_Qty": str(rows * shear_ends)})
+            c["holes_note"] = f"{rows} rows x {shear_ends} shear end(s), AISC Part 10 default"
         return out
     if fam in ("HSS", "L", "WT", "PIPE"):
         return {"End_1_Labor": "Straight", "End_2_Labor": "Straight", "Connection_Type": "Loose"}

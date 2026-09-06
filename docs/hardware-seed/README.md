@@ -45,4 +45,4 @@ Prices: none of these sources carry current pricing; unit prices are to be seede
   are priced on Global Pricing Data -> Hardware. Default: Gr36 3/4" x 18".
 - The auto-takeoff's base plate step names the rods it reads off the typical column base
   plate detail in the plate row's note (e.g. "(4) 3/4\" F1554-55 anchor rods x 1'-0\" embed");
-  Grade 55 appears on some sets (IAH100) and is not seeded yet.
+  Grade 55 (IAH100's spec) was added 2026-09-06 with the same sizes.
