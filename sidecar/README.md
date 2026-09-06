@@ -102,6 +102,13 @@ pier cap below the finished slab. Drawn as a polyline from the column centre
 at 45 degrees (the z-axis convention: it goes up, not along a grid) with an `AUTO COL` note naming the elevation used; the report lists them
 under "Columns".
 
+**2026-09-06 (Todd's review of S-20100):** the markup now lands on the drawn
+column symbol (the square of the section's size nearest the mark bubble,
+within 12 ft) instead of on the bubble, so every column shows its 45-degree
+leg, plate box and rod dot at the column itself; a drawn symbol of a scheduled
+size that no mark claims is counted as that size with a CHECK note. Anchor
+rods are a translucent circle (Revu ellipse), not a box.
+
 ## Connections (2026-09-05, `connections.py`)
 
 The typical connection details (titles with SHEAR / BEAM TO BEAM / BEAM TO

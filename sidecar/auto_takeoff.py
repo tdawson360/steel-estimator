@@ -216,6 +216,22 @@ def add_box(doc, page, rect, subject, color, content, columns, values, dashed=Fa
     return nm
 
 
+def add_dot(doc, page, centre, radius, subject, color, content, columns, values):
+    """A filled, translucent circle (Revu ellipse markup): the hardware dot,
+    visibly different from the member boxes and lines."""
+    x, y = centre
+    annot = page.add_circle_annot(pymupdf.Rect(x - radius, y - radius, x + radius, y + radius))
+    annot.set_border(width=1.5)
+    annot.set_colors(stroke=color, fill=color)
+    annot.set_opacity(0.45)
+    annot.set_info(title=AUTHOR, subject=subject, content=content)
+    annot.update()
+    nm = new_name()
+    doc.xref_set_key(annot.xref, "NM", pdf_string(nm))
+    doc.xref_set_key(annot.xref, "BSIColumnData", column_data(columns, values))
+    return nm
+
+
 class Scale:
     """One /Measure dictionary per sheet scale, plus a page viewport."""
 
@@ -495,7 +511,7 @@ def run(args):
                             "label": rlabel, "subject": HARDWARE_SUBJECT, "length_ft": None, "anchor_rods": True,
                             "rod_n": base_spec["rod_n"], "line": rnotes, "bbox": pymupdf.Rect(x + 12, y - 8, x + 28, y + 8),
                             "column_mark": h["mark"], "angle": 0, "anchor": "column", "len_note": "", "confident": False}
-                    rrow["nm"] = add_box(doc, page, rrow["bbox"], HARDWARE_SUBJECT, HARDWARE_COLOR, rlabel,
+                    rrow["nm"] = add_dot(doc, page, (x + 20, y), 7, HARDWARE_SUBJECT, HARDWARE_COLOR, rlabel,
                                          columns, rvals)
                     hits.append(rrow)
 

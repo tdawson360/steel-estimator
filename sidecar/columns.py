@@ -194,17 +194,22 @@ def pier_allowance(at, pno, piers_by_page, ppf, reach_ft=15.0):
 
 # ── drawn column symbols ──────────────────────────────────────────────
 
-def squares(chains, min_width, side_pt, tol=0.25):
-    """Centres of squares drawn as four heavy strokes of side ~side_pt."""
+def squares(paths, min_width, side_pt, tol=0.25):
+    """Centres of squares drawn as four heavy strokes of side ~side_pt.
+    Reads the raw drawing paths: at 1/8" scale an HSS6x6 is a 4.5 pt square,
+    below the chain builder's minimum stroke length."""
     segs = []
-    for c in chains:
-        if c.width < min_width or len(c.pts) != 2 or c.is_closed():
+    for p in paths:
+        if (p.get("width") or 0) < min_width or p.get("fill") is not None:
             continue
-        (x0, y0), (x1, y1) = c.pts
-        if abs(abs(x1 - x0) - side_pt) <= tol * side_pt and abs(y1 - y0) < 1:
-            segs.append(("h", min(x0, x1), max(x0, x1), y0))
-        elif abs(abs(y1 - y0) - side_pt) <= tol * side_pt and abs(x1 - x0) < 1:
-            segs.append(("v", min(y0, y1), max(y0, y1), x0))
+        for it in p["items"]:
+            if it[0] != "l":
+                continue
+            (x0, y0), (x1, y1) = (it[1].x, it[1].y), (it[2].x, it[2].y)
+            if abs(abs(x1 - x0) - side_pt) <= tol * side_pt and abs(y1 - y0) < 1:
+                segs.append(("h", min(x0, x1), max(x0, x1), y0))
+            elif abs(abs(y1 - y0) - side_pt) <= tol * side_pt and abs(x1 - x0) < 1:
+                segs.append(("v", min(y0, y1), max(y0, y1), x0))
     hs = [s for s in segs if s[0] == "h"]
     vs = [s for s in segs if s[0] == "v"]
     found = []
@@ -250,6 +255,7 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
     for c in callouts:
         if any(b.intersects(pymupdf.Rect(c["bbox"])) for b in blocks):
             consumed.add(id(c))
+    claimed = set()
     # 1. schedule marks on the plan
     if schedule:
         for b in page.get_text("dict")["blocks"]:
@@ -265,9 +271,36 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                 key, raw, fam, dims = schedule[t]
                 tip = lengths.leader_tip(r, tips, paths)
                 x, y = tip if tip else ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+                # the mark bubble sits beside the column: put the origin on the
+                # drawn column symbol (a square of the section's size) when one
+                # is within reach, so the markup lands on the column itself
+                sym = _nearest_symbol(paths, dims, ppf, (x, y), thin_w=1.0)
+                if sym:
+                    x, y = sym
+                    claimed.add((round(x), round(y)))
                 columns.append({"raw": raw, "fam": fam, "dims": dims, "key": key, "conf": 1.0, "note": "",
                                 "bbox": r, "angle": 0, "line": f"{t} = {raw} (column schedule)",
-                                "column": True, "col_mark": t, "at": (x, y)})
+                                "column": True, "col_mark": t, "at": (x, y), "on_symbol": bool(sym)})
+    # 1b. drawn column symbols of a scheduled size that no mark claimed: a
+    # column the plan shows but never bubbled (or a bubble the text layer
+    # lost).  Counted as that size with a CHECK note.
+    if schedule and ppf:
+        by_size = {}
+        for mk, (key, raw, fam, dims) in schedule.items():
+            by_size.setdefault(key, (mk, raw, fam, dims))
+        for key, (mk, raw, fam, dims) in by_size.items():
+            try:
+                side = float(lengths.eval_frac(dims[0])) / 12 * ppf
+            except Exception:
+                continue
+            for x, y, L in squares(paths, 1.0, side):
+                if any(abs(x - cx) <= 3 and abs(y - cy) <= 3 for cx, cy in claimed):
+                    continue
+                claimed.add((round(x), round(y)))
+                columns.append({"raw": raw, "fam": fam, "dims": dims, "key": key, "conf": 1.0, "note": "",
+                                "bbox": pymupdf.Rect(x - L / 2, y - L / 2, x + L / 2, y + L / 2), "angle": 0,
+                                "line": f"{raw} column symbol without a mark ({mk} size)", "column": True,
+                                "col_mark": "", "at": (x, y), "on_symbol": True, "unmarked": True})
     # 2. "HSS 4X4X3/8 COLUMN TYP." beside drawn squares
     thin = max(0.5 * lengths.member_width(chains, callouts), lengths.mode_width(chains) + 0.01)
     labels = [c for c in callouts if c.get("key") and COLUMN_LABEL_RE.search(c.get("line", ""))
@@ -286,7 +319,7 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
             side = nominal_in / 12 * ppf
             bb = lab["bbox"]
             home = cluster_of(((bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2))
-            sq = [s for s in squares(chains, thin, side) if (round(s[0]), round(s[1])) not in used
+            sq = [s for s in squares(paths, thin, side) if (round(s[0]), round(s[1])) not in used
                   and (home is None or cluster_of((s[0], s[1])) == home)]
             if not sq:
                 continue
@@ -357,7 +390,26 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
         if c.get("col_only_plan"):
             c["confident"] = False
             c["len_note"] = "drawn on one of the two plans only: check; " + c["len_note"]
+        if c.get("unmarked"):
+            c["confident"] = False
+            c["len_note"] = "column symbol with no schedule mark: check the size; " + c["len_note"]
     return columns, consumed
+
+
+def _nearest_symbol(paths, dims, ppf, pt, thin_w=1.0, reach_ft=12.0):
+    """The drawn column square of this section size nearest a mark, within reach."""
+    if not ppf:
+        return None
+    try:
+        side = float(lengths.eval_frac(dims[0])) / 12 * ppf
+    except Exception:
+        return None
+    best = None
+    for x, y, L in squares(paths, thin_w, side):
+        d = math.hypot(x - pt[0], y - pt[1])
+        if d <= reach_ft * ppf and (best is None or d < best[0]):
+            best = (d, x, y)
+    return (best[1], best[2]) if best else None
 
 
 def _where(p, pno):
