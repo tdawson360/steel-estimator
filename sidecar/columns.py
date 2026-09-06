@@ -140,6 +140,58 @@ def elevation_notes(page):
     return out
 
 
+# ── top of pier / footing below the slab ──────────────────────────────
+
+PIER_KEY_RE = re.compile(r"(?:\bT/\s*|TOP OF\s+|T\.O\.?\s*)(PLINTH|FDN|FTG|FOOTING|PIER(?:\s*CAP)?|PEDESTAL)", re.I)
+SIGNED_FT_RE = re.compile(r"""(\(?-\)?|MINUS\s*)?\s*(\d{1,2})'\s*-?\s*(\d{1,2})?(?:\s+(\d)/(\d{1,2}))?\s*(?:"|'')?""")
+
+
+def pier_notes(page):
+    """[(depth_ft, text, x, y)]: how far the top of pier / footing / plinth
+    sits below the slab, from notes like "T/PLINTH -1' - 8\"" or
+    "TOP OF FOOTING EL -1'-0\" UNLESS INDICATED OTHERWISE"."""
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        text = " ".join("".join(s["text"] for s in l["spans"]).strip() for l in b["lines"])
+        m = PIER_KEY_RE.search(text)
+        if not m:
+            continue
+        tail = text[m.end():m.end() + 40]
+        v = SIGNED_FT_RE.search(tail)
+        if not v or not v.group(2):
+            continue
+        ft = int(v.group(2)) + (int(v.group(3)) if v.group(3) else 0) / 12 + ((int(v.group(4)) / int(v.group(5))) if v.group(4) else 0) / 12
+        if not 0.25 <= ft <= 6:
+            continue
+        r = pymupdf.Rect(b["bbox"])
+        general = bool(re.search(r"UNLESS|U\.?N\.?O|UON|TYP", text, re.I))
+        snippet = text[m.start():m.end() + v.end() + 2].strip()
+        out.append((ft, snippet[:70], (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, general))
+    return out
+
+
+def pier_allowance(at, pno, piers_by_page, ppf, reach_ft=15.0):
+    """(ft, source) for one column: the nearest pier/plinth note on its own
+    sheet, else the set's general top-of-footing note, else 1'-0\"."""
+    x, y = at
+    best = None
+    for ft, text, nx, ny, general in piers_by_page.get(pno, []):
+        if general:
+            continue
+        d = math.hypot(nx - x, ny - y) / (ppf or 9)
+        if d <= reach_ft and (best is None or d < best[0]):
+            best = (d, ft, text)
+    if best:
+        return best[1], f"{best[2]} at this column"
+    for p, notes in piers_by_page.items():
+        for ft, text, nx, ny, general in notes:
+            if general:
+                return ft, f"{text} (page {p + 1})"
+    return PIER_ALLOWANCE_FT, "default: top of slab to top of pier cap not noted"
+
+
 # ── drawn column symbols ──────────────────────────────────────────────
 
 def squares(chains, min_width, side_pt, tol=0.25):
@@ -182,7 +234,7 @@ def section_elevations(doc, pages):
 
 
 def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_blocks, notes_by_page, plan_pages,
-                    section_heights=()):
+                    section_heights=(), piers_by_page=None):
     """Column callouts for one plan page.
 
     schedule: column_schedule() marks; schedule_blocks: its table rects on
@@ -282,6 +334,7 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
             far = (far[0], -far[1], far[2], far[3])
         c["anchor"], c["anchor_pt"], c["anchor_note"] = "column", (x, y), ""
         c["length_ft"], c["seg"], c["confident"] = None, None, False
+        c["pier_ft"], c["pier_src"] = pier_allowance((x, y), pno, piers_by_page or {}, ppf)
         if not ppf:
             c["len_note"] = "column: no sheet scale"
             continue
@@ -312,13 +365,15 @@ def _where(p, pno):
 
 
 def _set_height(c, ft, ppf, src, confident):
-    h = ft + PIER_ALLOWANCE_FT
+    pier = c.get("pier_ft", PIER_ALLOWANCE_FT)
+    h = ft + pier
     x, y = c["at"]
     c["length_ft"], c["confident"] = h, confident
     # origin on the column, leg at 45 degrees: reads as "this one goes up",
     # never mistaken for a beam along a grid line (Todd, 2026-09-05)
     c["seg"] = lengths.z_axis_seg((x, y), h, ppf)
-    c["len_note"] = f"column {fmt_feet(ft)} from {src} + {fmt_feet(PIER_ALLOWANCE_FT)} pier cap below finished slab"
+    c["len_note"] = (f"column {fmt_feet(ft)} from {src} + {fmt_feet(pier)} pier cap below finished slab "
+                     f"({c.get('pier_src', 'default')})")
 
 
 def _dedupe_plans(columns, ppf, tol_ft=1.0):

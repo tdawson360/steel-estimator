@@ -94,6 +94,21 @@ pier cap below the finished slab. Drawn as a polyline from the column centre
 at 45 degrees (the z-axis convention: it goes up, not along a grid) with an `AUTO COL` note naming the elevation used; the report lists them
 under "Columns".
 
+## Base plates (2026-09-05, `baseplates.py`)
+
+The typical column base plate detail ("TYPICAL COLUMN BASE PLATE",
+"COLUMN BASEPLATE - PLAN/SECTION") gives thickness, plan size, anchor rod
+diameter / grade / embedment and the column-to-plate weld. Every column gets
+a plate nested under it in Revu: the column row carries `Member_Mark C7`,
+`Part_Label COLUMN` and `Weld_Type Fillet`; the plate is a small box at the
+column with `Member_Mark C7.1`, `Shape_Size "PL 1 x 14"` (thickness x width, a
+custom width the app prices as such), `Length_Ft` the other plan dimension,
+`Holes Drill` x rod count (assumed 4 with a CHECK note unless written), and
+an `AUTO BASE PL` note naming the detail and the rods. Braced-frame base
+details are recognised and left alone. The pier-cap allowance under a column
+comes from the drawings too: a `T/PLINTH -1'-8"` note at the column, else the
+set's `TOP OF FOOTING EL -1'-0" UNO` note, else 1'-0".
+
 ## Z-axis members (kickers, posts, braces, hangers, struts)
 
 Anything that stands up out of the plan is drawn from its origin (the

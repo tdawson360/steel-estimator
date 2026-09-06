@@ -30,6 +30,7 @@ from pathlib import Path
 import pymupdf
 
 sys.path.insert(0, str(Path(__file__).parent))
+import baseplates                   # noqa: E402  (run() has a local named columns)
 import columns as column_step                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
@@ -284,6 +285,20 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
 
 # ── main ───────────────────────────────────────────────────────────────────
 
+PLATE_SUBJECT = "Stl Pl/Bar"
+
+
+def column_fields(h, base_spec):
+    """Member_Mark / Part_Label / weld for a column row (the plate nests
+    under the mark)."""
+    if not h.get("column"):
+        return {}
+    out = {"Member_Mark": h.get("mark", ""), "Part_Label": "COLUMN"}
+    if base_spec and base_spec.get("weld_in"):
+        out["Weld_Type"] = "Fillet"
+    return out
+
+
 def run(args):
     profile = Path(args.profile) if args.profile else latest("Steel_Estimator_Takeoff_v*.bpx")
     toolkit = Path(args.toolkit) if args.toolkit else latest("BIW_Steel_Tool_Kit_v*.btx")
@@ -308,6 +323,11 @@ def run(args):
     col_schedule, col_blocks = column_step.column_schedule(doc, plan_pages)
     notes_by_page = {i: column_step.elevation_notes(doc[i]) for i in plan_pages}
     section_heights = column_step.section_elevations(doc, other_s)
+    piers_by_page = {i: column_step.pier_notes(doc[i]) for i in plan_pages + other_s}
+    # the typical column base plate detail: one nested plate per column
+    base_details = baseplates.find_details(doc, plan_pages + other_s, {i: n for i, (n, t, k) in enumerate(infos)})
+    base_spec = baseplates.choose(base_details)
+    col_marks = 0
     for pno, page in enumerate(doc):
         number, title, kind = infos[pno]
         print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
@@ -373,12 +393,15 @@ def run(args):
                 chains = lengths.extract_chains(page)
             ppf0 = regions[0][1] if regions else None
             cols, consumed = column_step.columns_on_page(page, pno, number, resolved, chains, ppf0, col_schedule,
-                                                     col_blocks.get(pno), notes_by_page, plan_pages, section_heights)
+                                                     col_blocks.get(pno), notes_by_page, plan_pages, section_heights,
+                                                     piers_by_page)
             if consumed:
                 found = [h for h in found if id(h) not in consumed]
             for h in cols:
                 rect, rppf = lengths.region_for(regions, h["at"]) if regions else (None, None)
                 h["ppf"] = rppf
+                col_marks += 1
+                h["mark"] = f"C{col_marks}"
                 if not args.lengths:
                     h["length_ft"], h["seg"], h["confident"] = None, None, False
             found.extend(cols)
@@ -408,21 +431,40 @@ def run(args):
                 h["seg"], ft = round_up_inch(h["seg"], ft, h.get("ppf") or ppf)
                 row["length_ft"] = ft
                 tag = "AUTO COL" if h.get("column") else "AUTO TYP" if h.get("typ_from") or h.get("tag_from") else "AUTO LEN"
-                notes = tag + (f" CHECK: {len_note}" if len_note else "")
+                # a column's note explains its height; it is a CHECK only when flagged
+                sep = ": " if h.get("column") and not h.get("col_only_plan") else " CHECK: "
+                notes = tag + (f"{sep}{len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
                           "Measured_Length": f"{ft:.2f}", "Weight_Per_Ft": f"{lbft:g}",
-                          "Total_Length_Ft": f"{ft:.1f}", "Total_Weight_Lbs": f"{ft * lbft:.0f}"}
+                          "Total_Length_Ft": f"{ft:.1f}", "Total_Weight_Lbs": f"{ft * lbft:.0f}",
+                          **column_fields(h, base_spec)}
                 row["nm"] = add_polyline(doc, page, h["seg"], subject, labeler.color(subject), ft,
                                          columns, values, measure_xref)
             else:
                 draft = f"draft {ft:.1f} ft" if ft else ""
                 why = "; ".join(n for n in (draft, len_note) if n)
                 notes = ("AUTO COL COUNT ONLY" if h.get("column") else "AUTO COUNT ONLY") + (f": {why}" if why else "")
-                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes}
+                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes, **column_fields(h, base_spec)}
                 row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject), label,
                                     columns, values, dashed=h["conf"] < 1)
             hits.append(row)
+            if h.get("column") and base_spec:
+                # the base connection: a plate nested under the column
+                # (Member_Mark C7 -> C7.1) with holes for the anchor rods
+                pv, plate_lb = baseplates.plate_row(base_spec, h["mark"])
+                checks = [] if base_spec.get("rod_n_stated") else ["rod count assumed 4 (drawn, not written)"]
+                pnotes = (f"AUTO BASE PL: {baseplates.describe(base_spec)} from '{base_spec['title']}' on "
+                          f"{base_spec.get('sheet') or 'p' + str(base_spec['page'] + 1)}"
+                          + (f" CHECK: {'; '.join(checks)}" if checks else ""))
+                x, y = h["at"]
+                prow = {**rec, "raw": pv["Shape_Size"], "fam": "PL", "dims": [], "key": pv["Shape_Size"], "conf": 1.0,
+                        "note": "", "label": pv["Shape_Size"], "subject": PLATE_SUBJECT, "length_ft": float(pv["Length_Ft"]),
+                        "base_plate": True, "plate_lb": plate_lb, "line": pnotes, "bbox": pymupdf.Rect(x - 8, y - 8, x + 8, y + 8),
+                        "column_mark": h["mark"], "angle": 0, "anchor": "column", "len_note": "", "confident": True}
+                prow["nm"] = add_box(doc, page, prow["bbox"], PLATE_SUBJECT, labeler.color(PLATE_SUBJECT), pv["Shape_Size"],
+                                     columns, {**base, **pv, "Notes": pnotes})
+                hits.append(prow)
 
     install_columns(doc, columns)
     try:
@@ -484,6 +526,8 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
               "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
     groups = {}
     for h in hits:
+        if h.get("base_plate"):
+            continue                                     # listed under "Base plates"
         g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
         g[0] += 1
         if h.get("length_ft") and h.get("confident"):
@@ -531,7 +575,21 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                   "| Sheet | Shape | Columns | Drawn | LF | Elevations used |", "|---|---|---|---|---|---|"]
         for (sheet, label), (n, nd, lf, srcs) in sorted(cols.items()):
             lines.append(f"| {sheet} | {label} | {n} | {nd} | {lf:.1f} | {'; '.join(sorted(srcs))[:80]} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column"))]
+    plates = [h for h in hits if h.get("base_plate")]
+    if plates:
+        by = {}
+        for h in plates:
+            g = by.setdefault((h["sheet"], h["label"]), [0, 0.0])
+            g[0] += 1
+            g[1] += h.get("plate_lb", 0.0)
+        lines += ["", "## Base plates", "",
+                  "One plate nested under every column (Member_Mark C7 -> C7.1) from the typical column base plate detail; "
+                  "holes drilled for the anchor rods, the column-to-plate weld on the column row. "
+                  f"Spec: {plates[0]['line']}", "",
+                  "| Sheet | Plate | Count | lb |", "|---|---|---|---|"]
+        for (sheet, label), (n, lb) in sorted(by.items()):
+            lines.append(f"| {sheet} | {label} | {n} | {lb:.0f} |")
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

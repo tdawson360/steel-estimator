@@ -121,7 +121,8 @@ def _doc_context(doc):
         schedule, blocks = columns.column_schedule(doc, plans)
         _CTX[key] = {"plans": plans, "schedule": schedule, "blocks": blocks,
                      "notes": {i: columns.elevation_notes(doc[i]) for i in plans},
-                     "sections": columns.section_elevations(doc, others)}
+                     "sections": columns.section_elevations(doc, others),
+                     "piers": {i: columns.pier_notes(doc[i]) for i in plans + others}}
     return _CTX[key]
 
 
@@ -155,7 +156,8 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
     if pno in ctx["plans"]:
         ppf0 = regions[0][1] if regions else None
         cols, consumed = columns.columns_on_page(page, pno, "", calls, chains, ppf0, ctx["schedule"],
-                                                 ctx["blocks"].get(pno), ctx["notes"], ctx["plans"], ctx["sections"])
+                                                 ctx["blocks"].get(pno), ctx["notes"], ctx["plans"], ctx["sections"],
+                                                 ctx["piers"])
         calls = [c for c in calls if id(c) not in consumed] + cols
         res_columns = len(cols)
     else:

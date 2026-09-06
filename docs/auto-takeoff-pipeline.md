@@ -142,6 +142,18 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Base plates BUILT 2026-09-05 (`sidecar/baseplates.py`).** Todd adds base plates by hand
+today; he wants them nested under each column in Revu, and a 14x14 plate must be a custom plate
+("PL 1 x 14", priced by its real width), never a 12" strip x 1.36. The typical column base
+plate detail is parsed for thickness / plan size / rods / weld (IAH100 S-61101: PL 1" x 1'-2" x
+1'-2", 3/4" F1554-55 rods, 5/16 fillet; MKT S-500: PL 1/2" x 1'-0" x 1'-0", 1/2" Kwik Bolts 2"
+embed); one plate box per column, Member_Mark C7 -> C7.1, Holes Drill x 4 (CHECK: drawn, not
+written), weld on the column row. The pier-cap allowance now reads the drawings (T/PLINTH -1'-8"
+at the column, else TOP OF FOOTING EL -1'-0" UNO, else 1 ft) per Todd. NEXT (Todd 2026-09-05):
+typical beam-to-beam connection details on the same sheets -> End_1/End_2 and Connection_Type
+set by logic from what each measured member frames into (the snap step already knows the
+member at each end).
+
 **Z-axis rule (Todd, 2026-09-05): kickers and posts follow the 45-degree convention too.**
 `lengths._z_axis`: a KICKER/POST/BRACE/HANGER/STRUT label with a stated length is drawn from its
 leader tip at 45 degrees; without one it is a count-only box ("length from the section"). A
