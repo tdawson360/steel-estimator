@@ -142,6 +142,16 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**2026-09-06 morning, Todd's corrections:** (1) holes must come from the W/C connection
+category templates (Sam to fill), not a blanket 4 -> Hole_Qty no longer written until the app
+passes per-category counts; (2) moment connections are the solid black triangle at a member's
+end -> `connections.moment_triangles` (filled blob 5-14 pt, leader arrowheads and the column
+square at the grid intersection excluded, blob must sit on the member line 0.25-2.5 ft inside
+the end) -> `WF CJP`; MKT S-100: 7 W12x35/W12x26 moment ends found, IAH100 none; (3) anchor
+rods: Todd's idea = a Revu count markup on the base plate; proposal = the sidecar writes the
+count with the catalog label and the importer maps hardware labels to catalog items (not built,
+awaiting Todd).
+
 **Connections BUILT 2026-09-05 night (`sidecar/connections.py`, Todd's ask before bed).**
 Typical connection details vote Bolted/Welded (IAH100 17:4 bolted, MKT 4:2, Rothko 4:1, Moody
 8:1, OXY 6:0, PAC none -> Bolted assumed); every measured W/C beam gets Straight ends, Drill x4,

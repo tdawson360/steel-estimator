@@ -411,6 +411,7 @@ def run(args):
             found.extend(cols)
             rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
+        triangles = connections.moment_triangles(page, chains) if args.lengths else []
         for h in found:
             row = {**rec, **h, "conn_spec": conn_spec}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
@@ -439,9 +440,11 @@ def run(args):
                 sep = ": " if h.get("column") and not h.get("col_only_plan") else " CHECK: "
                 notes = tag + (f"{sep}{len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
-                connx = connections.assign(h, conn_spec)
+                connx = connections.assign(h, conn_spec, triangles)
                 if connx.get("Connection_Type") and connx.get("Connection_Qty"):
                     notes += f" | connx: {connx['Connection_Type']} x{connx['Connection_Qty']} (ends: {connections.describe_ends(h)})"
+                    if h.get("moment_ends") == 1:
+                        notes += " | other end: typical shear connection, add by hand"
                     if h.get("free_ends"):
                         notes += f" CHECK: {h['free_ends']} end(s) frame into nothing drawn"
                     row["connx"] = f"{connx['Connection_Type']} x{connx['Connection_Qty']}"

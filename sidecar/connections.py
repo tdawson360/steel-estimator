@@ -21,8 +21,10 @@ NOISE_RE = re.compile(r"^\d+\.|SHALL|SEE\b|REFER|NOTE|DESIGN|WHERE|PRIOR|HARDWAR
 BOLT_RE = re.compile(r"\bBOLT|A325|A490|SHEAR\s*TAB|SINGLE\s*PL|DOUBLE\s*ANGLE|CLIP\s*L|\bL\s*\d\s*X", re.I)
 WELD_RE = re.compile(r"\bWELD|\bCJP\b|\bPJP\b|FILLET|E70", re.I)
 
-# Todd's generic conventions per family (IAH100 markups, 2026-09-05)
-HOLES_PER_END = 2
+# Holes per framed end.  Todd, 2026-09-06: the count must come from the W /
+# C connection category templates on Global Pricing Data (Sam to fill in),
+# not a blanket 4 -> no holes are written until the app passes them in.
+HOLES_PER_END = 0
 
 
 def _title_blocks(page):
@@ -69,6 +71,62 @@ def typical(doc, pages, sheet_numbers=None):
             "found": votes["Bolted"] + votes["Welded"] > 0}
 
 
+MOMENT_TRI_PT = (5.0, 14.0)     # pt: side of the solid triangle drawn at a moment-connected beam end
+
+
+def moment_triangles(page, chains=None):
+    """Centroids of the solid black triangles drafters draw at a beam end to
+    mark a moment connection (Todd, 2026-09-06).  Leader arrowheads look the
+    same, so a blob with a short single stroke ending at it (the leader) is
+    dropped; the caller keeps only those sitting on a measured member's end."""
+    import math
+    leaders = [ch for ch in (chains or []) if ch.pieces == 1 and 12 <= ch.length <= 250 and len(ch.pts) <= 3]
+    out = []
+    for p in page.get_drawings():
+        if p.get("fill") is None:
+            continue
+        kinds = [it[0] for it in p["items"]]
+        r = p["rect"]
+        # Revit exports the solid triangle as a clipped filled square ('re')
+        # or as three line segments; either way a small filled black blob
+        small = MOMENT_TRI_PT[0] <= max(r.width, r.height) <= MOMENT_TRI_PT[1] and             min(r.width, r.height) >= 0.4 * max(r.width, r.height)
+        if small and (kinds == ["re"] or 2 <= kinds.count("l") <= 4):
+            cx, cy = (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2
+            if any(min(math.hypot(ch.pts[i][0] - cx, ch.pts[i][1] - cy) for i in (0, -1)) <= 7 for ch in leaders):
+                continue                                  # an arrowhead on a leader
+            out.append((cx, cy))
+    return out
+
+
+MOMENT_ALONG_FT = 2.5   # ft: the triangle sits at the beam end, which the snap may have carried to the support line
+MOMENT_LATERAL = 8.0    # pt: on the member line
+
+
+def moment_ends(c, triangles):
+    """How many of this member's ends carry a moment triangle: a blob on the
+    member's line within a couple of feet of the end point."""
+    seg = c.get("seg")
+    if not seg or len(seg) < 2 or not triangles:
+        return 0
+    ppf = c.get("ppf") or 9.0
+    n = 0
+    for pt, prev in ((seg[0], seg[1]), (seg[-1], seg[-2])):
+        ux, uy = pt[0] - prev[0], pt[1] - prev[1]
+        L = (ux * ux + uy * uy) ** 0.5 or 1.0
+        ux, uy = ux / L, uy / L
+        for tx, ty in triangles:
+            dx, dy = tx - pt[0], ty - pt[1]
+            along = dx * ux + dy * uy
+            lateral = abs(dx * uy - dy * ux)
+            # inside the member, short of the support: a filled square right at
+            # the tip is the column symbol at the grid intersection, not a
+            # moment mark
+            if -MOMENT_ALONG_FT * ppf <= along <= -0.25 * ppf and lateral <= MOMENT_LATERAL:
+                n += 1
+                break
+    return n
+
+
 def framed(end):
     """An end that lands on something to connect to.  Only a free end (the
     snap found nothing to frame into: a cantilever tip) has no connection;
@@ -77,9 +135,10 @@ def framed(end):
     return bool(end) and end.get("kind") != "free"
 
 
-def assign(c, spec):
+def assign(c, spec, triangles=None):
     """Revu column values for a measured member: end labor, holes and the
-    connection, from the family and what each end frames into."""
+    connection, from the family, what each end frames into, and the moment
+    triangles drawn at its ends."""
     fam = str(c.get("fam", "")).upper()
     if c.get("column") or c.get("base_plate") or c.get("z_axis"):
         return {}
@@ -94,13 +153,19 @@ def assign(c, spec):
         # connects at both ends
         n = 2
         kind = spec["shear"] if spec else "Bolted"
-        if fam in ("W", "S", "HP") and re.search(r"MOMENT", c.get("block", "") or c.get("line", ""), re.I):
-            kind = "CJP"
         prefix = "WF" if fam in ("W", "S", "HP") else "C"
+        m = moment_ends(c, triangles or [])
+        c["moment_ends"] = m
+        if m or re.search(r"MOMENT", c.get("block", "") or c.get("line", ""), re.I):
+            # a solid triangle at the end = moment connection (CJP pricing);
+            # one triangle: that end CJP, the other the typical shear
+            kind, n = "CJP", (m or 2)
         c["free_ends"] = sum(1 for e in (lo, hi) if e and e.get("kind") == "free")
-        return {"End_1_Labor": "Straight", "End_2_Labor": "Straight",
-                "Holes": "Drill", "Hole_Qty": str(HOLES_PER_END * n),
-                "Connection_Type": f"{prefix} {kind}", "Connection_Qty": str(n)}
+        out = {"End_1_Labor": "Straight", "End_2_Labor": "Straight",
+               "Connection_Type": f"{prefix} {kind}", "Connection_Qty": str(n)}
+        if HOLES_PER_END:
+            out.update({"Holes": "Drill", "Hole_Qty": str(HOLES_PER_END * 2)})
+        return out
     if fam in ("HSS", "L", "WT", "PIPE"):
         return {"End_1_Labor": "Straight", "End_2_Labor": "Straight", "Connection_Type": "Loose"}
     return {}
