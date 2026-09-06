@@ -68,7 +68,7 @@ def page_has_grating(page):
 
 # ── framed footprint ──────────────────────────────────────────────────
 
-EXISTING_RE = re.compile(r"(EX\.?|EXIST(?:ING)?)", re.I)
+EXISTING_RE = re.compile(r"\b(EX\.?|EXIST(?:ING)?)\b", re.I)
 
 
 def member_chains(chains):
