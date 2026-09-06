@@ -161,6 +161,7 @@ class Chain:
     path: int
     callouts: list = field(default_factory=list)   # (s, weight, key, callout)
     cum: list = field(default_factory=list)        # cumulative s per point
+    last_snap: object = None                       # (priority, chain, s) of the last snap_end hit
 
     def __post_init__(self):
         s, self.cum = 0.0, [0.0]
@@ -675,7 +676,7 @@ def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, pag
     a, b = (chain.pts[-2], chain.pts[-1]) if outward > 0 else (chain.pts[1], chain.pts[0])
     L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
     u = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
-    best = None                                       # (priority, dist)
+    best = None                                       # (priority, dist, other, sb)
     for dist, other, sb in ray_hits(p, u, extend, chains, chain):
         if dist < 0.5:
             continue
@@ -690,11 +691,25 @@ def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, pag
             pri = 2
         else:
             continue
-        if best is None or (pri, dist) < best:
-            best = (pri, dist)
+        if best is None or (pri, dist) < best[:2]:
+            best = (pri, dist, other, sb)
+    chain.last_snap = None if best is None else (best[0], best[2], best[3])
     if best is None:
         return s_end
     return s_end + best[1] if outward > 0 else s_end - best[1]
+
+
+def end_target(other, sb, reach, page_dim, pri=None):
+    """What a member end lands on: {"kind": member|grid|line, "key": ...}."""
+    if other is None:
+        return {"kind": "free"}
+    if other.callouts:
+        near = min(other.callouts, key=lambda t: abs(t[0] - sb))
+        if abs(near[0] - sb) <= reach:
+            return {"kind": "member", "key": near[2]}
+    if page_dim and other.length > 0.6 * page_dim:
+        return {"kind": "grid"}
+    return {"kind": "line"}
 
 
 def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
@@ -992,6 +1007,16 @@ def _extents(page, callouts, chains, weights, ppf):
         lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], own_w, reach, page_dim=page_dim)
         c["cuts"] = (lo, hi, [(round(s), round(o.length), o.pieces, thr, local_weight(o, sb, reach)) for s, o, thr, sb in xcache[id(ch)] if abs(s - c["s"]) < 300])
         free_lo, free_hi = lo == 0.0, hi == ch.length
+        # what each end frames into: a crossing member that cut the stretch,
+        # a neighbour label sharing the line (continuous), or the line the
+        # free end snaps to (below)
+        ends = {}
+        for side, s_cut, free in (("lo", lo, free_lo), ("hi", hi, free_hi)):
+            if free:
+                continue
+            hit = next((o_ for s_, o_, _, _ in xcache[id(ch)] if abs(s_ - s_cut) < 1.0), None)
+            sb_ = next((sb_ for s_, o_, _, sb_ in xcache[id(ch)] if abs(s_ - s_cut) < 1.0), 0.0)
+            ends[side] = end_target(hit, sb_, reach, page_dim) if hit is not None else {"kind": "free"}
         # each callout owns the stretch nearest it
         for s_other, _, _, other in ch.callouts:
             if other is c:
@@ -999,8 +1024,10 @@ def _extents(page, callouts, chains, weights, ppf):
             mid = (s_other + c["s"]) / 2
             if s_other < c["s"] and mid > lo:
                 lo, free_lo = mid, False
+                ends["lo"] = {"kind": "continuous", "key": other.get("key")}
             elif s_other > c["s"] and mid < hi:
                 hi, free_hi = mid, False
+                ends["hi"] = {"kind": "continuous", "key": other.get("key")}
         if hi - lo < 1:
             c["len_note"] = "zero-length extent"
             continue
@@ -1010,14 +1037,19 @@ def _extents(page, callouts, chains, weights, ppf):
         pts = ch.slice(lo, hi)
         if free_lo:
             lo2 = snap_end(ch, lo, -1, chains, own_w, reach, extend, page_dim)
+            snap = getattr(ch, "last_snap", None)
+            ends["lo"] = end_target(snap[1], snap[2], reach, page_dim) if snap else {"kind": "free"}
             if lo2 < lo:
                 pts = _extend_pts(pts, ch, lo, lo2, at_start=True)
                 lo = lo2
         if free_hi:
             hi2 = snap_end(ch, hi, +1, chains, own_w, reach, extend, page_dim)
+            snap = getattr(ch, "last_snap", None)
+            ends["hi"] = end_target(snap[1], snap[2], reach, page_dim) if snap else {"kind": "free"}
             if hi2 > hi:
                 pts = _extend_pts(pts, ch, hi, hi2, at_start=False)
                 hi = hi2
+        c["ends"] = ends
         c["seg"] = pts
         if not ppf:
             c["len_note"] = "no sheet scale found"

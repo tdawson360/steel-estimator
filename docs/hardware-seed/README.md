@@ -33,3 +33,16 @@ Prices: none of these sources carry current pricing; unit prices are to be seede
   HDG); loaded as given, worth a question to the vendor.
 - Result: 82 plain + 79 HDG priced and active, 50 plain sizes hidden. Hidden sizes can be
   re-enabled on Global Pricing Data -> Hardware.
+
+## F1554 anchor rods (2026-09-05)
+
+- `f1554-anchor-rods.csv`: cast-in anchor rod assemblies, F1554 Gr36 and Gr50, 3/4", 1", 1-1/4"
+  and 1-1/2" in 12", 18", 24" and 36" lengths. Todd outsources these; they are priced per each
+  and the price includes the heavy hex nuts and washers (plate washers when the detail calls
+  for them). Seeded Plain and HDG (bought pre-galvanized: a galvanized Hardware row swaps to
+  the HDG variant and never adds weight to a galv dip). Weights are estimates (round bar lb/ft
+  x length + two heavy hex nuts + one F436 washer). No vendor prices yet: rows seed at $0 and
+  are priced on Global Pricing Data -> Hardware. Default: Gr36 3/4" x 18".
+- The auto-takeoff's base plate step names the rods it reads off the typical column base
+  plate detail in the plate row's note (e.g. "(4) 3/4\" F1554-55 anchor rods x 1'-0\" embed");
+  Grade 55 appears on some sets (IAH100) and is not seeded yet.

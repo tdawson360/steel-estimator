@@ -1,0 +1,33 @@
+family,grade,diameter,length,length_in,finish,weight_each_lb_est,unit_price,notes
+F1554 Gr36,36,3/4,12,12.0,Plain,2.15,,"outsourced anchor rod assembly, priced per each incl. heavy hex nuts and washers (plate washers per detail); weight = 1.50 lb/ft rod x length + 2 heavy hex nuts (0.29) + F436 washer (0.07), estimate"
+F1554 Gr36,36,3/4,18,18.0,Plain,2.90,,
+F1554 Gr36,36,3/4,24,24.0,Plain,3.65,,
+F1554 Gr36,36,3/4,36,36.0,Plain,5.15,,
+F1554 Gr36,36,1,12,12.0,Plain,4.06,,"weight = 2.67 lb/ft x length + 2 nuts (0.62) + washer (0.15)"
+F1554 Gr36,36,1,18,18.0,Plain,5.40,,
+F1554 Gr36,36,1,24,24.0,Plain,6.73,,
+F1554 Gr36,36,1,36,36.0,Plain,9.40,,
+F1554 Gr36,36,1-1/4,12,12.0,Plain,6.82,,"weight = 4.17 lb/ft x length + 2 nuts (1.20) + washer (0.25)"
+F1554 Gr36,36,1-1/4,18,18.0,Plain,8.91,,
+F1554 Gr36,36,1-1/4,24,24.0,Plain,10.99,,
+F1554 Gr36,36,1-1/4,36,36.0,Plain,15.16,,
+F1554 Gr36,36,1-1/2,12,12.0,Plain,10.41,,"weight = 6.01 lb/ft x length + 2 nuts (2.00) + washer (0.40)"
+F1554 Gr36,36,1-1/2,18,18.0,Plain,13.42,,
+F1554 Gr36,36,1-1/2,24,24.0,Plain,16.42,,
+F1554 Gr36,36,1-1/2,36,36.0,Plain,22.43,,
+F1554 Gr50,50,3/4,12,12.0,Plain,2.15,,
+F1554 Gr50,50,3/4,18,18.0,Plain,2.90,,
+F1554 Gr50,50,3/4,24,24.0,Plain,3.65,,
+F1554 Gr50,50,3/4,36,36.0,Plain,5.15,,
+F1554 Gr50,50,1,12,12.0,Plain,4.06,,
+F1554 Gr50,50,1,18,18.0,Plain,5.40,,
+F1554 Gr50,50,1,24,24.0,Plain,6.73,,
+F1554 Gr50,50,1,36,36.0,Plain,9.40,,
+F1554 Gr50,50,1-1/4,12,12.0,Plain,6.82,,
+F1554 Gr50,50,1-1/4,18,18.0,Plain,8.91,,
+F1554 Gr50,50,1-1/4,24,24.0,Plain,10.99,,
+F1554 Gr50,50,1-1/4,36,36.0,Plain,15.16,,
+F1554 Gr50,50,1-1/2,12,12.0,Plain,10.41,,
+F1554 Gr50,50,1-1/2,18,18.0,Plain,13.42,,
+F1554 Gr50,50,1-1/2,24,24.0,Plain,16.42,,
+F1554 Gr50,50,1-1/2,36,36.0,Plain,22.43,,

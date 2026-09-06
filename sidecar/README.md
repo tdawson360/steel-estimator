@@ -94,6 +94,19 @@ pier cap below the finished slab. Drawn as a polyline from the column centre
 at 45 degrees (the z-axis convention: it goes up, not along a grid) with an `AUTO COL` note naming the elevation used; the report lists them
 under "Columns".
 
+## Connections (2026-09-05, `connections.py`)
+
+The typical connection details (titles with SHEAR / BEAM TO BEAM / BEAM TO
+COLUMN CONNECTION) vote the set's shear connection Bolted or Welded by the
+words in the detail body; a typical moment detail is only reported. Every
+measured W or C beam then carries Todd's generic markup: `End_1/End_2
+Straight`, `Holes Drill` x 4, `Connection_Type "WF Bolted"` (or `C Bolted`,
+`WF Welded`, `WF CJP` when the label says MOMENT) x 2. HSS, angles, WT and
+pipe are `Loose`; joists get nothing. The end-snap step records what each
+end frames into (a crossing member, a grid line, an unlabelled line, or
+nothing) and the note says so; an end that frames into nothing drawn is a
+CHECK. The report lists the details read and the connection counts.
+
 ## Base plates (2026-09-05, `baseplates.py`)
 
 The typical column base plate detail ("TYPICAL COLUMN BASE PLATE",

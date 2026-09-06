@@ -112,6 +112,22 @@ for (const r of read('hilti-has-rods.csv').filter(r => frac(r.diameter) < 1.5)) 
   });
 }
 
+// F1554 Gr36 / Gr50 cast-in anchor rods (Todd, 2026-09-05): outsourced, priced
+// per each with nuts and washers (plate washers per the detail). Plain and HDG
+// variants; HDG is bought pre-galvanized (hardware never dips). Prices are
+// entered on Global Pricing Data (no vendor sheet yet), so seed rows stay $0.
+for (const r of read('f1554-anchor-rods.csv')) {
+  for (const finish of ['Plain', 'HDG']) {
+    desired.push({
+      kind: 'ANCHOR_ROD', family: r.family, name: '', diameter: r.diameter, diameterIn: frac(r.diameter),
+      length: r.length, lengthIn: num(r.length_in), finish,
+      weightEach: num(r.weight_each_lb_est), unitPrice: num(r.unit_price),
+      isDefault: r.family === 'F1554 Gr36' && r.diameter === '3/4' && r.length === '18',
+      sortOrder: r.family === 'F1554 Gr36' ? 35 : 36,
+    });
+  }
+}
+
 // ── One-time fixups from earlier seed shapes ────────────────────────────────
 const uniq = (i) => ({ family: i.family, name: i.name || '', diameter: i.diameter, length: i.length, finish: i.finish });
 const keyOf = (i) => Object.values(uniq(i)).join('|');

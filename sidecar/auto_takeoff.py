@@ -32,6 +32,7 @@ import pymupdf
 sys.path.insert(0, str(Path(__file__).parent))
 import baseplates                   # noqa: E402  (run() has a local named columns)
 import columns as column_step                   # noqa: E402  (run() has a local named columns)
+import connections                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -328,6 +329,9 @@ def run(args):
     base_details = baseplates.find_details(doc, plan_pages + other_s, {i: n for i, (n, t, k) in enumerate(infos)})
     base_spec = baseplates.choose(base_details)
     col_marks = 0
+    # how this engineer connects beams: every framed end of a W or C is one
+    # connection of the typical kind (Todd keeps the takeoff generic)
+    conn_spec = connections.typical(doc, other_s + plan_pages, {i: n for i, (n, t, k) in enumerate(infos)})
     for pno, page in enumerate(doc):
         number, title, kind = infos[pno]
         print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
@@ -408,7 +412,7 @@ def run(args):
             rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         for h in found:
-            row = {**rec, **h}
+            row = {**rec, **h, "conn_spec": conn_spec}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
             if not h["key"]:
                 row["label"], row["subject"], row["length_ft"] = h["raw"], EXCEPTION_SUBJECT, None
@@ -435,10 +439,16 @@ def run(args):
                 sep = ": " if h.get("column") and not h.get("col_only_plan") else " CHECK: "
                 notes = tag + (f"{sep}{len_note}" if len_note else "")
                 lbft = weights.get(h["key"], 0)
+                connx = connections.assign(h, conn_spec)
+                if connx.get("Connection_Type") and connx.get("Connection_Qty"):
+                    notes += f" | connx: {connx['Connection_Type']} x{connx['Connection_Qty']} (ends: {connections.describe_ends(h)})"
+                    if h.get("free_ends"):
+                        notes += f" CHECK: {h['free_ends']} end(s) frame into nothing drawn"
+                    row["connx"] = f"{connx['Connection_Type']} x{connx['Connection_Qty']}"
                 values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
                           "Measured_Length": f"{ft:.2f}", "Weight_Per_Ft": f"{lbft:g}",
                           "Total_Length_Ft": f"{ft:.1f}", "Total_Weight_Lbs": f"{ft * lbft:.0f}",
-                          **column_fields(h, base_spec)}
+                          **connx, **column_fields(h, base_spec)}
                 row["nm"] = add_polyline(doc, page, h["seg"], subject, labeler.color(subject), ft,
                                          columns, values, measure_xref)
             else:
@@ -503,6 +513,10 @@ def write_json(path, src, sheets, hits, exceptions, weights):
         "sizes": sorted(groups.values(), key=lambda g: -g["count"]),
     }
     path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
+
+
+def collections_counter(it):
+    return dict(Counter(v for v in it if v))
 
 
 def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
@@ -575,6 +589,20 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                   "| Sheet | Shape | Columns | Drawn | LF | Elevations used |", "|---|---|---|---|---|---|"]
         for (sheet, label), (n, nd, lf, srcs) in sorted(cols.items()):
             lines.append(f"| {sheet} | {label} | {n} | {nd} | {lf:.1f} | {'; '.join(sorted(srcs))[:80]} |")
+    connx = collections_counter(h.get("connx") for h in hits if h.get("connx"))
+    if connx:
+        spec = hits[0].get("conn_spec") if hits else None
+        lines += ["", "## Connections", "",
+                  "Every framed end of a measured W or C beam is one connection of the set's typical kind; "
+                  "ends are read from what the member frames into (a crossing member, a grid line). "
+                  "End labor Straight, 2 drilled holes per framed end; HSS / angles / WT shipped Loose.", ""]
+        if spec:
+            lines.append(f"Typical connection details read: {'; '.join(f'{s0} {t} -> {k}' for s0, t, k in spec['sources'][:8])}"
+                         if spec.get("sources") else "No typical connection detail found: Bolted assumed.")
+            lines.append("")
+        lines += ["| Connection | Members |", "|---|---|"]
+        for k, n in sorted(connx.items()):
+            lines.append(f"| {k} | {n} |")
     plates = [h for h in hits if h.get("base_plate")]
     if plates:
         by = {}

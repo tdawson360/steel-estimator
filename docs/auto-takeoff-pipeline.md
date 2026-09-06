@@ -142,6 +142,22 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Connections BUILT 2026-09-05 night (`sidecar/connections.py`, Todd's ask before bed).**
+Typical connection details vote Bolted/Welded (IAH100 17:4 bolted, MKT 4:2, Rothko 4:1, Moody
+8:1, OXY 6:0, PAC none -> Bolted assumed); every measured W/C beam gets Straight ends, Drill x4,
+`WF Bolted` x2 (Todd's IAH100 markups: every W row Straight/Straight, Drill 4, connection x2;
+he used "WF Moment Connx" there, which reads as job-specific), HSS/L/WT `Loose`. The end-snap
+step now records each end's target (`c["ends"]`: member key / grid / line / continuous / free)
+and the note shows it; free ends are flagged, not deducted. NOT applied: end labor other than
+Straight (copes for beams into deeper beams are a natural next rule since the target's key is
+known), moment frames located on the plan.
+
+**F1554 anchor rods SEEDED 2026-09-05 night**: `docs/hardware-seed/f1554-anchor-rods.csv`, kind
+`ANCHOR_ROD` ("Anchor rod (cast-in)"), Gr36 + Gr50, 3/4"/1"/1-1/4"/1-1/2" x 12/18/24/36",
+Plain + HDG (pre-galvanized, never dips), $0 until Todd prices them; default Gr36 3/4" x 18".
+The running prod build (:5000) predates the kind label; items are usable now, the label reads
+"ANCHOR_ROD" until the next rebuild.
+
 **Base plates BUILT 2026-09-05 (`sidecar/baseplates.py`).** Todd adds base plates by hand
 today; he wants them nested under each column in Revu, and a 14x14 plate must be a custom plate
 ("PL 1 x 14", priced by its real width), never a 12" strip x 1.36. The typical column base

@@ -297,7 +297,7 @@ export async function updateGalvMinimum(value) {
 }
 
 // ── Hardware catalog (lib/hardware.js) ──────────────────────────────────────
-const HW_KINDS = new Set(['BOLT_SET', 'EXPANSION_ANCHOR', 'ADHESIVE_ANCHOR', 'ADHESIVE']);
+const HW_KINDS = new Set(['BOLT_SET', 'EXPANSION_ANCHOR', 'ADHESIVE_ANCHOR', 'ADHESIVE', 'ANCHOR_ROD']);
 const HW_FINISHES = new Set(['Plain', 'Zinc', 'HDG', 'SS']);
 const HW_NUM_FIELDS = ['unitPrice', 'weightEach', 'bitDiaIn', 'embedMinIn', 'embedMaxIn', 'cartridgeMl', 'sortOrder', 'diameterIn', 'lengthIn'];
 
