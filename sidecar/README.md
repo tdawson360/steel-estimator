@@ -15,6 +15,10 @@ Revu locks an open PDF, so close the previous output or use a new `-o` name.
 
 ## What the output contains
 
+Auto markups carry no Item_Number or Item_Description (Todd, 2026-09-06): the
+estimator groups them into items by scope in Revu before exporting; the
+importer skips rows with a blank Item_Number.
+
 - One annotation per shape callout on every structural framing plan, under
   the toolkit's subject and colour, with the v1.7 custom columns filled
   (Item_Number, Item_Description, Shape_Size, Quantity, Drawing_Ref, Notes).

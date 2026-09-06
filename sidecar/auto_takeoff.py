@@ -704,8 +704,10 @@ def main():
     ap.add_argument("pdf")
     ap.add_argument("-o", "--output")
     ap.add_argument("--sheets", help="comma-separated sheet numbers to annotate (default: structural plans)")
-    ap.add_argument("--item", default="1", help="Item_Number for every auto row")
-    ap.add_argument("--desc", default="STRUCTURAL FRAMING", help="Item_Description for every auto row")
+    # Todd, 2026-09-06: auto markups carry no item number or description; the
+    # estimator defines the items from the scope in Revu before exporting
+    ap.add_argument("--item", default="", help="Item_Number for every auto row (default blank)")
+    ap.add_argument("--desc", default="", help="Item_Description for every auto row (default blank)")
     ap.add_argument("--lengths", action="store_true",
                     help="also draft member lengths from the line work (experimental; off by default)")
     ap.add_argument("--ocr", choices=["auto", "off"], default="auto",
