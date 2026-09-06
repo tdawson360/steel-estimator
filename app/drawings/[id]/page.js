@@ -39,6 +39,18 @@ function ScopeSummary({ summary }) {
       {summary.title_block?.lines?.length ? (
         <div className="text-sm"><span className="text-gray-500">Title block:</span> {summary.title_block.lines.slice(0, 6).join(' · ')}</div>
       ) : null}
+      {summary.stairs?.sheets?.length ? (
+        <div className="text-sm">
+          <span className="font-medium">Stairs as noted</span>
+          <span className="text-gray-500"> · {summary.stairs.risers} risers / {summary.stairs.treads} treads in {summary.stairs.flights} flights</span>
+          <ul className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5 space-y-0.5">
+            {summary.stairs.sheets.slice(0, 8).map(x => (
+              <li key={x.sheet}>{x.sheet} ({x.kind}): {[x.risers.length ? `risers ${x.risers.join('+')}` : null, x.treads.length ? `treads ${x.treads.join('+')}` : null].filter(Boolean).join('; ')}{x.sizes?.length ? ` @ ${x.sizes.join(', ')}` : ''}</li>
+            ))}
+          </ul>
+          <div className="text-xs text-gray-400 dark:text-zinc-600">Counts repeat where a stair shows on more than one sheet.</div>
+        </div>
+      ) : null}
       {KIND_ORDER.map(kind => {
         const rows = cats.filter(([, v]) => v.kind === kind);
         if (!rows.length) return null;

@@ -53,6 +53,14 @@ lines. Vocabulary lives in `scope_vocab.py`; the review copy is
 `docs/scoping-vocabulary.md` (`python sidecar/scope_vocab.py --doc`). Meant
 for Samantha's go/no-go read of a bid set before any takeoff.
 
+**Stairs (2026-09-06):** riser and tread counts noted on stair plans, sections and
+elevations ("11 EQ RISERS", "13 TREADS AT 11\"") are boxed and tallied per sheet;
+the summary page, the JSON and the Drawings page show "risers / treads in N
+flights" with the per-sheet breakdown. Counts repeat where a stair shows on
+more than one sheet (plan treads + section risers), so the per-sheet list is
+the number to read. Sets that only dimension the flights graphically (Moody)
+report nothing.
+
 ## Modules
 
 - `auto_takeoff.py` — CLI: classify sheets from the title block, find AISC

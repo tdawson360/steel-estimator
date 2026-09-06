@@ -68,6 +68,40 @@ def page_lines(page, use_ocr, ocr_dpi, label=""):
     return lines, blocks, "text+ocr", callouts
 
 
+# ── stairs: riser / tread counts ──────────────────────────────────────
+# "11 EQ RISERS", "13 TREADS AT 11\"", "14 RISERS @ 7\"" on stair plans,
+# sections and elevations (Todd, 2026-09-06: the count is what scoping
+# needs).  Seat risers, drain risers, "per riser", "one tread" are not counts.
+STAIR_RE = re.compile(r"(?<![\d/.-])(\d{1,2})\s*(?:EQ(?:UAL)?\.?\s*)?(RISERS?|TREADS?|RSRS?\.?)\b(?:\s*(?:@|AT|=)\s*(\d[\d\s/\-]*(?:\"|”|″)?))?", re.I)
+STAIR_SKIP = re.compile(r"SEAT\s+RISER|DRAIN\s+RISER|PER\s+RISER|ONE\s+TREAD|RISER\s+HEIGHT|TREAD\s+WIDTH|MIN\.?\s+TREAD|PLF|PSF", re.I)
+
+
+def stair_counts(page):
+    """[{n, what: 'risers'|'treads', size, text, bbox}] from every text block
+    on the page; one entry per count in a block (a section's dimension string
+    lists every flight: "9 EQ RISERS 5'-2\" 11 EQ RISERS ...")."""
+    out, seen = [], set()
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        text = " ".join("".join(sp["text"] for sp in l["spans"]).strip() for l in b["lines"])
+        if not re.search(r"RISER|TREAD|RSR", text, re.I):
+            continue
+        for m in STAIR_RE.finditer(text):
+            n = int(m.group(1))
+            ctx = text[max(0, m.start() - 12):m.end() + 12]
+            if not 2 <= n <= 40 or STAIR_SKIP.search(ctx):
+                continue
+            what = "risers" if m.group(2).upper().startswith("R") else "treads"
+            key = (n, what, m.start(), tuple(round(v) for v in b["bbox"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"n": n, "what": what, "size": (m.group(3) or "").strip(), "text": m.group(0).strip(),
+                        "bbox": pymupdf.Rect(b["bbox"])})
+    return out
+
+
 def title_block_facts(page):
     """Big text in the title-block strip: project name, owner, address lines.
     Display only (the app never autofills a project from it)."""
@@ -143,8 +177,24 @@ def run(args):
                 annot.set_info(title="Auto Scope", subject=f"Scope: {cat}", content=match)
                 annot.update()
                 boxes += 1
+        # stairs: riser / tread counts, boxed and tallied per sheet
+        stairs = stair_counts(page) if re.search(r"STAIR|RISER|TREAD", " ".join(l["text"] for l in lines), re.I) else []
+        boxed = set()
+        for st in stairs:
+            key = tuple(round(v) for v in st["bbox"])
+            if key in boxed:
+                continue
+            boxed.add(key)
+            annot = page.add_rect_annot(st["bbox"] + (-4, -4, 4, 4))
+            annot.set_border(width=1.5)
+            annot.set_colors(stroke=KIND_COLOR["misc"], fill=None)
+            counts = ", ".join(f"{x['n']} {x['what']}" for x in stairs if tuple(round(v) for v in x["bbox"]) == key)
+            annot.set_info(title="Auto Scope", subject="Scope: Stairs / ladders", content=f"Stairs: {counts}")
+            annot.update()
+            boxes += 1
         sheets.append({"page": pno + 1, "sheet": number or f"p{pno + 1}", "title": title, "kind": kind,
-                       "discipline": discipline, "source": source, "lines": len(lines), "found": found, "sizes": sizes})
+                       "discipline": discipline, "source": source, "lines": len(lines), "found": found, "sizes": sizes,
+                       "stairs": stairs})
     summary = build_summary(src, doc.page_count, sheets, facts, boxes)
     summary["scanned"] = "entire set" if args.all_sheets else f"disciplines {args.disciplines}"
     insert_summary_page(doc, summary)
@@ -175,7 +225,20 @@ def build_summary(src, pages, sheets, facts, boxes):
         size_rows.append({"size": k, "callouts": cnt, "lbft": shapes.weight(k)})
     plans = [s["sheet"] for s in sheets if s["kind"] == "plan" and s.get("discipline") == "S"]
     doc_status = [e for c, v in cats.items() if v["kind"] == "status" for e in v["examples"]]
+    stair_sheets = []
+    for s in sheets:
+        if not s.get("stairs"):
+            continue
+        stair_sheets.append({"sheet": s["sheet"], "kind": s["kind"], "title": s["title"][:40],
+                             "risers": [x["n"] for x in s["stairs"] if x["what"] == "risers"],
+                             "treads": [x["n"] for x in s["stairs"] if x["what"] == "treads"],
+                             "sizes": sorted({x["size"] for x in s["stairs"] if x["size"]})})
+    stairs = {"sheets": stair_sheets,
+              "risers": sum(sum(x["risers"]) for x in stair_sheets),
+              "treads": sum(sum(x["treads"]) for x in stair_sheets),
+              "flights": sum(max(len(x["risers"]), len(x["treads"])) for x in stair_sheets)}
     return {
+        "stairs": stairs,
         "file": src.name, "pages": pages, "run": dt.datetime.now().isoformat(timespec="minutes"),
         "structural_sheets": len(sheets), "plans": plans, "boxes": boxes,
         "title_block": {"lines": facts},
@@ -195,6 +258,18 @@ def summary_lines(summary):
         L += ["Title block: " + " | ".join(summary["title_block"]["lines"][:5]), ""]
     if summary["document_status"]:
         L += ["Document status: " + "; ".join(summary["document_status"]), ""]
+    st = summary.get("stairs") or {}
+    if st.get("sheets"):
+        L += [f"Stairs as noted: {st['risers']} risers / {st['treads']} treads in {st['flights']} flights "
+              f"(counts repeat where a stair shows on more than one sheet):"]
+        for x in st["sheets"][:12]:
+            parts = []
+            if x["risers"]:
+                parts.append("risers " + "+".join(str(n) for n in x["risers"]))
+            if x["treads"]:
+                parts.append("treads " + "+".join(str(n) for n in x["treads"]))
+            L.append(f"  {x['sheet']} ({x['kind']}): " + "; ".join(parts) + (f" @ {', '.join(x['sizes'])}" if x["sizes"] else ""))
+        L.append("")
     for kind in KIND_ORDER:
         rows = [(cat, v) for cat, v in summary["categories"].items() if v["kind"] == kind]
         if not rows:

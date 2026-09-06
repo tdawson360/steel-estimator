@@ -37,6 +37,7 @@ export function ScopeChips({ summary }) {
     summary.plans?.length ? `${summary.plans.length} plan${summary.plans.length === 1 ? '' : 's'}` : 'no framing plans found',
     summary.sizes?.length ? `${summary.sizes.reduce((a, s) => a + s.callouts, 0)} callouts, ${summary.sizes.length} sizes` : null,
     ...misc, ...finish,
+    summary.stairs?.sheets?.length ? `stairs: ${summary.stairs.risers} risers / ${summary.stairs.treads} treads noted` : null,
     ...(summary.document_status || []).slice(0, 1),
   ].filter(Boolean);
   return (

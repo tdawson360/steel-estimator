@@ -142,6 +142,13 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Stairs in scope (Todd 2026-09-06: "the number of treads or risers ... usually noted on the
+elevation drawings"):** `scope.stair_counts` reads "N (EQ) RISERS/TREADS (@ size)" from every text
+block on sheets mentioning stairs, boxes them (Scope: Stairs / ladders) and tallies per sheet;
+summary `stairs: {sheets:[{sheet, kind, risers[], treads[], sizes[]}], risers, treads, flights}`,
+shown on the summary page and the Drawings page. HTX2 A8.01-A8.10: treads on the plans, risers in
+the section dimension strings. Moody's stair sheets carry no counts in text (graphic dims only).
+
 **2026-09-06, built on Todd's answers:** (a) Gr55 rods seeded (32 items; 96 F1554 rods total);
 (b) importer hardware path: `lib/hardware.js matchHardwareLabel` (token-multiset match of a
 Shape_Size to a catalog label, HDG variant for a galvanized row or an HDG/galv word) +
