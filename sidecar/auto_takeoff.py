@@ -34,6 +34,7 @@ import baseplates                   # noqa: E402  (run() has a local named colum
 import columns as column_step                   # noqa: E402  (run() has a local named columns)
 import connections                   # noqa: E402  (run() has a local named columns)
 import deck                   # noqa: E402  (run() has a local named columns)
+import elevations                   # noqa: E402  (run() has a local named columns)
 import keynotes                   # noqa: E402  (run() has a local named columns)
 import typicals                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
@@ -400,6 +401,15 @@ def run(args):
         annotate = (number in wanted) if wanted else ((structural or not number) and kind == "plan")
         scan = annotate or structural
         found = page_callouts(page) if (scan and chars) else []
+        # an elevation whose members are sized (braced frames, bracing, truss
+        # elevations) is measured too, chord to chord (Todd, 2026-09-07)
+        is_elev = False
+        if structural and kind == "elevation" and args.lengths and not wanted:
+            sized = [h for h in found if shapes.resolve(h["fam"], h["dims"])[0]]
+            if elevations.sized_elevation(kind, [{"key": 1} for _ in sized]):
+                annotate, is_elev = True, True
+        elif wanted and number in wanted and kind == "elevation":
+            is_elev = True
         source = "text"
         if annotate and not found and args.ocr != "off":
             import ocr                                   # heavy import, only when needed
@@ -442,6 +452,10 @@ def run(args):
                 centre = ((h["bbox"].x0 + h["bbox"].x1) / 2, (h["bbox"].y0 + h["bbox"].y1) / 2)
                 rect, rppf = lengths.region_for(regions, centre) if regions else (None, None)
                 groups.setdefault((id(rect), rppf), (rect, rppf, []))[2].append(h)
+            saved_extend = lengths.EXTEND_FT
+            if is_elev:
+                lengths.EXTEND_FT = elevations.EXTEND_FT          # brace ends reach the chords
+                lengths.ELEVATION_MODE = True
             for rect, rppf, group in groups.values():
                 lengths.measure(page, group, weights, rppf, chains=chains)
                 # members drawn but not labelled: tags defined by a legend
@@ -452,10 +466,25 @@ def run(args):
                     h["ppf"] = rppf
                 found.extend(typ)
                 rec["typ"] = rec.get("typ", 0) + len(typ)
+            lengths.EXTEND_FT = saved_extend
+            lengths.ELEVATION_MODE = False
+            if is_elev:
+                # every member carries the number of frames its elevation stands for
+                titles = elevations.frame_titles(page)
+                clusters = lengths.drawing_clusters(page)
+                for h in found:
+                    if not h.get("key"):
+                        continue
+                    bb = h["bbox"]; cx, cy = (bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2
+                    home = [r for r in clusters if r.contains(pymupdf.Point(cx, cy))]
+                    home = min(home, key=lambda r: r.width * r.height) if home else None
+                    t, n = elevations.title_for(home, titles) if home else (None, 1)
+                    h["frame_qty"], h["frame_title"] = n, t
+                rec["elevation"] = True
         # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
         # from the elevation notes (+1 ft pier cap), drawn as vertical polylines
         foundation = "FOUNDATION" in (title or "").upper() or "PIER" in (title or "").upper()
-        if structural and kind == "plan" and (col_schedule or loc_schedule or foundation or any(
+        if structural and kind == "plan" and not is_elev and (col_schedule or loc_schedule or foundation or any(
                 column_step.COLUMN_LABEL_RE.search(h.get("line", "")) or column_step.BP_TAG_RE.search(h.get("block", "") or "") for h in resolved)):
             if chains is None:
                 chains = lengths.extract_chains(page)
@@ -546,9 +575,12 @@ def run(args):
                     if h.get("free_ends"):
                         notes += f" CHECK: {h['free_ends']} end(s) frame into nothing drawn"
                     row["connx"] = f"{connx['Connection_Type']} x{connx['Connection_Qty']}"
-                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes,
+                fq = h.get("frame_qty") or 1
+                if h.get("frame_title"):
+                    notes += f" | elevation '{h['frame_title'][:50]}' x{fq}"
+                values = {**base, "Shape_Size": label, "Quantity": str(fq), "Notes": notes,
                           "Measured_Length": f"{ft:.2f}", "Weight_Per_Ft": f"{lbft:g}",
-                          "Total_Length_Ft": f"{ft:.1f}", "Total_Weight_Lbs": f"{ft * lbft:.0f}",
+                          "Total_Length_Ft": f"{ft * fq:.1f}", "Total_Weight_Lbs": f"{ft * lbft * fq:.0f}",
                           **connx, **column_fields(h, base_spec)}
                 row["nm"] = add_polyline(doc, page, h["seg"], subject, labeler.color(subject), ft,
                                          columns, values, measure_xref)
@@ -556,7 +588,7 @@ def run(args):
                 draft = f"draft {ft:.1f} ft" if ft else ""
                 why = "; ".join(n for n in (draft, len_note) if n)
                 notes = ("AUTO COL COUNT ONLY" if h.get("column") else "AUTO COUNT ONLY") + (f": {why}" if why else "")
-                values = {**base, "Shape_Size": label, "Quantity": "1", "Notes": notes, **column_fields(h, base_spec)}
+                values = {**base, "Shape_Size": label, "Quantity": str(h.get("frame_qty") or 1), "Notes": notes, **column_fields(h, base_spec)}
                 row["nm"] = add_box(doc, page, h["bbox"], subject, labeler.color(subject), label,
                                     columns, values, dashed=h["conf"] < 1)
             hits.append(row)

@@ -635,6 +635,11 @@ def local_weight(chain, s, reach):
 
 
 EXTEND_FT = 6.0     # ft: how far a free member end may reach out to the line it frames into
+# Elevation mode (braced frames, trusses): a brace runs chord to chord, so
+# its free end reaches past gusset outlines to a labelled or long line, and
+# an X-brace is not cut where its twin crosses it.
+ELEVATION_MODE = False
+ELEV_TARGET_FT = 8.0   # ft: an unlabelled line must be this long to stop a brace end on an elevation
 MIN_CUTTER = 90.0   # pt at 1/8" scale (10 ft): an unlabelled stroke shorter than this cannot cut a member
 
 
@@ -689,6 +694,8 @@ def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, pag
             pri = 1
         elif other.pieces > 1 or other.width >= 0.5 * max(chain.width, 0.01):
             pri = 2
+            if ELEVATION_MODE and other.length < ELEV_TARGET_FT * reach_label / 30.0:
+                continue                              # gusset / work-point outline, not a chord
         else:
             continue
         if best is None or (pri, dist) < best[:2]:
@@ -712,7 +719,7 @@ def end_target(other, sb, reach, page_dim, pri=None):
     return {"kind": "line"}
 
 
-def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
+def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None, own_key=None):
     """A through-crossing cuts the member when the crossing line is, at that
     point, an equal-or-heavier member, or an unlabelled drawn (multi-piece)
     line.  Lighter members frame in; plain single strokes (grid, dimension,
@@ -725,6 +732,8 @@ def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None):
         if page_dim and other.length > 0.6 * page_dim:
             continue                                   # grid / section line
         w = local_weight(other, sb, reach)
+        if ELEVATION_MODE and own_key and any(abs(cs - sb) <= reach and k == own_key for cs, _, k, _ in other.callouts):
+            continue                                   # an X-brace crossing its twin
         if w is None:
             if other.pieces < 2:
                 continue
@@ -1032,7 +1041,7 @@ def _extents(page, callouts, chains, weights, ppf):
             xcache[id(ch)] = crossings(ch, chains)
         page_dim = min(page.rect.width, page.rect.height)
         own_w = weights.get(c.get("key"), 0.0)
-        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], own_w, reach, page_dim=page_dim)
+        lo, hi = own_weight_cuts(ch, c["s"], xcache[id(ch)], own_w, reach, page_dim=page_dim, own_key=c.get("key"))
         c["cuts"] = (lo, hi, [(round(s), round(o.length), o.pieces, thr, local_weight(o, sb, reach)) for s, o, thr, sb in xcache[id(ch)] if abs(s - c["s"]) < 300])
         free_lo, free_hi = lo == 0.0, hi == ch.length
         # what each end frames into: a crossing member that cut the stretch,

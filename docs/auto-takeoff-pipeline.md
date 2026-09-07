@@ -142,6 +142,22 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Elevation mode tuned 2026-09-07:** brace ends reach 9 ft (12 over-reached), targets must be labelled
+or >= 8 ft long (gusset outlines skipped), an X-brace is not cut by its twin. IAH100 S-41000 36% ->
+45% within 2 ft, Veterans S-602 65% (harness), Doggett S211 unchanged (Todd's qty rows). Weslayan
+crown package (Todd 2026-09-07): count stamps on the PLAN (56 typical / 31 braced / 5 corner
+frames) x unit members measured on the S4.05 section - questions sent to Todd; benchmark now pairs
+every MARKUPS_<name> with <name> in a folder.
+
+**Elevation rules (Todd, 2026-09-07) BUILT (`sidecar/elevations.py`):** measure elevations only
+where members are sized (braced frames / bracing / truss elevations); braces chord to chord
+(`EXTEND_FT` 12 on elevations); frame count from the elevation title's grid list (plan-located
+frames), Quantity on every member; all members highlighted (never his Doggett-style single
+representative line). Columns: T.O.S. on the plan = where the framing sits; column runs to it
+unless continuing to the floor above (multi-storey open). Todd offered another elevation
+training set - yes, useful (IAH100 S-41000, Veterans S-602, KISD S-600, Doggett S211 are the
+current elevation sheets).
+
 **Doggett Ford + KISD Greenwood Forest ES added 2026-09-07 (Todd's markups, old profile).**
 Doggett: HSS truss plan S201 + truss ELEVATIONS S211; Todd counted typical pieces once and set
 Qty (20 x 16.7 ft ...) instead of tracing each - the benchmark now weights his polylines by their

@@ -194,6 +194,22 @@ Existing work is skipped only when EX / EXISTING precedes the shape.
   its twins (parallel, same weight, same drawn length within 8%, within
   30 ft). Beams do not: too many look-alike strokes on a busy plan.
 
+## Elevations (2026-09-07, `elevations.py`)
+
+Todd's rules: an elevation is measured only when its members carry sizes
+(braced frames, bracing, truss elevations); sections and details never
+are. A brace runs chord to chord, so the end snap reaches 12 ft there
+instead of 6. The frames are located on the plan, and the elevation title
+says where ("BRACED FRAME AT GRID 7 BETWEEN GRIDS E AND D" = 1, "TRUSS
+ELEVATION AT GRID 1,2,3 & 4" = 4): every member in that elevation carries
+Quantity = that count and the note names the title. Every member is
+highlighted; the count rides on each member, never on one representative
+line. No columns, deck or keynotes are read on elevation sheets.
+
+Columns and T.O.S.: a "T.O.S." / top-of-steel note on the plan is where the
+framing sits on that floor; the column runs to it (plus the pier allowance)
+unless it continues to the floor above - multi-storey columns are still open.
+
 ## Typical details (2026-09-07, `typicals.py`)
 
 Members sized in a detail and counted by what they attach to: "L3X3X1/4 TYP

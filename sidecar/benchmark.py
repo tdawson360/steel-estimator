@@ -170,10 +170,18 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         groups.setdefault((id(rect), ppf), (rect, ppf, []))[2].append(c)
     chains = lengths.extract_chains(page, extra)
     typ_all = []
+    is_elev = sheet_info(page)[2] == "elevation"
+    saved_extend = lengths.EXTEND_FT
+    if is_elev:
+        import elevations
+        lengths.EXTEND_FT = elevations.EXTEND_FT
+        lengths.ELEVATION_MODE = True
     for rect, ppf, group in groups.values():
         lengths.measure(page, group, weights, ppf, chains=chains)
         tags = lengths.tag_instances(page, group, weights, ppf, chains)
         typ_all += tags + lengths.typ_instances(page, group + tags, weights, ppf, chains, all_callouts=calls)
+    lengths.EXTEND_FT = saved_extend
+    lengths.ELEVATION_MODE = False
     calls = calls + typ_all
     ctx = _doc_context(doc)
     if pno in ctx["plans"]:
@@ -233,44 +241,55 @@ def run(root, jobs, use_ocr):
         sets = [p for p in d.glob("*.pdf") if p not in marks]
         if not sets or not marks:
             continue
-        doc, mdoc = pymupdf.open(sets[0]), pymupdf.open(marks[0])
-        size_idx = size_column_indexes(mdoc)
-        lines += [f"## {d.name}", "", f"`{sets[0].name}` ({doc.page_count} pages) vs `{marks[0].name}`", "",
-                  "| Page | Sheet | Title | Callouts | Typ | Measured | Todd polylines | Matched | ≤1 ft | ≤2 ft |", "|---|---|---|---|---|---|---|---|---|---|"]
-        job = collections.Counter()
-        per_size_auto, per_size_todd = collections.defaultdict(float), collections.defaultdict(float)
-        for pno in range(min(doc.page_count, mdoc.page_count)):
-            number, title, kind = sheet_info(doc[pno])
-            disc = re.match(r"[A-Z]*", number).group(0)[-1:] if number else ""
-            n_marks = sum(1 for a in mdoc[pno].annots() if a.type[1] == "PolyLine")
-            is_plan = kind == "plan" and disc == "S"
-            # score every sheet the tool calls a structural plan, plus every
-            # sheet the estimator actually measured on (classification misses)
-            if not is_plan and n_marks < 3:
-                continue
-            if not doc[pno].get_text().strip() and not use_ocr:
-                continue
-            r = score_page(doc, mdoc, pno, weights, use_ocr, size_idx)
-            if not r["callouts"] and not r["polylines"]:
-                continue
-            if not is_plan:
-                title = f"{title} (NOT classified as plan: {kind}/{disc or '?'})"
-            for k in ("callouts", "polylines", "measured", "matched", "in1", "in2"):
-                job[k] += r[k]
-            for k, v in r["lf_auto"].items():
-                per_size_auto[k] += v
-            for k, v in r["lf_todd"].items():
-                per_size_todd[k] += v
-            pct = lambda n: f"{100 * n / r['matched']:.0f}%" if r["matched"] else "-"
-            lines.append(f"| {pno + 1} | {number} | {title[:32]} | {r['callouts']} | {r.get('typ', 0)} | {r['measured']} | {r['polylines']} | {r['matched']} | {pct(r['in1'])} | {pct(r['in2'])} |")
-        m = job["matched"] or 1
-        lines += ["", f"**{d.name}:** {job['callouts']} callouts, {job['measured']} measured, {job['polylines']} of Todd's polylines, "
-                      f"{job['matched']} matched, {100 * job['in1'] / m:.0f}% within 1 ft, {100 * job['in2'] / m:.0f}% within 2 ft.", "",
-                  "| Size | Auto LF | Todd LF |", "|---|---|---|"]
-        for k in sorted(set(per_size_auto) | set(per_size_todd), key=lambda k: -per_size_todd.get(k, 0))[:25]:
-            lines.append(f"| {k} | {per_size_auto.get(k, 0):.0f} | {per_size_todd.get(k, 0):.0f} |")
-        lines.append("")
-        totals.update(job)
+        # a folder may hold more than one set (Weslayan + its crown package):
+        # pair each MARKUPS_<name>.pdf with <name>.pdf, first set keeps the folder name
+        pairs = []
+        for m in sorted(marks):
+            twin = next((p for p in sets if p.name.upper() == m.name.upper().replace("MARKUPS_", "", 1)), None)
+            if twin:
+                pairs.append((twin, m))
+        if not pairs:
+            pairs = [(sets[0], marks[0])]
+        for k, (set_pdf, mark_pdf) in enumerate(pairs):
+            name = d.name if k == 0 else f"{d.name} / {set_pdf.stem}"
+            doc, mdoc = pymupdf.open(set_pdf), pymupdf.open(mark_pdf)
+            size_idx = size_column_indexes(mdoc)
+            lines += [f"## {name}", "", f"`{set_pdf.name}` ({doc.page_count} pages) vs `{mark_pdf.name}`", "",
+                      "| Page | Sheet | Title | Callouts | Typ | Measured | Todd polylines | Matched | ≤1 ft | ≤2 ft |", "|---|---|---|---|---|---|---|---|---|---|"]
+            job = collections.Counter()
+            per_size_auto, per_size_todd = collections.defaultdict(float), collections.defaultdict(float)
+            for pno in range(min(doc.page_count, mdoc.page_count)):
+                number, title, kind = sheet_info(doc[pno])
+                disc = re.match(r"[A-Z]*", number).group(0)[-1:] if number else ""
+                n_marks = sum(1 for a in mdoc[pno].annots() if a.type[1] == "PolyLine")
+                is_plan = kind == "plan" and disc == "S"
+                # score every sheet the tool calls a structural plan, plus every
+                # sheet the estimator actually measured on (classification misses)
+                if not is_plan and n_marks < 3:
+                    continue
+                if not doc[pno].get_text().strip() and not use_ocr:
+                    continue
+                r = score_page(doc, mdoc, pno, weights, use_ocr, size_idx)
+                if not r["callouts"] and not r["polylines"]:
+                    continue
+                if not is_plan:
+                    title = f"{title} (NOT classified as plan: {kind}/{disc or '?'})"
+                for k in ("callouts", "polylines", "measured", "matched", "in1", "in2"):
+                    job[k] += r[k]
+                for k, v in r["lf_auto"].items():
+                    per_size_auto[k] += v
+                for k, v in r["lf_todd"].items():
+                    per_size_todd[k] += v
+                pct = lambda n: f"{100 * n / r['matched']:.0f}%" if r["matched"] else "-"
+                lines.append(f"| {pno + 1} | {number} | {title[:32]} | {r['callouts']} | {r.get('typ', 0)} | {r['measured']} | {r['polylines']} | {r['matched']} | {pct(r['in1'])} | {pct(r['in2'])} |")
+            m = job["matched"] or 1
+            lines += ["", f"**{name}:** {job['callouts']} callouts, {job['measured']} measured, {job['polylines']} of Todd's polylines, "
+                          f"{job['matched']} matched, {100 * job['in1'] / m:.0f}% within 1 ft, {100 * job['in2'] / m:.0f}% within 2 ft.", "",
+                      "| Size | Auto LF | Todd LF |", "|---|---|---|"]
+            for k in sorted(set(per_size_auto) | set(per_size_todd), key=lambda k: -per_size_todd.get(k, 0))[:25]:
+                lines.append(f"| {k} | {per_size_auto.get(k, 0):.0f} | {per_size_todd.get(k, 0):.0f} |")
+            lines.append("")
+            totals.update(job)
     m = totals["matched"] or 1
     lines += ["## Overall", "", f"{totals['callouts']} callouts, {totals['measured']} measured, {totals['polylines']} polylines, {totals['matched']} matched, "
               f"{100 * totals['in1'] / m:.0f}% within 1 ft, {100 * totals['in2'] / m:.0f}% within 2 ft."]
