@@ -35,6 +35,7 @@ import columns as column_step                   # noqa: E402  (run() has a local
 import connections                   # noqa: E402  (run() has a local named columns)
 import deck                   # noqa: E402  (run() has a local named columns)
 import keynotes                   # noqa: E402  (run() has a local named columns)
+import typicals                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -453,7 +454,8 @@ def run(args):
                 rec["typ"] = rec.get("typ", 0) + len(typ)
         # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
         # from the elevation notes (+1 ft pier cap), drawn as vertical polylines
-        if structural and kind == "plan" and (col_schedule or loc_schedule or any(
+        foundation = "FOUNDATION" in (title or "").upper() or "PIER" in (title or "").upper()
+        if structural and kind == "plan" and (col_schedule or loc_schedule or foundation or any(
                 column_step.COLUMN_LABEL_RE.search(h.get("line", "")) or column_step.BP_TAG_RE.search(h.get("block", "") or "") for h in resolved)):
             if chains is None:
                 chains = lengths.extract_chains(page)
@@ -461,7 +463,7 @@ def run(args):
             cols, consumed = column_step.columns_on_page(page, pno, number, resolved, chains, ppf0, col_schedule,
                                                      col_blocks.get(pno), notes_by_page, plan_pages, section_heights,
                                                      piers_by_page, loc_schedule,
-                                                     foundation="FOUNDATION" in (title or "").upper())
+                                                     foundation=foundation)
             if consumed:
                 found = [h for h in found if id(h) not in consumed]
             for h in cols:
@@ -503,7 +505,7 @@ def run(args):
                                        "note": note["text"][:120], "label": f"KEYNOTE {n}", "subject": EXCEPTION_SUBJECT,
                                        "length_ft": None, "keynote": n, "line": note["text"][:120], "bbox": r,
                                        "angle": 0, "nm": nm})
-        if args.lengths and not getattr(args, "no_deck", False) and structural and kind == "plan" and chains and regions:
+        if args.lengths and not getattr(args, "no_deck", False) and structural and kind == "plan" and chains and regions                 and not re.search(r"FOUNDATION|PIER|SLAB ON GRADE|FOOTING", title or "", re.I):
             deck_polys[pno] = deck.plan_footprints(page, regions, chains,
                                                    lambda r: lengths.region_for(regions, ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))[1])
         for h in found:
@@ -594,6 +596,7 @@ def run(args):
 
     install_columns(doc, columns)
     write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, weights)
+    write_typicals(doc, infos, other_s, wanted, labeler, columns, hits, args)
     try:
         doc.set_page_labels([{"startpage": i, "prefix": lab, "style": "", "firstpagenum": 1}
                              for i, lab in enumerate(labels)])
@@ -669,6 +672,57 @@ def write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, we
                          "title": infos[pno][1], "kind": "plan"})
 
 
+def write_typicals(doc, infos, other_s, wanted, labeler, columns, hits, args):
+    """Members sized in a detail and counted by what they attach to ("L3X3X1/4
+    TYP AT EA JOIST"): one count-only box on the detail sheet with Quantity =
+    the plan count of that thing when the tool measured it (the estimator's
+    own one-markup-with-a-quantity convention), a CHECK note either way."""
+    counts = collections_counter_kinds(hits)
+    for pno in other_s:
+        number = infos[pno][0]
+        if wanted and number not in wanted:
+            continue
+        page = doc[pno]
+        seen = set()
+        for m in typicals.detail_members(page):
+            # the same note repeats across the details of one sheet: one box
+            sig = (m["key"], re.sub(r"[^A-Z0-9]", "", m["text"].upper())[:60])
+            if sig in seen:
+                continue
+            seen.add(sig)
+            qty, how = typicals.quantity(m, counts)
+            label, subject = labeler.label(m["key"], m["fam"], m["dims"])
+            notes = f"AUTO TYPICAL DETAIL: {m['text'][:90]} | qty = {how} CHECK"
+            values = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number,
+                      "Shape_Size": label, "Quantity": str(qty) if qty else "", "Notes": notes}
+            if m.get("length_ft"):
+                values["Length_Ft"] = f"{m['length_ft']:.2f}"
+            nm = add_box(doc, page, m["bbox"], subject, labeler.color(subject), label, columns, values, dashed=qty is None)
+            hits.append({"page": pno + 1, "sheet": number, "raw": m["raw"], "fam": m["fam"], "dims": m["dims"], "key": m["key"],
+                         "conf": 1.0, "note": "", "label": label, "subject": subject, "length_ft": m.get("length_ft"),
+                         "typical_detail": m["text"][:90], "typical_qty": qty, "typical_how": how, "line": m["text"][:120],
+                         "bbox": m["bbox"], "angle": 0, "anchor": "detail", "len_note": "", "confident": False, "nm": nm,
+                         "title": infos[pno][1], "kind": infos[pno][2]})
+
+
+def collections_counter_kinds(hits):
+    """What the plans counted, for the typical-detail quantities."""
+    c = {"joists": 0, "columns": 0, "beams": 0, "posts": 0}
+    for h in hits:
+        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail"):
+            continue
+        fam = str(h.get("fam", "")).upper()
+        if h.get("column"):
+            c["columns"] += 1
+        elif fam == "JOIST":
+            c["joists"] += 1
+        elif fam in ("W", "S", "C", "MC"):
+            c["beams"] += 1
+        if h.get("z_axis") and re.search(r"POST", h.get("line", ""), re.I):
+            c["posts"] += 1
+    return c
+
+
 def collections_counter(it):
     return dict(Counter(v for v in it if v))
 
@@ -698,7 +752,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
               "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
     groups = {}
     for h in hits:
-        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf"):
+        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail"):
             continue                                     # listed under their own sections
         g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
         g[0] += 1
@@ -761,6 +815,14 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
             lines.append(f"| {k} | {n} |")
+    td = [h for h in hits if h.get("typical_detail")]
+    if td:
+        lines += ["", "## Typical details (sized in a detail, counted on the plan)", "",
+                  "One count-only box per detail note; Quantity is the plan count of what the note attaches to "
+                  "when the tool measured it, else blank for the estimator to fill (the one-markup-with-a-quantity convention).", "",
+                  "| Sheet | Detail note | Shape | Qty | How |", "|---|---|---|---|---|"]
+        for h in td:
+            lines.append(f"| {h['sheet']} | {h['typical_detail']} | {h['label']} | {h['typical_qty'] or ''} | {h['typical_how']} |")
     kn = {}
     for h in hits + exceptions:
         if h.get("keynote") is not None:
@@ -807,7 +869,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                       "| Sheet | Rod | Qty |", "|---|---|---|"]
             for (sheet, label), n in sorted(byr.items()):
                 lines.append(f"| {sheet} | {label} | {n} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf"))]
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

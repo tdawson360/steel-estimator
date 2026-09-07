@@ -142,6 +142,21 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Doggett Ford + KISD Greenwood Forest ES added 2026-09-07 (Todd's markups, old profile).**
+Doggett: HSS truss plan S201 + truss ELEVATIONS S211; Todd counted typical pieces once and set
+Qty (20 x 16.7 ft ...) instead of tracing each - the benchmark now weights his polylines by their
+Qty column (`benchmark.qty_column_index`, capacity = qty for matching). Elevations are still
+unmeasured (Todd's rule: plans only, elevations maybe later) - Doggett is the elevation test set
+when that comes. KISD: "messy" - foundation plans S-101B/C carry square HSS labels with no marks,
+BP tags or schedule -> **square HSS on a FOUNDATION plan = column** (`columns` 2a', 56 columns;
+heights from the ridge BOD note run ~3 ft over Todd's 12 ft: the column top is the BOD at the
+column, not at the ridge - open); Todd's deck polygons are drawn OFF the structure for clarity
+(traced then moved), so they cannot be scored by position; deck areas are now skipped on
+foundation / pier / slab sheets. **Typical details BUILT** (`typicals.py`): "AT EA JOIST" /
+"BTWN EA OUTRIGGER" / "@ 6'-0" OC" notes on detail sheets -> one count-only box each with
+Quantity = plan count of joists / columns / beams when measured (KISD L3x3 AT EA JOIST = 35,
+L6x6 BETWEEN JOISTS = 35), else blank + the rule in the note.
+
 **Two more standard sets 2026-09-06 (Harris Health urgent care, Alamo Colleges Veterans Center),
 Todd's markups on both.** First scores: Harris 56% within 2 ft, Veterans 42% -> 49% after the day's
 rules. What they taught: (1) **keynotes** - Harris S4 puts HSS4x4 hangers, HSS6x6 carried columns

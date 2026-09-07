@@ -194,6 +194,20 @@ Existing work is skipped only when EX / EXISTING precedes the shape.
   its twins (parallel, same weight, same drawn length within 8%, within
   30 ft). Beams do not: too many look-alike strokes on a busy plan.
 
+## Typical details (2026-09-07, `typicals.py`)
+
+Members sized in a detail and counted by what they attach to: "L3X3X1/4 TYP
+AT EA JOIST", "HSS5x2x3/16 BTWN EA OUTRIGGER", "L2x2x1/4 AT EACH BRIDGING
+LINE", "L3x3x1/4 @ 8'-0" OC". Each distinct note on a detail sheet gets one
+count-only box, Quantity = the plan count of the named thing when the tool
+measured it (joists, columns, beams), else blank with the rule in the note
+("count the outriggers", "spaced at 6 ft o.c.: divide the run by the
+spacing"). This is the estimator's own convention (Doggett: one markup, Qty
+set) rather than a polyline per piece. Report section "Typical details".
+
+Foundation plans: a square HSS label is a column (KISD S-101B/C: 56); deck
+areas are never drawn on foundation / pier / slab sheets.
+
 ## Z-axis members (kickers, posts, braces, hangers, struts)
 
 Anything that stands up out of the plan is drawn from its origin (the

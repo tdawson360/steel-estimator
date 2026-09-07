@@ -46,9 +46,26 @@ def size_column_indexes(mdoc):
     return idx or [4]
 
 
+def qty_column_index(mdoc):
+    """Index of the Qty / Quantity column in the markup file's own profile."""
+    ref = mdoc.xref_get_key(mdoc.pdf_catalog(), "BSIAnnotColumns")
+    if ref[0] != "xref":
+        return None
+    names = re.findall(r"/Name\s*\(([^)]*)\)", mdoc.xref_object(int(ref[1].split()[0])))
+    for i, n in enumerate(names):
+        if n.strip().lower() in ("qty", "quantity"):
+            return i
+    return None
+
+
 def markup_polylines(mdoc, pno, ppf_at, size_idx):
+    """One record per estimator polyline.  Todd sometimes draws a typical
+    member once and sets Qty (Doggett trusses: one chord, Qty 20): the record
+    carries qty so counts and LF weight by it and up to qty auto polylines
+    may match it."""
     out = []
     page = mdoc[pno]
+    qi = qty_column_index(mdoc)
     for a in page.annots():
         if a.type[1] != "PolyLine":
             continue
@@ -56,8 +73,14 @@ def markup_polylines(mdoc, pno, ppf_at, size_idx):
         L = sum(math.hypot(v[i + 1][0] - v[i][0], v[i + 1][1] - v[i][1]) for i in range(len(v) - 1))
         cols = re.findall(r"\(([^)]*)\)", mdoc.xref_get_key(a.xref, "BSIColumnData")[1] or "")
         size = next((cols[i] for i in size_idx if i < len(cols) and cols[i].strip()), "")
+        qty = 1
+        if qi is not None and qi < len(cols):
+            try:
+                qty = max(1, int(float(cols[qi].strip() or "1")))
+            except ValueError:
+                qty = 1
         out.append({"key": shapes.norm(size), "size": size, "subject": a.info.get("subject", ""),
-                    "ft": L / ppf_at(v[0]), "v": v, "used": False})
+                    "ft": L / ppf_at(v[0]), "v": v, "used": 0, "qty": qty})
     return out
 
 
@@ -102,7 +125,7 @@ def nearest_poly(polys, c, same_size_reach=150, any_size_reach=25):
             if d < reach and (best is None or d < best[0]):
                 best = (d, p)
         if best:
-            best[1]["used"] = True
+            best[1]["used"] += 1
             return best[1]
     return None
 
@@ -157,7 +180,7 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         ppf0 = regions[0][1] if regions else None
         cols, consumed = columns.columns_on_page(page, pno, "", calls, chains, ppf0, ctx["schedule"],
                                                  ctx["blocks"].get(pno), ctx["notes"], ctx["plans"], ctx["sections"],
-                                                 ctx["piers"], foundation="FOUNDATION" in sheet_info(page)[1].upper())
+                                                 ctx["piers"], foundation=bool(re.search(r"FOUNDATION|PIER", sheet_info(page)[1].upper())))
         calls = [c for c in calls if id(c) not in consumed] + cols
         res_columns = len(cols)
     else:
@@ -173,12 +196,12 @@ def score_page(doc, mdoc, pno, weights, use_ocr, size_idx=(4,)):
         return 9.0
 
     polys = markup_polylines(mdoc, pno, ppf_at, size_idx)
-    res = {"callouts": len(calls) - len(typ_all) - res_columns, "typ": len(typ_all) + res_columns, "polylines": len(polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
+    res = {"callouts": len(calls) - len(typ_all) - res_columns, "typ": len(typ_all) + res_columns, "polylines": sum(p.get("qty", 1) for p in polys), "measured": 0, "in1": 0, "in2": 0, "matched": 0,
            "lf_auto": collections.defaultdict(float), "lf_todd": collections.defaultdict(float),
            "n_auto": collections.Counter(), "n_todd": collections.Counter()}
     for p in polys:
-        res["lf_todd"][p["key"]] += p["ft"]
-        res["n_todd"][p["key"]] += 1
+        res["lf_todd"][p["key"]] += p["ft"] * p.get("qty", 1)
+        res["n_todd"][p["key"]] += p.get("qty", 1)
     for c in calls:
         c.setdefault("anchor_pt", ((c["bbox"].x0 + c["bbox"].x1) / 2, (c["bbox"].y0 + c["bbox"].y1) / 2))
         ft = c.get("length_ft")

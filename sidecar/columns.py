@@ -492,6 +492,29 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                         "conf": lab.get("conf", 1.0), "note": "", "bbox": r, "angle": 0,
                         "line": f"{lab.get('line', '')} ({bp})", "column": True, "col_label": None, "col_mark": bp,
                         "at": (x, y), "on_symbol": bool(sym), "bp_tag": bp})
+    # 2a'. on a FOUNDATION plan a square HSS label is a column (KISD S-101C:
+    # "HSS5x5x3/8" beside each pier, no mark, no BP tag, no schedule)
+    if foundation:
+        for lab in callouts:
+            if id(lab) in consumed or not lab.get("key") or lab.get("column") or str(lab.get("fam", "")).upper() != "HSS":
+                continue
+            d = lab.get("dims") or []
+            if len(d) < 2 or d[0] != d[1]:
+                continue                                 # rectangular HSS: a grade beam or a lintel, not a column
+            r = pymupdf.Rect(lab["bbox"])
+            tip = lengths.leader_tip(r, tips, paths)
+            x, y = tip if tip else ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+            sym = _nearest_symbol(paths, d, ppf, (x, y), thin_w=0.5, reach_ft=6.0) if ppf else None
+            if sym:
+                x, y = sym
+            if any(abs(x - cx) <= 3 and abs(y - cy) <= 3 for cx, cy in claimed):
+                consumed.add(id(lab))
+                continue
+            claimed.add((round(x), round(y)))
+            consumed.add(id(lab))
+            columns.append({"raw": lab["raw"], "fam": lab["fam"], "dims": d, "key": lab["key"], "conf": lab.get("conf", 1.0),
+                            "note": "", "bbox": r, "angle": 0, "line": f"{lab.get('line', '')} (HSS on the foundation plan)",
+                            "column": True, "col_label": None, "col_mark": "", "at": (x, y), "on_symbol": bool(sym)})
     # 2b. a POST / COLUMN label with no drawn squares and no stated length is
     # one column where its leader points (a canopy post, a lone column)
     for lab in callouts:
