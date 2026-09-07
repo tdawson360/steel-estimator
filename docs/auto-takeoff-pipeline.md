@@ -266,6 +266,19 @@ at the end vs the support line's direction where the ray or crossing lands). Not
 "ends: E1 Single Cope (W12X26 into W16X31); E2 Miter (42 deg)"; the report tallies end labor.
 `rules.members.copes` switches copes off.
 
+**Sloped beams BUILT 2026-09-07 (`sidecar/slopes.py`, Todd's rule):** elevation markers along the
+column lines ("B/DECK AT GRID B 17'-3 5/8"" applies to the whole grid B axis via `columns.grid_axes`;
+a spot note like "(B/ STL 10'-1")" applies within 8 ft) give each measured end an elevation; a
+member between two different elevations of the same kind (B/DECK vs B/DECK, T.O.S. vs T.O.S.,
+never mixed) runs on a slope: true length = hypotenuse of plan length and rise, the polyline is
+stretched to it (Todd draws them longer too), Notes say "sloped: BDECK 17'-3.6" -> 17'-11.1", rise
+0.63 ft over 30.0 ft plan (0.25 in/ft), true length 30.01 ft; noted both ends". An end with no
+note interpolates along the member's line between the noted grids it crosses (Todd's choice); no
+noted line = flat. Past `rules.members.slope_in_per_ft` (0.25, +15% grace so nominal drainage
+slopes stay put) the ends become Miter (square in plan) / Profile (skewed), any family, replacing
+copes (Todd: Profile always when sloped + skewed). Elevation views (often only on the arch set)
+are not read yet; roof "HP / LP" spot elevations and slope arrows are the next source.
+
 **Connections BUILT 2026-09-05 night (`sidecar/connections.py`, Todd's ask before bed).**
 Typical connection details vote Bolted/Welded (IAH100 17:4 bolted, MKT 4:2, Rothko 4:1, Moody
 8:1, OXY 6:0, PAC none -> Bolted assumed); every measured W/C beam gets Straight ends, Drill x4,

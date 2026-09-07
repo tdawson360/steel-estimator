@@ -21,7 +21,11 @@
     "copes": true,
     "_copes": "a W or C framing into another W or C: Single Cope when the support is deeper, Double Cope when it is the same depth or shallower (nominal depth only); into a column / HSS / nothing drawn stays Straight",
     "skew_deg": 5.0,
-    "_skew": "an end meeting its support more than this many degrees off square is a Miter; skewed where a cope would apply and the depths differ is a Profile"
+    "_skew": "an end meeting its support more than this many degrees off square is a Miter; skewed where a cope would apply and the depths differ is a Profile",
+    "slopes": true,
+    "_slopes": "elevation notes along the column lines: a member between two different noted elevations of the same kind is drawn at its true (hypotenuse) length; an end with no note interpolates between the noted grids its line crosses",
+    "slope_in_per_ft": 0.25,
+    "_slope": "steeper than this the ends become Miter (square in plan) / Profile (skewed); roof drainage at 1/4 in per ft keeps its cope / straight ends"
   },
   "elevations": {
     "measure_sized": true,

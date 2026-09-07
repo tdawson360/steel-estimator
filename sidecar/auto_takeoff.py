@@ -38,6 +38,7 @@ import elevations                   # noqa: E402  (run() has a local named colum
 import symbols                   # noqa: E402  (run() has a local named columns)
 import keynotes                   # noqa: E402  (run() has a local named columns)
 import typicals                   # noqa: E402  (run() has a local named columns)
+import slopes                     # noqa: E402
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -370,6 +371,7 @@ def apply_rules(rules):
         connections.BOLT_ROWS_C = [(99, 0)]
     connections.COPES = bool(rules["members"].get("copes", True))
     connections.SKEW_DEG = float(rules["members"].get("skew_deg", 5.0))
+    slopes.SLOPE_IN_PER_FT = float(rules["members"].get("slope_in_per_ft", 0.25))
 
 
 PLATE_SUBJECT = "Stl Pl/Bar"
@@ -524,6 +526,23 @@ def run(args):
                 rec["typ"] = rec.get("typ", 0) + len(typ)
             lengths.EXTEND_FT = saved_extend
             lengths.ELEVATION_MODE = False
+            # sloped beams: elevation notes along the column lines say the
+            # ends sit at different heights -> true length (hypotenuse),
+            # polyline drawn that long, Miter / Profile ends past 1/4 in/ft
+            if kind == "plan" and not is_elev and rules["members"].get("slopes", True):
+                elev_maps = {}
+                for h in found:
+                    if not (h.get("seg") and h.get("length_ft")) or h.get("column") or h.get("z_axis"):
+                        continue
+                    rppf = h.get("ppf") or ppf
+                    if rppf not in elev_maps:
+                        elev_maps[rppf] = slopes.PlanElevations(page, rppf)
+                    sl = slopes.slope_for(h["seg"], h["length_ft"], elev_maps[rppf])
+                    if sl:
+                        h["slope"], h["plan_ft"] = sl, h["length_ft"]
+                        h["seg"] = slopes.stretch(h["seg"], (sl["true_ft"] - h["length_ft"]) * rppf)
+                        h["length_ft"] = sl["true_ft"]
+                        rec["sloped"] = rec.get("sloped", 0) + 1
             if is_elev:
                 # every member carries the number of frames its elevation stands for
                 titles = elevations.frame_titles(page)
@@ -681,6 +700,9 @@ def run(args):
                     row["ends_labor"] = (connx["End_1_Labor"], connx["End_2_Labor"])
                     if h.get("end_note"):
                         notes += f" | ends: {h['end_note']}"
+                if h.get("slope"):
+                    notes += " | " + slopes.describe(h["slope"], h.get("plan_ft") or ft)
+                    row["slope"] = h["slope"]
                 fq = h.get("frame_qty") or 1
                 if h.get("frame_title"):
                     notes += f" | elevation '{h['frame_title'][:50]}' x{fq}"
@@ -966,6 +988,19 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                   "`rules.members.copes` / `skew_deg`).", "", "| End labor | Ends |", "|---|---|"]
         for k, n in sorted(ep.items()):
             lines.append(f"| {k} | {n} |")
+    sl = [h for h in hits if h.get("slope")]
+    if sl:
+        steep = [h for h in sl if h["slope"]["sloped"]]
+        lines += ["", "## Sloped members", "",
+                  f"{len(sl)} members run between different noted elevations (polyline drawn to the true length, "
+                  f"the hypotenuse); {len(steep)} steeper than {slopes.SLOPE_IN_PER_FT:g} in/ft get Miter (square) / "
+                  "Profile (skewed) ends. Elevation notes along column lines apply to the whole grid; an end with no "
+                  "note interpolates between the noted grids its line crosses (Todd, 2026-09-07).", "",
+                  "| Sheet | Shape | Plan ft | True ft | Rise ft | in/ft | Ends | How |", "|---|---|---|---|---|---|---|---|"]
+        for h in sorted(sl, key=lambda h: -h["slope"]["pitch"])[:40]:
+            s = h["slope"]
+            lines.append(f"| {h['sheet']} | {h['label']} | {h.get('plan_ft', 0):.2f} | {s['true_ft']:.2f} | {s['rise']:.2f} | "
+                         f"{s['pitch']:.2f} | {' / '.join(h.get('ends_labor') or ('', ''))} | {s['how'][:60]} |")
     xu = [h for h in hits if h.get("x_unit")]
     if xu:
         by = collections_counter(h["sheet"] for h in xu)

@@ -161,10 +161,18 @@ def depth_of(key):
     return int(m.group(2)) if m else None
 
 
-def end_labor(own_key, fam, end):
-    """(labor, why) for one end of a measured member."""
+def end_labor(own_key, fam, end, sloped=False):
+    """(labor, why) for one end of a measured member.  sloped: the member
+    runs between different elevations steeper than the slope limit, so its
+    ends are Miter when square in plan and Profile when skewed (Todd,
+    2026-09-07), whatever the family."""
     if not end or end.get("kind") in ("free", "continuous"):
         return "Straight", ""
+    if sloped:
+        angle = end.get("angle")
+        if angle is not None and 15.0 <= angle < 90.0 - SKEW_DEG and (end.get("kind") != "line" or end.get("elev")):
+            return "Profile", f"sloped, {angle:g} deg in plan"
+        return "Miter", "sloped"
     angle = end.get("angle")
     # a near-parallel meeting (< 15 deg) is a collinear continuation or an
     # X-brace's twin caught by the end ray, not a skewed framing end
@@ -192,7 +200,8 @@ def end_labor(own_key, fam, end):
 def end_prep(c, fam):
     """End_1 / End_2 labor for a member and a note on the non-straight ends."""
     ends = c.get("ends") or {}
-    labs = [end_labor(c.get("key"), fam, ends.get(side)) for side in ("lo", "hi")]
+    sloped = bool((c.get("slope") or {}).get("sloped"))
+    labs = [end_labor(c.get("key"), fam, ends.get(side), sloped) for side in ("lo", "hi")]
     c["end_note"] = "; ".join(f"E{i} {lab} ({why})" for i, (lab, why) in enumerate(labs, 1) if lab != "Straight")
     return labs[0][0], labs[1][0]
 
