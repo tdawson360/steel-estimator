@@ -76,7 +76,27 @@ def drawing_clusters(page, gap=24.0, min_size=120.0):
     """Bounding boxes of the separate drawings on a sheet: vector paths
     grouped by proximity (a plan is one big connected cluster of linework,
     each detail its own).  Text is ignored so labels never bridge drawings."""
-    rects = [p["rect"] for p in page.get_drawings() if p["rect"].width + p["rect"].height > 2]
+    key = (id(page.parent), page.number, gap, min_size)
+    if key in _CLUSTER_CACHE:
+        return list(_CLUSTER_CACHE[key])
+    W0, H0 = page.rect.width, page.rect.height
+    # sheet-spanning strokes (border, grid lines) would bridge every drawing into one blob
+    rects = [p["rect"] for p in page.get_drawings()
+             if p["rect"].width + p["rect"].height > 2 and p["rect"].width < 0.6 * W0 and p["rect"].height < 0.6 * H0]
+    # a raster sheet (SCA: linework as image tiles covering the page) has no
+    # vector drawings to cluster: the recovered strokes stand in for them
+    try:
+        import raster
+        if raster.has_raster_linework(page):
+            polys, _, _ = raster.raster_polylines(page, dpi=200)
+            for pts, _w in polys:
+                xs = [x for x, _ in pts]
+                ys = [y for _, y in pts]
+                r = pymupdf.Rect(min(xs), min(ys), max(xs), max(ys))
+                if r.width < 0.6 * W0 and r.height < 0.6 * H0:
+                    rects.append(r)
+    except Exception:
+        pass
     # coarse grid union-find
     cell = gap
     parent = list(range(len(rects)))
@@ -107,7 +127,11 @@ def drawing_clusters(page, gap=24.0, min_size=120.0):
     out = [b for b in boxes.values() if b.width >= min_size and b.height >= min_size
            and not (b.width > 0.9 * W and b.height > 0.9 * H)]
     out.sort(key=lambda b: -b.get_area())
+    _CLUSTER_CACHE[key] = list(out)
     return out
+
+
+_CLUSTER_CACHE = {}
 
 
 def scale_regions(page):

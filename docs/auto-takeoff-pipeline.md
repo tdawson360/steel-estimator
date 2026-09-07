@@ -147,10 +147,22 @@ the X drawn on the plan marks a braced unit; in this case the all-members-highli
 counts x quantity per typical elevation is right, and such rules must be editable -> `sidecar/rules.json`
 (items, pier allowance, reaches, skip-existing, holes source, elevation quantity, typical-unit
 quantity, deck areas) read at start, `--rules` overrides. The typed Length_Ft values and "stair
-opening" notes in the crown markups are artifacts. Crown plan S2.11 is RASTER (137 tiles, SCA):
-X-symbol counting from the raster strokes found 12 of 31 braced units (5 near Todd's stamps) - the
-tick / X symbols need pixel-level detection; parked. Fallback idea: "TRUSS SPACED AT 48\" OC, BRACE @
-EVERY FOURTH TRUSS" x the measured parapet length -> 92 units / 23 braced (Todd counted 31).
+opening" notes in the crown markups are artifacts. Crown plan S2.11 is RASTER (137 tiles, SCA).
+**Pixel-level symbol counting BUILT (`sidecar/symbols.py`, 2026-09-07):** `x_symbols` renders the
+plan at 300 dpi, erodes thin linework away, Hough-finds the heavy diagonals and pairs two of similar
+length crossing near their midpoints -> 32 X units on S2.11 (Todd: 31; 29 true + 2 false + 1 missed
+at the last check). `tick_lines` counts the typical units drawn as one short black line each across
+the band (comb rule: a 3-5 ft stroke with a parallel neighbour 2-6 ft away and nothing crossing its
+middle; only kept when >= 10 ticks share one spacing) -> 149 parapet trusses at 4 ft o.c. on S2.11
+(perimeter ~600 ft), against Todd's 92 stamps (56 typical + 31 braced + 5 corner) - flagged to Todd.
+Both run only on a plan that says BRACE with no sized brace callout (`rules.typicals.count_ticks`).
+Each X / tick gets a small count box (Part_Label BRACED FRAME / TYPICAL UNIT). On the sheet that
+holds the units' drawings (S4.05, a section sheet allowed into elevation mode because it carries
+titled frame elevations): the "Brace Elevation" cluster's members carry Quantity = X count, and a
+sized cluster with no frame title but a unit title ("New Parapet Framing Section",
+`elevations.unit_titles`) carries Quantity = tick count. `lengths.drawing_clusters` ignores strokes
+larger than 60% of the sheet and adds the raster-recovered polyline bboxes (per-page cache), so
+raster sheets cluster too (S4.05 measured at 3/4" scale: HSS3x3x3/8 x32, L4x4x1/4, HSS4x4x1/4).
 
 **Elevation mode tuned 2026-09-07:** brace ends reach 9 ft (12 over-reached), targets must be labelled
 or >= 8 ft long (gusset outlines skipped), an X-brace is not cut by its twin. IAH100 S-41000 36% ->

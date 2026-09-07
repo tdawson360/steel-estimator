@@ -42,9 +42,35 @@ def frame_titles(page):
             t = re.sub(r"^\d+\s+(?=[A-Z])", "", t)
             if not TITLE_RE.search(t) or len(t) > 70 or NOISE_RE.search(t):
                 continue
-            if not re.search(r"AT\s+GRID|BETWEEN|\"|ELEVATION\s+\d|FRAME\s+\d|BRACE\s+\d|TRUSS\s+[A-Z0-9-]+$|-\s*[A-Z]$", t, re.I):
+            located = re.search(r"AT\s+GRID|BETWEEN|\"|ELEVATION\s+\d|FRAME\s+\d|BRACE\s+\d|TRUSS\s+[A-Z0-9-]+$|-\s*[A-Z]$", t, re.I)
+            # a short generic title ("Brace Elevation", "Brace Frame", "Truss
+            # Elevation") is one typical unit: the plan supplies the count
+            generic = len(t.split()) <= 4 and re.search(r"BRACE|TRUSS|FRAME", t, re.I) and re.search(r"ELEVATION|FRAME", t, re.I)
+            if not (located or generic):
                 continue
             out.append((t, pymupdf.Rect(l["bbox"]), frame_count(t)))
+    return out
+
+
+UNIT_TITLE_RE = re.compile(r"\b(SECTION|TRUSS|FRAMING|TYPICAL|TYP\.?)\b", re.I)
+
+
+def unit_titles(page):
+    """[(title, Rect, 1)] section / typical-unit titles on a sheet ("New
+    Parapet Framing Section"): the drawing of the unit a plan counts."""
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        for l in b["lines"]:
+            t = "".join(s["text"] for s in l["spans"]).strip()
+            t = re.sub(r"^\s*[\d/\"' =-]+\s*/\s*", "", t).strip()
+            t = re.sub(r"^\d+\s+(?=[A-Z])", "", t)
+            if not UNIT_TITLE_RE.search(t) or len(t) > 70 or len(t.split()) > 6 or NOISE_RE.search(t):
+                continue
+            if not re.search(r"SECTION|ELEVATION|FRAME|TRUSS", t, re.I):
+                continue
+            out.append((t, pymupdf.Rect(l["bbox"]), 1))
     return out
 
 

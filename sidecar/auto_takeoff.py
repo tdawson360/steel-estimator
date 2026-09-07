@@ -35,6 +35,7 @@ import columns as column_step                   # noqa: E402  (run() has a local
 import connections                   # noqa: E402  (run() has a local named columns)
 import deck                   # noqa: E402  (run() has a local named columns)
 import elevations                   # noqa: E402  (run() has a local named columns)
+import symbols                   # noqa: E402  (run() has a local named columns)
 import keynotes                   # noqa: E402  (run() has a local named columns)
 import typicals                   # noqa: E402  (run() has a local named columns)
 import lengths                                  # noqa: E402
@@ -44,7 +45,8 @@ from revu_profile import (column_data, install_columns, load_profile,      # noq
 
 ROOT = Path(__file__).resolve().parent.parent
 SHEET_NO = re.compile(r"^[A-Z]{1,3}-?\d{1,3}(?:\.\d{1,2})?[A-Z]?$")
-KINDS = [("plan", r"\bPLAN"), ("section", r"\bSECTION|\bDETAIL"), ("schedule", r"\bSCHEDULE"),
+# a title block that just says "Parapet Roof Framing" is a plan; "Framing Sections" is not
+KINDS = [("plan", r"\bPLAN|\bFRAMING\s*$"), ("section", r"\bSECTION|\bDETAIL"), ("schedule", r"\bSCHEDULE"),
          ("elevation", r"\bELEVATION"), ("notes", r"\bNOTES\b|\bSPECIFICATIONS?\b")]
 FAMILY_SUBJECT = {"W": "Stl W Beam", "WT": "Stl WT", "C": "Stl C", "MC": "Stl MC", "PIPE": "Stl Pipe"}
 EXCEPTION_SUBJECT = "Auto Exception"
@@ -339,7 +341,7 @@ def load_rules(path=None):
              "columns": {"pier_allowance_ft": 1.0, "height_reach_ft": 80.0},
              "members": {"extend_ft": 6.0, "skip_existing": True, "holes": "aisc"},
              "elevations": {"measure_sized": True, "extend_ft": 9.0, "quantity_from_title": True},
-             "typicals": {"quantity_on_members": True},
+             "typicals": {"quantity_on_members": True, "count_ticks": True},
              "deck": {"areas": True}}
     p = Path(path) if path else RULES_DEFAULT
     try:
@@ -430,6 +432,8 @@ def run(args):
     bp_specs = baseplates.bp_details(doc, other_s + plan_pages)      # BP-5B style designations
     col_marks = 0
     deck_polys = {}
+    x_units = {}            # {page: n} braced units counted from X symbols on a plan
+    unit_ticks = {}         # {page: n} typical units counted as truss / joist lines on that plan
     # how this engineer connects beams: every framed end of a W or C is one
     # connection of the typical kind (Todd keeps the takeoff generic)
     conn_spec = connections.typical(doc, other_s + plan_pages, {i: n for i, (n, t, k) in enumerate(infos)})
@@ -454,12 +458,12 @@ def run(args):
         # an elevation whose members are sized (braced frames, bracing, truss
         # elevations) is measured too, chord to chord (Todd, 2026-09-07)
         is_elev = False
-        if structural and kind == "elevation" and args.lengths and not wanted and rules["elevations"].get("measure_sized", True):
+        if structural and kind in ("elevation", "section") and args.lengths and rules["elevations"].get("measure_sized", True)                 and (not wanted or number in wanted):
+            # a sheet of titled frame / brace / truss elevations with sized members
+            # (a "Brace Elevation" drawn on a details sheet counts too)
             sized = [h for h in found if shapes.resolve(h["fam"], h["dims"])[0]]
-            if elevations.sized_elevation(kind, [{"key": 1} for _ in sized]):
+            if len(sized) >= 2 and (kind == "elevation" or elevations.frame_titles(page)):
                 annotate, is_elev = True, True
-        elif wanted and number in wanted and kind == "elevation":
-            is_elev = True
         source = "text"
         if annotate and not found and args.ocr != "off":
             import ocr                                   # heavy import, only when needed
@@ -531,6 +535,16 @@ def run(args):
                     t, n = elevations.title_for(home, titles) if home else (None, 1)
                     if not rules["elevations"].get("quantity_from_title", True):
                         n = 1
+                    if n == 1 and t and re.search(r"BRACE", t, re.I) and x_units and not elevations.GRIDS_RE.search(t):
+                        n = sum(x_units.values())
+                        t = f"{t} x{n} braced units counted on the plan"
+                    elif t is None and home is not None and unit_ticks and rules["typicals"].get("quantity_on_members", True):
+                        # a sized section of the typical unit ("New Parapet Framing
+                        # Section") beside the brace elevation: one per counted line
+                        t2, _ = elevations.title_for(home, elevations.unit_titles(page))
+                        if t2:
+                            n = sum(unit_ticks.values())
+                            t = f"{t2} x{n} typical units counted on the plan"
                     h["frame_qty"], h["frame_title"] = n, t
                 rec["elevation"] = True
         # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
@@ -560,6 +574,40 @@ def run(args):
             rec["columns"] = len(cols)
         xrefs = scale.install_viewports(page, regions) if (regions and args.lengths) else {}
         triangles = connections.moment_triangles(page, chains) if args.lengths else []
+        # braced units marked by a solid X on the plan (Weslayan crown: 31),
+        # counted at the pixel level when the plan says BRACE but sizes no brace
+        if structural and kind in ("plan", "elevation") and not is_elev and args.lengths and regions                 and re.search(r"\bBRAC(?:E|ED|ING)\b", page.get_text(), re.I)                 and not any(h.get("key") and re.search(r"BRACE", h.get("line", ""), re.I) for h in found):
+            xs = symbols.x_symbols(page, regions[0][1])
+            if xs:
+                x_units[pno] = len(xs)
+                rec["x_units"] = len(xs)
+                for k, (x, y, L) in enumerate(xs):
+                    r = pymupdf.Rect(x - L * 0.5, y - L * 0.5, x + L * 0.5, y + L * 0.5)
+                    vals = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number,
+                            "Shape_Size": "", "Part_Label": "BRACED FRAME", "Quantity": "1",
+                            "Notes": f"AUTO COUNT: X-brace symbol {k + 1} of {len(xs)}; members per the typical brace elevation"}
+                    nm = add_box(doc, page, r, "Scope: Braced frame", (0.85, 0.2, 0.55), "BRACED FRAME", columns, vals)
+                    hits.append({**rec, "raw": "X", "fam": "", "dims": [], "key": "BRACED FRAME", "conf": 1.0, "note": "",
+                                 "label": "BRACED FRAME (X)", "subject": "Scope: Braced frame", "length_ft": None, "x_unit": True,
+                                 "line": "X-brace symbol", "bbox": r, "angle": 0, "anchor": "symbol", "len_note": "", "confident": False, "nm": nm})
+                # the typical (unbraced) units on the same plan: one short line each
+                # across the band (crown: ~150 parapet trusses at 4 ft o.c.); the
+                # typical framing section's members carry this count as Quantity
+                if rules["typicals"].get("count_ticks", True):
+                    ppf_ = regions[0][1]
+                    tk = symbols.tick_lines(page, ppf_)
+                    if tk:
+                        unit_ticks[pno] = len(tk)
+                        rec["unit_ticks"] = len(tk)
+                        for k, (x, y, a, L) in enumerate(tk):
+                            r = pymupdf.Rect(x - 0.45 * ppf_, y - 0.45 * ppf_, x + 0.45 * ppf_, y + 0.45 * ppf_)
+                            vals = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number,
+                                    "Shape_Size": "", "Part_Label": "TYPICAL UNIT", "Quantity": "1",
+                                    "Notes": f"AUTO COUNT: typical unit (truss line) {k + 1} of {len(tk)}; members per the typical framing section"}
+                            nm = add_box(doc, page, r, "Scope: Typical unit", (0.2, 0.55, 0.85), "", columns, vals)
+                            hits.append({**rec, "raw": "|", "fam": "", "dims": [], "key": "TYPICAL UNIT", "conf": 1.0, "note": "",
+                                         "label": "TYPICAL UNIT (line)", "subject": "Scope: Typical unit", "length_ft": None, "tick_unit": True,
+                                         "line": "truss line", "bbox": r, "angle": a, "anchor": "symbol", "len_note": "", "confident": False, "nm": nm})
         # keynotes: "16. HSS6X6X1/4 CARRIED COLUMN ..." + hexagon tags on the plan
         if structural and kind == "plan":
             for n, note, r in keynotes.instances(page):
@@ -839,7 +887,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
               "| Sheet | Shape | Count | Drawn | Drawn LF | Draft | Draft LF | lb/ft |", "|---|---|---|---|---|---|---|---|"]
     groups = {}
     for h in hits:
-        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail"):
+        if h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail") or h.get("x_unit"):
             continue                                     # listed under their own sections
         g = groups.setdefault((h["sheet"], h["label"], h["key"]), [0, 0, 0.0, 0, 0.0])
         g[0] += 1
@@ -902,6 +950,23 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
             lines.append(f"| {k} | {n} |")
+    xu = [h for h in hits if h.get("x_unit")]
+    if xu:
+        by = collections_counter(h["sheet"] for h in xu)
+        lines += ["", "## Braced units (X symbols)", "",
+                  "Solid X symbols counted on the plan; each is one count box (members per the typical brace elevation, "
+                  "whose rows carry this count as Quantity).", "", "| Sheet | Braced units |", "|---|---|"]
+        for sheet, n in sorted(by.items()):
+            lines.append(f"| {sheet} | {n} |")
+    tu = [h for h in hits if h.get("tick_unit")]
+    if tu:
+        by = collections_counter(h["sheet"] for h in tu)
+        lines += ["", "## Typical units (truss lines)", "",
+                  "Short lines drawn across the band at a regular spacing, counted on the same plan as the X symbols; "
+                  "one small count box each. The typical framing section's rows carry this count as Quantity.", "",
+                  "| Sheet | Typical units |", "|---|---|"]
+        for sheet, n in sorted(by.items()):
+            lines.append(f"| {sheet} | {n} |")
     td = [h for h in hits if h.get("typical_detail")]
     if td:
         lines += ["", "## Typical details (sized in a detail, counted on the plan)", "",
@@ -956,7 +1021,7 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
                       "| Sheet | Rod | Qty |", "|---|---|---|"]
             for (sheet, label), n in sorted(byr.items()):
                 lines.append(f"| {sheet} | {label} | {n} |")
-    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail"))]
+    checks = [h for h in hits if (h.get("len_note") or h["conf"] < 1) and not (h.get("typ_from") or h.get("tag_from") or h.get("column") or h.get("base_plate") or h.get("anchor_rods") or h.get("area_sf") or h.get("typical_detail") or h.get("x_unit"))]
     if checks:
         lines += ["", "## Needs a look", ""]
         for h in checks:

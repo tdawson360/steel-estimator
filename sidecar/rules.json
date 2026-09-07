@@ -29,7 +29,9 @@
   },
   "typicals": {
     "quantity_on_members": true,
-    "_quantity": "a typical unit (a detail / elevation reused N times) is written once with Quantity = N on each member - Todd's own convention when a plan only counts units (Weslayan crown); set false to prefer one markup per piece"
+    "_quantity": "a typical unit (a detail / elevation reused N times) is written once with Quantity = N on each member - Todd's own convention when a plan only counts units (Weslayan crown); set false to prefer one markup per piece",
+    "count_ticks": true,
+    "_ticks": "on a plan that marks braced units with X symbols, also count the typical units drawn as one short line each across the band (parapet trusses at 4 ft o.c.); one small count box per line, and the sized typical framing section carries the count as Quantity"
   },
   "deck": {
     "areas": true,

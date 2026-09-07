@@ -27,7 +27,7 @@ OTHER_SHEET_PENALTY_FT = 10.0   # a note on another plan sheet at the same spot 
 MIN_HEIGHT_FT, MAX_HEIGHT_FT = 6.0, 80.0
 
 MARK_RE = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?$")
-BP_TAG_RE = re.compile(r"BP-?\d+[A-Z]*", re.I)
+BP_TAG_RE = re.compile(r"\bBP-?\d+[A-Z]*\b", re.I)
 COLUMN_LABEL_RE = re.compile(r"\b(COL(?:UMN|S|\.)?|POST)\b", re.I)
 # an elevation is named as such; a bare "MEZZANINE 60'-9"" is a plan dimension
 ELEV_KEY_RE = re.compile(r"(\bT/|T\.O\.?\s|\bTOS\b|TOP OF|\bB/|B\.O\.?\s|BOT(?:TOM)? OF|\bEL\b|\bEL\.|ELEV)", re.I)
