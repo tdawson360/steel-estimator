@@ -194,6 +194,15 @@ Existing work is skipped only when EX / EXISTING precedes the shape.
   its twins (parallel, same weight, same drawn length within 8%, within
   30 ft). Beams do not: too many look-alike strokes on a busy plan.
 
+## Rules file (2026-09-07, `sidecar/rules.json`)
+
+The knobs an estimator may want to change live in `sidecar/rules.json`
+(item numbers / descriptions, pier allowance, column height reach, plan and
+elevation snap reach, skip-existing, holes source, elevation quantity from
+the title, quantity-on-members for typical units, deck areas on/off). The
+runner reads it at start; `--rules <file>` points at another copy. Todd:
+"hard rules for not doing that need to be edited somehow" - this is where.
+
 ## Elevations (2026-09-07, `elevations.py`)
 
 Todd's rules: an elevation is measured only when its members carry sizes

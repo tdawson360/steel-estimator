@@ -142,6 +142,16 @@ COLUMN SCHEDULE table on the same sheet); heights 18.1 / 18.8 / 19.5 ft = the ne
 `B/DECK 16'-7"` / `17'-3 5/8"` note on the roof framing plan above + ~1.5 ft (top of footing
 EL -1'-0" plus base). MKT S-100: 14 HSS4x4x3/8 columns (label says COLUMN TYP., a square
 symbol at each), heights 10.8 / 11.8 ft from the T.O. MEZZANINE 11'-10" section on S-300.
+**Weslayan crown answers (Todd 2026-09-07):** corner units = typical (so 61 typical + 31 braced = 92);
+the X drawn on the plan marks a braced unit; in this case the all-members-highlighted rule bends:
+counts x quantity per typical elevation is right, and such rules must be editable -> `sidecar/rules.json`
+(items, pier allowance, reaches, skip-existing, holes source, elevation quantity, typical-unit
+quantity, deck areas) read at start, `--rules` overrides. The typed Length_Ft values and "stair
+opening" notes in the crown markups are artifacts. Crown plan S2.11 is RASTER (137 tiles, SCA):
+X-symbol counting from the raster strokes found 12 of 31 braced units (5 near Todd's stamps) - the
+tick / X symbols need pixel-level detection; parked. Fallback idea: "TRUSS SPACED AT 48\" OC, BRACE @
+EVERY FOURTH TRUSS" x the measured parapet length -> 92 units / 23 braced (Todd counted 31).
+
 **Elevation mode tuned 2026-09-07:** brace ends reach 9 ft (12 over-reached), targets must be labelled
 or >= 8 ft long (gusset outlines skipped), an X-brace is not cut by its twin. IAH100 S-41000 36% ->
 45% within 2 ft, Veterans S-602 65% (harness), Doggett S211 unchanged (Todd's qty rows). Weslayan

@@ -1,0 +1,38 @@
+{
+  "_comment": "Editable takeoff rules (Todd, 2026-09-07: 'hard rules need to be edited somehow'). The sidecar reads this file at start; pass --rules <file> to use another. Every key is optional; missing keys keep the defaults shown here.",
+  "items": {
+    "steel": {"number": "1", "description": "STRUCTURAL STEEL"},
+    "deck": {"number": "2", "description": "DECKING"},
+    "grating": {"number": "3", "description": "GRATING"}
+  },
+  "columns": {
+    "pier_allowance_ft": 1.0,
+    "_pier": "added to the elevation note when no T/PLINTH or TOP OF FOOTING note gives the depth (columns bolt to the pier cap below the finished slab)",
+    "height_reach_ft": 80.0,
+    "_height": "the highest elevation note within this many feet on the structural plans is the column top"
+  },
+  "members": {
+    "extend_ft": 6.0,
+    "_extend": "how far a free member end reaches to the line it frames into on a plan",
+    "skip_existing": true,
+    "_skip": "EX. / (E) / EXISTING members get no markup at all (EX means existing, never exterior)",
+    "holes": "aisc",
+    "_holes": "'aisc' = AISC Part 10 rows-by-depth default until the connection category templates carry Berger's counts; 'none' = write no holes"
+  },
+  "elevations": {
+    "measure_sized": true,
+    "_measure": "measure a structural elevation only when its members carry sizes (braced frames, bracing, trusses); sections and details never",
+    "extend_ft": 9.0,
+    "_extend": "chord-to-chord reach for a brace end",
+    "quantity_from_title": true,
+    "_quantity": "every member in an elevation carries Quantity = the grids its title lists ('TRUSS ELEVATION AT GRID 1,2,3 & 4' = 4); the count rides on each member, not on one representative line"
+  },
+  "typicals": {
+    "quantity_on_members": true,
+    "_quantity": "a typical unit (a detail / elevation reused N times) is written once with Quantity = N on each member - Todd's own convention when a plan only counts units (Weslayan crown); set false to prefer one markup per piece"
+  },
+  "deck": {
+    "areas": true,
+    "_areas": "one starting area polygon per framed drawing as item 2 (grating item 3); never on foundation / pier / slab sheets"
+  }
+}

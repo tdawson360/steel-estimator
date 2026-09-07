@@ -327,6 +327,47 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
 
 # "EX." / "(E)" / "EXIST" / "EXISTING" on a label = existing member, not ours
 EXISTING_RE = re.compile(r"(?:\bEX\.?(?=\s|$)|\(E\)|\bEXIST(?:ING)?\b)", re.I)
+RULES_DEFAULT = Path(__file__).with_name("rules.json")
+
+
+def load_rules(path=None):
+    """Editable takeoff rules (sidecar/rules.json); missing keys keep defaults."""
+    import json
+    rules = {"items": {"steel": {"number": "1", "description": "STRUCTURAL STEEL"},
+                       "deck": {"number": "2", "description": "DECKING"},
+                       "grating": {"number": "3", "description": "GRATING"}},
+             "columns": {"pier_allowance_ft": 1.0, "height_reach_ft": 80.0},
+             "members": {"extend_ft": 6.0, "skip_existing": True, "holes": "aisc"},
+             "elevations": {"measure_sized": True, "extend_ft": 9.0, "quantity_from_title": True},
+             "typicals": {"quantity_on_members": True},
+             "deck": {"areas": True}}
+    p = Path(path) if path else RULES_DEFAULT
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"rules: {p.name} not read ({e}); defaults apply", file=sys.stderr)
+        return rules
+    for k, v in data.items():
+        if k.startswith("_"):
+            continue
+        if isinstance(v, dict) and isinstance(rules.get(k), dict):
+            rules[k].update({kk: vv for kk, vv in v.items() if not kk.startswith("_")})
+        else:
+            rules[k] = v
+    return rules
+
+
+def apply_rules(rules):
+    """Push the rule values into the modules that own them."""
+    lengths.EXTEND_FT = float(rules["members"].get("extend_ft", 6.0))
+    elevations.EXTEND_FT = float(rules["elevations"].get("extend_ft", 9.0))
+    column_step.PIER_ALLOWANCE_FT = float(rules["columns"].get("pier_allowance_ft", 1.0))
+    column_step.NEAR_FT = float(rules["columns"].get("height_reach_ft", 80.0))
+    if rules["members"].get("holes") == "none":
+        connections.BOLT_ROWS_W = [(99, 0)]
+        connections.BOLT_ROWS_C = [(99, 0)]
+
+
 PLATE_SUBJECT = "Stl Pl/Bar"
 DECK_SUBJECT, DECK_COLOR = "Mtl Deck", (0.2, 0.5, 0.9)
 GRATING_SUBJECT, GRATING_COLOR = "Stl Grating", (0.1, 0.6, 0.4)
@@ -346,6 +387,15 @@ def column_fields(h, base_spec):
 
 
 def run(args):
+    rules = load_rules(getattr(args, "rules", None))
+    apply_rules(rules)
+    if args.item is None:
+        args.item = rules["items"]["steel"]["number"]
+    if args.desc is None:
+        args.desc = rules["items"]["steel"]["description"]
+    if not rules["deck"].get("areas", True):
+        args.no_deck = True
+    args.rules_data = rules
     profile = Path(args.profile) if args.profile else latest("Steel_Estimator_Takeoff_v*.bpx")
     toolkit = Path(args.toolkit) if args.toolkit else latest("BIW_Steel_Tool_Kit_v*.btx")
     pname, columns = load_profile(profile)
@@ -404,7 +454,7 @@ def run(args):
         # an elevation whose members are sized (braced frames, bracing, truss
         # elevations) is measured too, chord to chord (Todd, 2026-09-07)
         is_elev = False
-        if structural and kind == "elevation" and args.lengths and not wanted:
+        if structural and kind == "elevation" and args.lengths and not wanted and rules["elevations"].get("measure_sized", True):
             sized = [h for h in found if shapes.resolve(h["fam"], h["dims"])[0]]
             if elevations.sized_elevation(kind, [{"key": 1} for _ in sized]):
                 annotate, is_elev = True, True
@@ -432,7 +482,7 @@ def run(args):
             h["key"], h["conf"], h["note"] = shapes.resolve(h["fam"], h["dims"])
         # existing work is never in the takeoff (Todd, 2026-09-06): "EX. W16X26",
         # "(E) W12X26", "EXISTING BEAM" get no markup at all
-        existing = [h for h in found if EXISTING_RE.search(h.get("line", ""))]
+        existing = [h for h in found if EXISTING_RE.search(h.get("line", ""))] if rules["members"].get("skip_existing", True) else []
         if existing:
             rec["existing"] = len(existing)
             found = [h for h in found if not EXISTING_RE.search(h.get("line", ""))]
@@ -479,6 +529,8 @@ def run(args):
                     home = [r for r in clusters if r.contains(pymupdf.Point(cx, cy))]
                     home = min(home, key=lambda r: r.width * r.height) if home else None
                     t, n = elevations.title_for(home, titles) if home else (None, 1)
+                    if not rules["elevations"].get("quantity_from_title", True):
+                        n = 1
                     h["frame_qty"], h["frame_title"] = n, t
                 rec["elevation"] = True
         # columns: schedule marks / "COLUMN TYP." squares on this plan, heights
@@ -683,11 +735,14 @@ def write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, we
         label = notes_src[0][0] if notes_src else "Metal Deck (type per notes)"
         src = (f"'{notes_src[0][1][:50]}'" + ("" if own else f" on {notes_src[0][2]}")) if notes_src else "no deck note found"
         for pts, sf, ppf in polys:
+            items = getattr(args, "rules_data", {}).get("items", {})
             if grating and sf < 2000:
-                item, desc, subj, color, kind = "3", "GRATING", GRATING_SUBJECT, GRATING_COLOR, "grating"
+                it = items.get("grating", {"number": "3", "description": "GRATING"})
+                item, desc, subj, color, kind = it["number"], it["description"], GRATING_SUBJECT, GRATING_COLOR, "grating"
                 lab = "Bar Grating (type per notes)"
             else:
-                item, desc, subj, color, kind = "2", "DECKING", DECK_SUBJECT, DECK_COLOR, "deck"
+                it = items.get("deck", {"number": "2", "description": "DECKING"})
+                item, desc, subj, color, kind = it["number"], it["description"], DECK_SUBJECT, DECK_COLOR, "deck"
                 lab = label
             notes = (f"AUTO {kind.upper()} AREA: starting polygon from the framed footprint, {sf:,.0f} sf; "
                      f"trim to the {kind} extent; type from {src}")
@@ -942,8 +997,9 @@ def main():
     ap.add_argument("--sheets", help="comma-separated sheet numbers to annotate (default: structural plans)")
     # Todd, 2026-09-06: structural steel is item 1, decking item 2, grating
     # item 3; anything the tool cannot place stays for the estimator to group
-    ap.add_argument("--item", default="1", help="Item_Number for the structural steel rows (default 1)")
-    ap.add_argument("--desc", default="STRUCTURAL STEEL", help="Item_Description for the structural steel rows")
+    ap.add_argument("--item", default=None, help="Item_Number for the structural steel rows (default: rules.json, 1)")
+    ap.add_argument("--desc", default=None, help="Item_Description for the structural steel rows (default: rules.json)")
+    ap.add_argument("--rules", help="takeoff rules JSON (default sidecar/rules.json)")
     ap.add_argument("--no-deck", action="store_true", help="skip the deck / grating area markups (items 2 / 3)")
     ap.add_argument("--lengths", action="store_true",
                     help="also draft member lengths from the line work (experimental; off by default)")
