@@ -2,10 +2,10 @@
 
 // One drawing set: scope summary, jobs with live status and outputs, and the
 // buttons to re-scope, measure, pass. docs/drawings-page-plan.md
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Loader2, Download, ChevronDown, ChevronRight, XCircle } from 'lucide-react';
+import { Loader2, Download, ChevronDown, ChevronRight, XCircle, Upload } from 'lucide-react';
 import AppHeader from '../../../components/AppHeader';
 import { apiFetch } from '../../../lib/api-client';
 
@@ -94,6 +94,51 @@ function ScopeSummary({ summary }) {
   );
 }
 
+const JOB_TITLE = { SCOPE: 'Scope', MEASURE: 'Measure', COMPARE: 'Corrections' };
+
+function CompareSummary({ s }) {
+  if (!s || s.kept == null) return null;
+  const kinds = Object.entries(s.edit_kinds || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+  return (
+    <div className="mt-2 text-xs text-gray-600 dark:text-zinc-400 space-y-1">
+      <div>
+        <span className="font-medium text-gray-800 dark:text-zinc-200">Agreement {s.agreement ?? '–'}%</span>
+        {' '}· kept {s.kept} · edited {s.edited}{kinds ? ` (${kinds})` : ''} · deleted {s.deleted} · added by hand {s.added}
+      </div>
+      {s.added_top?.length ? <div>Missed (added by hand): {s.added_top.map(([k, v]) => `${k} ×${v}`).join(', ')}</div> : null}
+      {s.deleted_top?.length ? <div>Wrong (deleted): {s.deleted_top.map(([k, v]) => `${k} ×${v}`).join(', ')}</div> : null}
+      {s.training_dir ? <div className="text-gray-400 dark:text-zinc-600">Saved to the training corpus.</div> : null}
+    </div>
+  );
+}
+
+function CorrectedUpload({ set, job, onChange }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const send = async (file) => {
+    if (!file) return;
+    setBusy(true); setErr('');
+    try {
+      const res = await fetch(`/api/drawings/${set.id}/jobs/${job.id}/corrected`, {
+        method: 'POST', body: file, headers: { 'Content-Type': 'application/pdf', 'X-File-Name': encodeURIComponent(file.name) },
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Upload failed (${res.status})`); }
+      onChange();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); if (inputRef.current) inputRef.current.value = ''; }
+  };
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => send(e.target.files?.[0])} />
+      <button onClick={() => inputRef.current?.click()} disabled={busy} title="Upload the takeoff PDF after you corrected it in Revu; the tool diffs it against its own output and keeps the pair for training"
+        className="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1">
+        {busy ? <Loader2 className="animate-spin" size={12} /> : <Upload size={12} />}Upload corrected takeoff
+      </button>
+      {err && <span className="text-xs text-red-600">{err}</span>}
+    </span>
+  );
+}
+
 function JobRow({ set, job, canManage, onChange }) {
   const [open, setOpen] = useState(false);
   const active = job.status === 'QUEUED' || job.status === 'RUNNING';
@@ -104,7 +149,7 @@ function JobRow({ set, job, canManage, onChange }) {
     <div className="p-3">
       <div className="flex items-center gap-2 flex-wrap text-sm">
         <button onClick={() => setOpen(o => !o)} className="text-gray-500">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
-        <span className="font-medium">{job.kind === 'SCOPE' ? 'Scope' : 'Measure'}</span>
+        <span className="font-medium">{JOB_TITLE[job.kind] || job.kind}</span>
         <span className={`text-xs rounded px-1.5 py-0.5 ${JOB_BADGE[job.status] || ''}`}>{job.status.toLowerCase()}</span>
         {active && job.progress && <span className="text-xs text-gray-500">{job.progress}</span>}
         {active && <Loader2 className="animate-spin text-sky-500" size={14} />}
@@ -115,7 +160,9 @@ function JobRow({ set, job, canManage, onChange }) {
           <a key={o.name} href={`/api/drawings/${set.id}/files/${encodeURIComponent(o.name)}?job=${job.id}`} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800"><Download size={12} />{o.name}</a>
         ))}
         {active && canManage && <button onClick={cancel} className="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"><XCircle size={12} />Cancel</button>}
+        {job.kind === 'MEASURE' && job.status === 'DONE' && canManage && <CorrectedUpload set={set} job={job} onChange={onChange} />}
       </div>
+      {job.kind === 'COMPARE' && job.status === 'DONE' && <CompareSummary s={job.summary} />}
       {open && (
         <pre className="mt-2 max-h-72 overflow-auto text-xs bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded p-2 whitespace-pre-wrap">{job.log || '(no output yet)'}</pre>
       )}

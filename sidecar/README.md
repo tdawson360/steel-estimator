@@ -43,6 +43,15 @@ importer skips rows with a blank Item_Number.
    read at 0.95-0.99 confidence, ~3.5 min per sheet). The title-block sheet
    number is OCR'd the same way. `--ocr off` disables it.
 
+## Corrections diff (2026-09-07, `compare.py`)
+
+`python sidecar/compare.py <auto.pdf> <corrected.pdf> --json s.json -o s.md`:
+the estimator's Revu-edited copy against the tool's output, matched by the
+persistent `/NM` names the tool writes, so a markup is kept, edited (size,
+length, qty, moved), deleted, or added by hand. The Drawings page runs it as
+a COMPARE job when a corrected takeoff is uploaded on a Measure job, and the
+pair joins `DRAWINGS_DIR/training/` in the bid-samples layout.
+
 ## Scoping (what steel is on this set?)
 
 ```

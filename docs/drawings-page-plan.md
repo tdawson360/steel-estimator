@@ -178,3 +178,24 @@ Open for Todd: (1) should Measure run automatically after Chase, or stay a butto
 (2) can PM/FIELD_SHOP download the AUTO pdf on published projects (default: yes, read-only);
 (3) prospect naming — filename stem vs title-block project name (default: title block when
 readable, else filename).
+
+
+## Improvement loop (built 2026-09-07)
+
+Todd: "create an auto-takeoff improvement loop where the app scopes and measures a job, the
+estimator edits the takeoff file in Revu, then re-uploads the revised file for training."
+
+- **Upload corrected takeoff** on a finished MEASURE job (`POST /api/drawings/[id]/jobs/[jobId]/corrected`,
+  raw PDF body + `X-File-Name`). The file lands in a new COMPARE job's folder as `corrected.pdf`;
+  the job is queued with `options.ready` set once the upload finishes (the runner skips a
+  COMPARE whose file is still streaming).
+- **COMPARE job** runs `sidecar/compare.py <auto takeoff.pdf> <corrected.pdf>`: every auto markup
+  carries a persistent `/NM` name (`AUTO-...`) that survives Revu edits, so the diff is exact:
+  kept / edited (size, length > 1", qty, moved) / deleted / added-by-hand. Summary JSON
+  (`agreement`, counts, per-sheet, per-size, added_top, deleted_top, rows) + `corrections.md`.
+- **Training corpus**: on success the runner copies the original set, the auto output
+  (`<name>_AUTO.pdf`) and the corrected copy (`MARKUPS_<name>.pdf`) plus `corrections.md` into
+  `DRAWINGS_DIR/training/<set name> (set N, job M)/` — the same layout as `C:\Projectsid-samples`,
+  so `sidecar/benchmark.py <DRAWINGS_DIR>/training` scores it. The job card shows agreement, edit
+  kinds, and the sizes added by hand (missed) and deleted (wrong).
+- "Training" = the corpus tells the next rule-building session what to fix; the rules are code.
