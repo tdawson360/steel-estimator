@@ -730,17 +730,48 @@ def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, pag
     return s_end + best[1] if outward > 0 else s_end - best[1]
 
 
-def end_target(other, sb, reach, page_dim, pri=None):
-    """What a member end lands on: {"kind": member|grid|line, "key": ...}."""
+def direction_at(chain, s):
+    """Unit direction of the chain's segment at s."""
+    s = max(0.0, min(chain.length, s))
+    for i in range(len(chain.pts) - 1):
+        if chain.cum[i + 1] >= s and chain.cum[i + 1] > chain.cum[i]:
+            (x0, y0), (x1, y1) = chain.pts[i], chain.pts[i + 1]
+            L = math.hypot(x1 - x0, y1 - y0)
+            return ((x1 - x0) / L, (y1 - y0) / L)
+    return None
+
+
+def meeting_angle(own, s_own, other, sb):
+    """Acute angle (degrees) between a member and the line its end meets:
+    90 is square framing, a brace into a chord is far less."""
+    u, v = direction_at(own, s_own), direction_at(other, sb)
+    if not u or not v:
+        return None
+    dot = abs(u[0] * v[0] + u[1] * v[1])
+    return round(math.degrees(math.acos(max(-1.0, min(1.0, dot)))), 1)
+
+
+def end_target(other, sb, reach, page_dim, pri=None, own=None, s_own=None):
+    """What a member end lands on: {"kind": member|grid|line, "key": ...,
+    "angle": degrees between the member and that line (when own is given)}."""
     if other is None:
         return {"kind": "free"}
     if other.callouts:
+        # the label nearest along the line names the member, however far
+        # (a girder carries one label per 100 ft); flagged when it is far
         near = min(other.callouts, key=lambda t: abs(t[0] - sb))
-        if abs(near[0] - sb) <= reach:
-            return {"kind": "member", "key": near[2]}
-    if page_dim and other.length > 0.6 * page_dim:
-        return {"kind": "grid"}
-    return {"kind": "line"}
+        out = {"kind": "member", "key": near[2]}
+        if abs(near[0] - sb) > reach:
+            out["far"] = True
+    elif page_dim and other.length > 0.6 * page_dim:
+        out = {"kind": "grid"}
+    else:
+        out = {"kind": "line"}
+    if own is not None and s_own is not None:
+        out["angle"] = meeting_angle(own, s_own, other, sb)
+    if ELEVATION_MODE:
+        out["elev"] = True
+    return out
 
 
 def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None, own_key=None):
@@ -1077,7 +1108,7 @@ def _extents(page, callouts, chains, weights, ppf):
                 continue
             hit = next((o_ for s_, o_, _, _ in xcache[id(ch)] if abs(s_ - s_cut) < 1.0), None)
             sb_ = next((sb_ for s_, o_, _, sb_ in xcache[id(ch)] if abs(s_ - s_cut) < 1.0), 0.0)
-            ends[side] = end_target(hit, sb_, reach, page_dim) if hit is not None else {"kind": "free"}
+            ends[side] = end_target(hit, sb_, reach, page_dim, own=ch, s_own=s_cut) if hit is not None else {"kind": "free"}
         # each callout owns the stretch nearest it
         for s_other, _, _, other in ch.callouts:
             if other is c:
@@ -1099,14 +1130,14 @@ def _extents(page, callouts, chains, weights, ppf):
         if free_lo:
             lo2 = snap_end(ch, lo, -1, chains, own_w, reach, extend, page_dim)
             snap = getattr(ch, "last_snap", None)
-            ends["lo"] = end_target(snap[1], snap[2], reach, page_dim) if snap else {"kind": "free"}
+            ends["lo"] = end_target(snap[1], snap[2], reach, page_dim, own=ch, s_own=lo) if snap else {"kind": "free"}
             if lo2 < lo:
                 pts = _extend_pts(pts, ch, lo, lo2, at_start=True)
                 lo = lo2
         if free_hi:
             hi2 = snap_end(ch, hi, +1, chains, own_w, reach, extend, page_dim)
             snap = getattr(ch, "last_snap", None)
-            ends["hi"] = end_target(snap[1], snap[2], reach, page_dim) if snap else {"kind": "free"}
+            ends["hi"] = end_target(snap[1], snap[2], reach, page_dim, own=ch, s_own=hi) if snap else {"kind": "free"}
             if hi2 > hi:
                 pts = _extend_pts(pts, ch, hi, hi2, at_start=False)
                 hi = hi2

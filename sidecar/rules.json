@@ -17,7 +17,11 @@
     "skip_existing": true,
     "_skip": "EX. / (E) / EXISTING members get no markup at all (EX means existing, never exterior)",
     "holes": "aisc",
-    "_holes": "'aisc' = AISC Part 10 rows-by-depth default until the connection category templates carry Berger's counts; 'none' = write no holes"
+    "_holes": "'aisc' = AISC Part 10 rows-by-depth default until the connection category templates carry Berger's counts; 'none' = write no holes",
+    "copes": true,
+    "_copes": "a W or C framing into another W or C: Single Cope when the support is deeper, Double Cope when it is the same depth or shallower (nominal depth only); into a column / HSS / nothing drawn stays Straight",
+    "skew_deg": 5.0,
+    "_skew": "an end meeting its support more than this many degrees off square is a Miter; skewed where a cope would apply and the depths differ is a Profile"
   },
   "elevations": {
     "measure_sized": true,

@@ -143,6 +143,60 @@ def moment_ends(c, triangles):
     return n
 
 
+# End labor (Todd, 2026-09-07): a W or C framing into another W or C is coped -
+# Single Cope when the support is deeper, Double Cope when it is the same
+# depth or shallower (nominal depth only: W12x26 into W12x40 is a double
+# cope).  An end that meets its support more than SKEW_DEG off square is a
+# Miter; a skewed end where a cope would apply and the depths differ is a
+# Profile.  Everything else (into a column, an HSS, nothing drawn, a piece
+# boundary on a continuous member) stays Straight.
+SKEW_DEG = 5.0
+COPES = True
+BEAM_FAMS = ("W", "S", "HP", "C", "MC")
+DEPTH_RE = re.compile(r"^(W|S|HP|MC|C)\s*(\d+)", re.I)
+
+
+def depth_of(key):
+    m = DEPTH_RE.match(str(key or "").strip())
+    return int(m.group(2)) if m else None
+
+
+def end_labor(own_key, fam, end):
+    """(labor, why) for one end of a measured member."""
+    if not end or end.get("kind") in ("free", "continuous"):
+        return "Straight", ""
+    angle = end.get("angle")
+    # a near-parallel meeting (< 15 deg) is a collinear continuation or an
+    # X-brace's twin caught by the end ray, not a skewed framing end
+    skewed = angle is not None and 15.0 <= angle < 90.0 - SKEW_DEG
+    # on a plan an unlabelled line the end lands on may be a section cut or a
+    # slope line crossing a continuous girder (IAH100 W30x90 "45 deg"): only a
+    # labelled member or a grid line makes a skew; on an elevation the chords
+    # are often unlabelled, so any line does
+    if skewed and end.get("kind") == "line" and not end.get("elev"):
+        skewed = False
+    other = end.get("key")
+    own_d, other_d = depth_of(own_key), depth_of(other)
+    cope = None
+    if COPES and fam in BEAM_FAMS and end.get("kind") == "member" and own_d and other_d:
+        cope = "Single Cope" if other_d > own_d else "Double Cope"
+    if skewed:
+        if cope and own_d != other_d:
+            return "Profile", f"{angle:g} deg into {other}"
+        return "Miter", f"{angle:g} deg" + (f" into {other}" if other else "")
+    if cope:
+        return cope, f"{own_key} into {other}"
+    return "Straight", ""
+
+
+def end_prep(c, fam):
+    """End_1 / End_2 labor for a member and a note on the non-straight ends."""
+    ends = c.get("ends") or {}
+    labs = [end_labor(c.get("key"), fam, ends.get(side)) for side in ("lo", "hi")]
+    c["end_note"] = "; ".join(f"E{i} {lab} ({why})" for i, (lab, why) in enumerate(labs, 1) if lab != "Straight")
+    return labs[0][0], labs[1][0]
+
+
 def framed(end):
     """An end that lands on something to connect to.  Only a free end (the
     snap found nothing to frame into: a cantilever tip) has no connection;
@@ -177,7 +231,8 @@ def assign(c, spec, triangles=None):
             # one triangle: that end CJP, the other the typical shear
             kind, n = "CJP", (m or 2)
         c["free_ends"] = sum(1 for e in (lo, hi) if e and e.get("kind") == "free")
-        out = {"End_1_Labor": "Straight", "End_2_Labor": "Straight",
+        e1, e2 = end_prep(c, fam)
+        out = {"End_1_Labor": e1, "End_2_Labor": e2,
                "Connection_Type": f"{prefix} {kind}", "Connection_Qty": str(n)}
         # web holes: AISC rows x shear connections (a CJP end has no standard holes)
         shear_ends = 2 - (m if kind == "CJP" else 0)
@@ -187,7 +242,8 @@ def assign(c, spec, triangles=None):
             c["holes_note"] = f"{rows} rows x {shear_ends} shear end(s), AISC Part 10 default"
         return out
     if fam in ("HSS", "L", "WT", "PIPE"):
-        return {"End_1_Labor": "Straight", "End_2_Labor": "Straight", "Connection_Type": "Loose"}
+        e1, e2 = end_prep(c, fam)                     # a brace into a chord: Miter
+        return {"End_1_Labor": e1, "End_2_Labor": e2, "Connection_Type": "Loose"}
     return {}
 
 

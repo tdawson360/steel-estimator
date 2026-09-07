@@ -368,6 +368,8 @@ def apply_rules(rules):
     if rules["members"].get("holes") == "none":
         connections.BOLT_ROWS_W = [(99, 0)]
         connections.BOLT_ROWS_C = [(99, 0)]
+    connections.COPES = bool(rules["members"].get("copes", True))
+    connections.SKEW_DEG = float(rules["members"].get("skew_deg", 5.0))
 
 
 PLATE_SUBJECT = "Stl Pl/Bar"
@@ -675,6 +677,10 @@ def run(args):
                     if h.get("free_ends"):
                         notes += f" CHECK: {h['free_ends']} end(s) frame into nothing drawn"
                     row["connx"] = f"{connx['Connection_Type']} x{connx['Connection_Qty']}"
+                if connx.get("End_1_Labor"):
+                    row["ends_labor"] = (connx["End_1_Labor"], connx["End_2_Labor"])
+                    if h.get("end_note"):
+                        notes += f" | ends: {h['end_note']}"
                 fq = h.get("frame_qty") or 1
                 if h.get("frame_title"):
                     notes += f" | elevation '{h['frame_title'][:50]}' x{fq}"
@@ -949,6 +955,16 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
             lines.append("")
         lines += ["| Connection | Members |", "|---|---|"]
         for k, n in sorted(connx.items()):
+            lines.append(f"| {k} | {n} |")
+    ep = collections_counter(lab for h in hits for lab in (h.get("ends_labor") or ()))
+    if ep:
+        lines += ["", "## End labor", "",
+                  "A W or C framing into another W or C is coped: Single Cope into a deeper support, Double Cope into "
+                  "one of the same depth or shallower (nominal depth). An end more than "
+                  f"{connections.SKEW_DEG:g} deg off square is a Miter; skewed where a cope would apply and the depths "
+                  "differ is a Profile. Into a column / HSS / nothing drawn stays Straight (Todd, 2026-09-07; "
+                  "`rules.members.copes` / `skew_deg`).", "", "| End labor | Ends |", "|---|---|"]
+        for k, n in sorted(ep.items()):
             lines.append(f"| {k} | {n} |")
     xu = [h for h in hits if h.get("x_unit")]
     if xu:

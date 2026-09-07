@@ -254,6 +254,18 @@ rods: Todd's idea = a Revu count markup on the base plate; proposal = the sideca
 count with the catalog label and the importer maps hardware labels to catalog items (not built,
 awaiting Todd).
 
+**End labor rules BUILT 2026-09-07 (Todd's cope / miter rules, `connections.end_labor`):** a W or C
+framing into another W or C is coped: Single Cope when the support is deeper, Double Cope when it
+is the same depth or shallower (Todd chose nominal depth only: W12x26 into W12x40 = Double Cope;
+C15 vs W14 compares 15 vs 14). An end meeting its support more than `rules.members.skew_deg` (5)
+off square is a Miter (any family - HSS braces into chords on elevations); skewed where a cope
+would apply and the depths differ is a Profile (equal depths skewed = Miter, Todd's choice). Into a
+column, an HSS/pipe, a grid line, nothing drawn, or a piece boundary on a continuous member stays
+Straight. The end target now carries the meeting angle (`lengths.meeting_angle`, member direction
+at the end vs the support line's direction where the ray or crossing lands). Notes carry
+"ends: E1 Single Cope (W12X26 into W16X31); E2 Miter (42 deg)"; the report tallies end labor.
+`rules.members.copes` switches copes off.
+
 **Connections BUILT 2026-09-05 night (`sidecar/connections.py`, Todd's ask before bed).**
 Typical connection details vote Bolted/Welded (IAH100 17:4 bolted, MKT 4:2, Rothko 4:1, Moody
 8:1, OXY 6:0, PAC none -> Bolted assumed); every measured W/C beam gets Straight ends, Drill x4,
