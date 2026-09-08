@@ -39,6 +39,7 @@ import symbols                   # noqa: E402  (run() has a local named columns)
 import keynotes                   # noqa: E402  (run() has a local named columns)
 import typicals                   # noqa: E402  (run() has a local named columns)
 import slopes                     # noqa: E402
+import prepare                    # noqa: E402
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -69,7 +70,7 @@ def title_block_clip(page):
     return pymupdf.Rect(r.x0 + r.width * 0.85, r.y0 + r.height * 0.55, r.x1, r.y1)
 
 
-def sheet_info(page):
+def sheet_info(page, use_label=True):
     """(sheet_number, title, kind).
 
     The sheet number is the largest sheet-like token on the page (title
@@ -113,7 +114,7 @@ def sheet_info(page):
     # A PDF page label of the form "S-61003 - STEEL FRAMING DETAILS - ROOF"
     # (Bluebeam-combined sets) names the sheet better than title-block
     # heuristics, which can latch onto a note like "EL COLUMN, RE: PLAN".
-    lab = (page.get_label() or "").strip()
+    lab = (page.get_label() or "").strip() if use_label else ""
     lab_u = re.sub(r"^\[\d+\]\s*", "", lab.upper())          # "[1] C1.00 CIVIL SITE ..." (Revu index prefix)
     m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?)\s*[-:]?\s*(.*)$", lab_u)
     if m:
@@ -412,6 +413,10 @@ def run(args):
     src = Path(args.pdf)
     out = Path(args.output) if args.output else src.with_name(src.stem + "_AUTO.pdf")
     doc = pymupdf.open(src)
+    # flatten foreign markups, label pages with their sheet numbers (Todd, 2026-09-08)
+    prepared = prepare.prepare(doc)
+    if prepared["flattened"] or prepared["labelled"]:
+        print(f"prepared: flattened {prepared['flattened']} markup(s), labelled {prepared['labelled']} page(s)", flush=True)
     scale = Scale(doc)
     wanted = {s.strip().upper() for s in args.sheets.split(",")} if args.sheets else None
 

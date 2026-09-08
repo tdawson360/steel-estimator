@@ -266,6 +266,20 @@ at the end vs the support line's direction where the ray or crossing lands). Not
 "ends: E1 Single Cope (W12X26 into W16X31); E2 Miter (42 deg)"; the report tallies end labor.
 `rules.members.copes` switches copes off.
 
+**Prepare step BUILT 2026-09-08 (`sidecar/prepare.py`, Todd's scoping comments):** (1) flatten -
+contract sets arrive with other authors' comments that Revu shows as live markups; every
+annotation and form widget is baked into the page content (`Document.bake`, no recovery; PAC 423
+markups in 3 s, KISD 358 in 23 s); (2) page labels - Revu's Markups List shows the page label, so
+an unlabelled set reads as sheet positions; every page whose label carries no sheet number gets
+"S-20900 - STRUCTURAL ROOF FRAMING PLAN" from its title block (`sheet_info(use_label=False)`), a
+text-only label is kept as the title and repaired when the export dropped its first letter
+("PECIAL INSPECTIONS" -> "SPECIAL INSPECTIONS" from the page text). Both `scope.py` and
+`auto_takeoff.py` prepare in memory at start (outputs are always clean); the app's SCOPE job passes
+`--prepare-source` so the stored set itself is rewritten in place once. Corrected takeoffs for the
+improvement loop are never prepared. (3) scope highlights - the boxes round scope text were
+illegible in schedules and beside other text; scope items are now Revu Highlight annotations in a
+pale tint of the kind colour (`highlight_tint`, multiply blend keeps the words readable).
+
 **Sloped beams BUILT 2026-09-07 (`sidecar/slopes.py`, Todd's rule):** elevation markers along the
 column lines ("B/DECK AT GRID B 17'-3 5/8"" applies to the whole grid B axis via `columns.grid_axes`;
 a spot note like "(B/ STL 10'-1")" applies within 8 ft) give each measured end an elevation; a

@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import scope_vocab                       # noqa: E402
 import shapes                            # noqa: E402
 from auto_takeoff import sheet_info      # noqa: E402
+import prepare                           # noqa: E402
 
 KIND_ORDER = ["misc", "material", "connect", "finish", "exclude", "status", "note", "member"]
 KIND_TITLE = {"member": "Steel members", "connect": "Connections & anchorage", "finish": "Finish & coating",
@@ -41,6 +42,12 @@ BOXED_KINDS = ("misc", "material", "finish", "exclude", "status", "note", "conne
 KIND_COLOR = {"misc": (0.85, 0.2, 0.55), "material": (0.55, 0.3, 0.85), "finish": (0.1, 0.55, 0.75),
               "connect": (0.95, 0.55, 0.1), "exclude": (0.5, 0.5, 0.5), "status": (0.8, 0.1, 0.1), "note": (0.2, 0.6, 0.3)}
 THIN_TEXT = 60          # words: below this a structural sheet is probably stroke-font -> OCR
+
+
+def highlight_tint(color):
+    """A highlighter shade of a kind colour: pale enough that the words stay
+    legible under Revu's multiply blend (Todd, 2026-09-08)."""
+    return tuple(0.35 * v + 0.65 for v in color)
 
 
 def page_lines(page, use_ocr, ocr_dpi, label=""):
@@ -130,6 +137,14 @@ def run(args):
     src = Path(args.pdf)
     out = Path(args.output) if args.output else src.with_name(src.stem + "_SCOPE.pdf")
     doc = pymupdf.open(src)
+    # first order of business (Todd, 2026-09-08): flatten other authors'
+    # markups without recovery and label every page with its sheet number,
+    # so Revu's Markups List reads the drawing number, not the page position
+    prepared = prepare.prepare(doc)
+    if args.prepare_source and (prepared["flattened"] or prepared["labelled"]):
+        prepare.prepare_file(src)                     # the stored set itself, in place
+    if prepared["flattened"] or prepared["labelled"]:
+        print(f"prepared: flattened {prepared['flattened']} markup(s), labelled {prepared['labelled']} page(s)", flush=True)
     sheets, boxes, facts = [], 0, []
     n = doc.page_count
     wanted = {d.strip().upper() for d in args.disciplines.split(",") if d.strip()}
@@ -171,9 +186,10 @@ def run(args):
                 if bb is None or (cat, tuple(round(v) for v in bb)) in done:
                     continue
                 done.add((cat, tuple(round(v) for v in bb)))
-                annot = page.add_rect_annot(bb + (-4, -4, 4, 4))
-                annot.set_border(width=1.5)
-                annot.set_colors(stroke=KIND_COLOR.get(info["kind"], (1, 0, 0)), fill=None)
+                # a coloured highlight over the words, not a box: boxes in a
+                # schedule or beside other text made it illegible (Todd, 2026-09-08)
+                annot = page.add_highlight_annot(bb + (-1, -1, 1, 1))
+                annot.set_colors(stroke=highlight_tint(KIND_COLOR.get(info["kind"], (1, 0, 0))))
                 annot.set_info(title="Auto Scope", subject=f"Scope: {cat}", content=match)
                 annot.update()
                 boxes += 1
@@ -185,9 +201,8 @@ def run(args):
             if key in boxed:
                 continue
             boxed.add(key)
-            annot = page.add_rect_annot(st["bbox"] + (-4, -4, 4, 4))
-            annot.set_border(width=1.5)
-            annot.set_colors(stroke=KIND_COLOR["misc"], fill=None)
+            annot = page.add_highlight_annot(st["bbox"] + (-1, -1, 1, 1))
+            annot.set_colors(stroke=highlight_tint(KIND_COLOR["misc"]))
             counts = ", ".join(f"{x['n']} {x['what']}" for x in stairs if tuple(round(v) for v in x["bbox"]) == key)
             annot.set_info(title="Auto Scope", subject="Scope: Stairs / ladders", content=f"Stairs: {counts}")
             annot.update()
@@ -310,6 +325,8 @@ def main():
     ap.add_argument("--md", help="also write a Markdown report here")
     ap.add_argument("--all-sheets", action="store_true", help="scan every sheet of every discipline")
     ap.add_argument("--disciplines", default="S,A", help="discipline letters to scan (default S,A)")
+    ap.add_argument("--prepare-source", action="store_true",
+                    help="also rewrite the input in place: flattened, pages labelled (the app does this on upload)")
     ap.add_argument("--ocr", choices=["auto", "off"], default="auto")
     ap.add_argument("--ocr-dpi", type=int, default=300)
     args = ap.parse_args()
