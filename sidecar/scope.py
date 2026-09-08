@@ -38,7 +38,8 @@ KIND_ORDER = ["misc", "material", "connect", "finish", "exclude", "status", "not
 KIND_TITLE = {"member": "Steel members", "connect": "Connections & anchorage", "finish": "Finish & coating",
               "material": "Material", "misc": "Miscellaneous / ornamental", "exclude": "Not ours (existing, other trades)",
               "status": "Document status", "note": "Scope notes"}
-BOXED_KINDS = ("misc", "material", "finish", "exclude", "status", "note", "connect")
+BOXED_KINDS = ("misc", "material", "finish", "note", "connect")      # see scope_vocab.highlights for the rules
+NOTES_SHEET_RE = re.compile(r"NOTES|SPECIFICATION|INSPECTION|ABBREV|LEGEND|SCHEDULE|INDEX", re.I)
 KIND_COLOR = {"misc": (0.85, 0.2, 0.55), "material": (0.55, 0.3, 0.85), "finish": (0.1, 0.55, 0.75),
               "connect": (0.95, 0.55, 0.1), "exclude": (0.5, 0.5, 0.5), "status": (0.8, 0.1, 0.1), "note": (0.2, 0.6, 0.3)}
 THIN_TEXT = 60          # words: below this a structural sheet is probably stroke-font -> OCR
@@ -161,6 +162,13 @@ def run(args):
         use_ocr = args.ocr != "off" and structural and kind == "plan"
         lines, blocks, source, callouts = page_lines(page, use_ocr, args.ocr_dpi, f"{pno + 1}/{n} {number}")
         found = scope_vocab.scan([l["text"] for l in lines], extra=blocks)
+        # Todd's vocabulary review (2026-09-08): some words only count with
+        # context (CURB, CLOSURE, PIPE and gauges off the structural sheets)
+        for cat in list(found):
+            found[cat]["hits"] = [(t, m) for t, m in found[cat]["hits"] if scope_vocab.counts(cat, m, t, structural)]
+            if not found[cat]["hits"]:
+                del found[cat]
+        notes_sheet = kind == "notes" or bool(NOTES_SHEET_RE.search(title or "")) or bool(re.match(r"S-?0\d", number or ""))
         if structural and not facts and kind == "plan":
             facts = title_block_facts(page)
         sizes = collections.Counter()
@@ -178,10 +186,10 @@ def run(args):
         for l in lines:
             by_text.setdefault(l["text"], l["bbox"])
         for cat, info in found.items():
-            if info["kind"] not in BOXED_KINDS:
-                continue
             done = set()
             for text, match in info["hits"]:
+                if not scope_vocab.highlights(cat, info["kind"], match, text, structural, notes_sheet):
+                    continue
                 bb = by_text.get(text)
                 if bb is None or (cat, tuple(round(v) for v in bb)) in done:
                     continue

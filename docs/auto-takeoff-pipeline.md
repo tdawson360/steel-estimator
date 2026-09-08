@@ -280,6 +280,19 @@ improvement loop are never prepared. (3) scope highlights - the boxes round scop
 illegible in schedules and beside other text; scope items are now Revu Highlight annotations in a
 pale tint of the kind colour (`highlight_tint`, multiply blend keeps the words readable).
 
+**Scoping vocabulary tuned 2026-09-08 (Todd's review of every category on the artifact):**
+dropped for scoping, kept for measuring (`scope=False`): headed studs, anchor bolts, high-strength
+bolts, moment / shear connections, welding, document status ("only needed when measuring is
+toggled"). Tally only, never drawn: concrete, wood / other trades, material grades; EXISTING drawn
+on structural drawings only. Notes-type sheets (general notes, specs, inspection tables,
+schedules) draw only misc / finish kinds; aluminum, post-installed anchors and embeds draw on
+drawings only. Context words: CURB needs ROOF / RTU / EQUIP / STEEL, CLOSURE needs ANGLE / PL,
+PIPE off the structural sheets needs a size spec plus BOLLARD / COLUMN / RAIL / POST, gauges
+count on structural sheets only, bare ELEVATOR dropped, SEE PLAN / SEE ARCH / RE: STRUCT dropped.
+Metal deck profiles and gauges ARE highlighted on structural sheets (Todd: "highlight profile
+size and thickness on structural notes / plan if stated"). Rules live in
+`scope_vocab.counts` / `scope_vocab.highlights`. PAC: 553 highlights -> 173, S-003 147 -> 0.
+
 **Sloped beams BUILT 2026-09-07 (`sidecar/slopes.py`, Todd's rule):** elevation markers along the
 column lines ("B/DECK AT GRID B 17'-3 5/8"" applies to the whole grid B axis via `columns.grid_axes`;
 a spot note like "(B/ STL 10'-1")" applies within 8 ft) give each measured end an elevation; a

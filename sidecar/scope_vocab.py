@@ -45,19 +45,19 @@ VOCAB = [
          ex=["1.5B 22 DECK", "3VLI20", "DECK TO BE 7.2 - 0.04 INCH THICK", "ROOF DECK"]),
     dict(cat="Joists", kind="member", pats=[r"\b\d\d\s?(?:K|LH|DLH|KCS)\s?\d+\b", r"\bJOIST GIRDER\b|\bOPEN WEB\b|\bBAR JOIST\b|\bSTEEL JOISTS?\b|\bBRIDGING\b"],
          ex=["24K7", "JOIST GIRDER", "BRIDGING"]),
-    dict(cat="Headed studs / DBA", kind="connect", pats=[r"\b(?:HEADED|SHEAR|NELSON)\s+STUDS?\b", r"\bDBA\b|\bDEFORMED BAR ANCHORS?\b", rf"\b{NUM}{DIA}\s*(?:DIA\.?\s*)?{X}?\s*{NUM}{DIA}?\s+(?:HEADED\s+)?STUDS?\b"],
+    dict(cat="Headed studs / DBA", kind="connect", scope=False, pats=[r"\b(?:HEADED|SHEAR|NELSON)\s+STUDS?\b", r"\bDBA\b|\bDEFORMED BAR ANCHORS?\b", rf"\b{NUM}{DIA}\s*(?:DIA\.?\s*)?{X}?\s*{NUM}{DIA}?\s+(?:HEADED\s+)?STUDS?\b"],
          ex=['3/4" DIA x 4" HEADED STUDS', "NELSON STUDS", "DBA"]),
-    dict(cat="Anchor bolts / rods", kind="connect", pats=[r"\bANCHOR\s+(?:BOLTS?|RODS?)\b", r"\bA\.?B\.?\s?\d|\b\(\d+\)\s*A\.?B\.?\b", r"\bF1554\b|\bA307\b", rf"\(\d+\)\s*{NUM}{DIA}\s*(?:DIA\.?)?\s*[xX]\s*{NUM}{DIA}?(?=.*\bANCHORS?\b)"],
+    dict(cat="Anchor bolts / rods", kind="connect", scope=False, pats=[r"\bANCHOR\s+(?:BOLTS?|RODS?)\b", r"\bA\.?B\.?\s?\d|\b\(\d+\)\s*A\.?B\.?\b", r"\bF1554\b|\bA307\b", rf"\(\d+\)\s*{NUM}{DIA}\s*(?:DIA\.?)?\s*[xX]\s*{NUM}{DIA}?(?=.*\bANCHORS?\b)"],
          ex=['(6) 3/4" DIA. x 4 1/2" ... ANCHORS', "ANCHOR BOLTS", "F1554 GR 36"]),
     dict(cat="Post-installed anchors / epoxy", kind="connect", pats=[r"\bHILTI\b|\bKWIK\s?BOLT\b|\bHY\s?-?\s?200\b|\bRE\s?-?\s?500\b|\bHIT-?\w*\b", r"\bEPOXY\b|\bADHESIVE ANCHORS?\b|\bEXPANSION ANCHORS?\b|\bWEDGE ANCHORS?\b|\bDRILL AND EPOXY\b", r"\bEMBEDMENT\b|\bEMBED\.?\b"],
          ex=["DRILL AND EPOXY", "HILTI HY200 EPOXY", 'DIA. X 6" EMBEDMENT']),
-    dict(cat="High-strength bolts", kind="connect", pats=[r"\bA325\b|\bA490\b|\bF3125\b|\bTC\s?BOLTS?\b|\bTENSION CONTROL\b|\bSLIP[- ]CRITICAL\b|\bSNUG[- ]TIGHT\b", r"\bBOLTED\b"],
+    dict(cat="High-strength bolts", kind="connect", scope=False, pats=[r"\bA325\b|\bA490\b|\bF3125\b|\bTC\s?BOLTS?\b|\bTENSION CONTROL\b|\bSLIP[- ]CRITICAL\b|\bSNUG[- ]TIGHT\b", r"\bBOLTED\b"],
          ex=["A325 BOLTS", "SLIP-CRITICAL", "TC BOLTS"]),
-    dict(cat="Moment connections", kind="connect", pats=[r"\bMOM+ENT\s+CONN?(?:ECTION)?S?\b", r"\bCJP\b|\bPJP\b|\bFULL[- ]PEN(?:ETRATION)?\b|\bCOMPLETE JOINT\b", r"\bMOMENT FRAME\b|\bSMF\b|\bIMF\b|\bOMF\b"],
+    dict(cat="Moment connections", kind="connect", scope=False, pats=[r"\bMOM+ENT\s+CONN?(?:ECTION)?S?\b", r"\bCJP\b|\bPJP\b|\bFULL[- ]PEN(?:ETRATION)?\b|\bCOMPLETE JOINT\b", r"\bMOMENT FRAME\b|\bSMF\b|\bIMF\b|\bOMF\b"],
          ex=["INDICATES MOMMENT CONNECTION", "INDICATE MEMBER END MOMENT CONNECTION", "CJP"]),
-    dict(cat="Shear / standard connections", kind="connect", pats=[r"\bSHEAR\s+(?:TAB|PLATE|CONN)", r"\bSTANDARD AISC\b|\bAISC\s+(?:STANDARD|TYPICAL)\b|\bTYP(?:ICAL)?\.?\s+CONN(?:ECTION)?\b", r"\bSINGLE\s+PLATE\b|\bDOUBLE ANGLE\b|\bCLIP ANGLE\b|\bSEATED\b"],
+    dict(cat="Shear / standard connections", kind="connect", scope=False, pats=[r"\bSHEAR\s+(?:TAB|PLATE|CONN)", r"\bSTANDARD AISC\b|\bAISC\s+(?:STANDARD|TYPICAL)\b|\bTYP(?:ICAL)?\.?\s+CONN(?:ECTION)?\b", r"\bSINGLE\s+PLATE\b|\bDOUBLE ANGLE\b|\bCLIP ANGLE\b|\bSEATED\b"],
          ex=["STANDARD AISC CONNECTION", "SHEAR TAB", "CLIP ANGLE"]),
-    dict(cat="Welding", kind="connect", pats=[r"\bFIELD WELD(?:ED)?\b|\bSHOP WELD(?:ED)?\b|\bWELDED\b", r"\bFILLET WELD\b|\bE70XX\b|\bAWS D1\.\d\b", r"\bBEVEL\b|\bGRIND\s+SMOOTH\b"],
+    dict(cat="Welding", kind="connect", scope=False, pats=[r"\bFIELD WELD(?:ED)?\b|\bSHOP WELD(?:ED)?\b|\bWELDED\b", r"\bFILLET WELD\b|\bE70XX\b|\bAWS D1\.\d\b", r"\bBEVEL\b|\bGRIND\s+SMOOTH\b"],
          ex=["FIELD WELDED", "E70XX", "AWS D1.1"]),
     dict(cat="Galvanizing", kind="finish", pats=[r"\bHOT[- ]DIP(?:PED)?\s+GALV(?:ANIZED)?\b", r"\bGALV(?:ANIZED|ANIZE|\.)?\b", r"\bHDG\b", r"\bA123\b|\bA153\b"],
          ex=["ALL STEEL TO BE HOT DIP GALVANIZED AFTER FABRICATION", "HDG", "GALV."]),
@@ -82,7 +82,8 @@ VOCAB = [
          ex=["MEZZANINE", "EQUIPMENT SUPPORT FRAME", "DUNNAGE"]),
     dict(cat="Lintels / misc angles", kind="misc", pats=[r"\bLINTELS?\b|\bLOOSE LINTEL\b|\bSHELF ANGLE\b|\bRELIEVING ANGLE\b|\bDECK SUPPORT ANGLE\b|\bEDGE ANGLE\b|\bPOUR STOP\b|\bCLOSURE\b"],
          ex=["LOOSE LINTEL", "SHELF ANGLE", "POUR STOP"]),
-    dict(cat="Elevator / pit", kind="misc", pats=[r"\bELEVATOR\b|\bELEV\.?\s+(?:PIT|SILL|DIVIDER|HOIST)\b|\bPIT LADDER\b|\bSILL ANGLE\b|\bDIVIDER BEAM\b|\bHOIST BEAM\b"],
+    # the bare word ELEVATOR is the elevator itself (Todd's review, 2026-09-08)
+    dict(cat="Elevator / pit", kind="misc", pats=[r"\bELEV(?:ATOR|\.)?\s+(?:PIT|SILL|DIVIDER|HOIST)\b|\bPIT LADDER\b|\bSILL ANGLE\b|\bDIVIDER BEAM\b|\bHOIST BEAM\b"],
          ex=["ELEVATOR PIT LADDER", "HOIST BEAM", "SILL ANGLE"]),
     dict(cat="Embeds", kind="connect", pats=[r"\bEMBED(?:DED)?\s+PL(?:ATE)?S?\b|\bEMBEDS?\b|\bWELD PL(?:ATE)?S?\b|\bEDGE PL(?:ATE)?\b"],
          ex=["EMBED PLATE", "WELD PLATE", "EMBEDS"]),
@@ -104,13 +105,73 @@ VOCAB = [
     dict(cat="Partition / equipment supports", kind="misc", pats=[r"\bOPERABLE PARTITION\b|\bFOLDING PARTITION\b|\bPARTITION SUPPORTS?\b|\bMONORAIL\b|\bHOIST SUPPORT\b|\bDOOR HEADER\b"],
          ex=["OPERABLE PARTITION SUPPORTS"]),
     # ── document status / scope notes ──────────────────────────────────────
-    dict(cat="Document status", kind="status", pats=[r"\bPROGRESS SET\b|\bNOT FOR CONSTRUCTION\b|\bPRELIMINARY\b|\bFOR REVIEW\b|\bPERMIT SET\b|\bBID SET\b|\bISSUE(?:D)? FOR (?:BID|CONSTRUCTION|PERMIT|PRICING)\b|\bIFC\b|\bADDENDUM\b|\bREVISION\b|\bDD\b|\bCD\b|\b\d\d% (?:DD|CD|SD)\b"],
+    dict(cat="Document status", kind="status", scope=False, pats=[r"\bPROGRESS SET\b|\bNOT FOR CONSTRUCTION\b|\bPRELIMINARY\b|\bFOR REVIEW\b|\bPERMIT SET\b|\bBID SET\b|\bISSUE(?:D)? FOR (?:BID|CONSTRUCTION|PERMIT|PRICING)\b|\bIFC\b|\bADDENDUM\b|\bREVISION\b|\bDD\b|\bCD\b|\b\d\d% (?:DD|CD|SD)\b"],
          ex=["PROGRESS SET", "PRELIMINARY PRICING", "NOT FOR CONSTRUCTION"]),
-    dict(cat="Scope notes", kind="note", pats=[r"\bALL STEEL\b|\bSTRUCTURAL STEEL\b|\bMISC(?:ELLANEOUS)?\.?\s+(?:STEEL|METALS?)\b|\bORNAMENTAL\b|\bSTEEL FABRICATOR\b|\bSHOP DRAWINGS?\b|\bERECT(?:ION|OR)\b", r"\bSEE (?:PLAN|ARCH(?:ITECTURAL)?\.?|STRUCT(?:URAL)?\.?|DETAIL)\b|\bRE:\s?(?:ARCH|STRUCT)"],
+    # SEE PLAN / SEE ARCH / RE: STRUCT pointers dropped (Todd's review, 2026-09-08: they point elsewhere, they describe nothing)
+    dict(cat="Scope notes", kind="note", pats=[r"\bALL STEEL\b|\bSTRUCTURAL STEEL\b|\bMISC(?:ELLANEOUS)?\.?\s+(?:STEEL|METALS?)\b|\bORNAMENTAL\b|\bSTEEL FABRICATOR\b|\bSHOP DRAWINGS?\b|\bERECT(?:ION|OR)\b"],
          ex=["ALL STEEL TO BE ...", "RE: ARCH.", "SEE PLAN"]),
 ]
 
-_COMPILED = [(v, [re.compile(p, re.I) for p in v["pats"]]) for v in VOCAB]
+# scope=False: kept for the measuring pass, never scanned or shown for scoping
+# (Todd's review, 2026-09-08: bolts, welds, studs, moment / shear connections,
+# document status are "only needed when measuring is toggled")
+_COMPILED = [(v, [re.compile(p, re.I) for p in v["pats"]]) for v in VOCAB if v.get("scope", True)]
+
+
+# ── where a hit is drawn as a highlight, and when it counts at all ──────
+# Todd's review of the vocabulary (2026-09-08).  Members are counted on the
+# summary and never highlighted, except deck profiles / gauges on structural
+# sheets ("highlight profile size and thickness on structural notes / plan
+# if stated").  Exclusions and material grades are tallied only, except
+# EXISTING on structural drawings.  On notes-type sheets (general notes,
+# specifications, inspection tables) only misc / material / finish kinds are
+# drawn; connections are tallied.  A few words need context before they
+# count at all.
+HIGHLIGHT_KINDS = {"misc", "material", "finish", "note", "connect"}
+NOTES_KINDS = {"misc", "finish"}                   # drawn on a notes-type sheet
+NEVER = {"Concrete / foundations", "Wood / cold-formed / other trades", "Material grades"}
+DRAWINGS_ONLY = {"Aluminum", "Post-installed anchors / epoxy", "Embeds"}
+S_DRAWINGS_ONLY = {"Existing / not in contract"}
+DECK_PROFILE_RE = re.compile(r"^\d(?:\.\d)?\s?(?:B|F|N|VL|VLI|W|C|CD|PLB|PLN)\s?-?\s?\d\d$|^(?:16|18|20|22)\s?GA\.?$", re.I)
+GAUGE_RE = re.compile(r"^(?:16|18|20|22)\s?GA\.?$", re.I)
+# (category, match regex) -> the LINE must also match this before the hit counts
+CONTEXT = [
+    ("Platforms / supports / frames", re.compile(r"^CURB$", re.I), re.compile(r"ROOF|RTU|EQUIP|STEEL|ANGLE|CHANNEL", re.I)),
+    ("Lintels / misc angles", re.compile(r"^CLOSURE$", re.I), re.compile(r"CLOSURE\s+(?:ANGLE|PL|PLATE)|ANGLE|\bPL\b", re.I)),
+]
+
+
+def counts(cat, match, line, structural):
+    """Does this hit count at all (for the tally and the summary)?"""
+    m = match.strip()
+    for c, mre, lre in CONTEXT:
+        if cat == c and mre.match(m) and not lre.search(line):
+            return False
+    if cat == "Pipe" and not structural:
+        # plumbing lines on architectural sheets: need a size spec and a steel use
+        return bool(re.search(r"STD|SCH|DIA", line, re.I) and re.search(r"BOLLARD|COLUMN|RAIL|POST|GUARD", line, re.I))
+    if cat == "Metal deck" and not structural and GAUGE_RE.match(m):
+        return False                                  # flashing / stud gauges on A sheets
+    return True
+
+
+def highlights(cat, kind, match, line, structural, notes_sheet):
+    """Is this (counting) hit drawn on the sheet as a highlight?"""
+    if cat in NEVER:
+        return False
+    if cat in S_DRAWINGS_ONLY:
+        return structural and not notes_sheet
+    if cat == "Metal deck":
+        return structural and bool(DECK_PROFILE_RE.match(match.strip()))
+    if kind not in HIGHLIGHT_KINDS:
+        return False
+    if cat in DRAWINGS_ONLY and notes_sheet:
+        return False
+    if cat == "Paint / coating" and not structural and not re.search(r"STEEL|METAL|PRIME|GALV", line, re.I):
+        return False
+    if notes_sheet and kind not in NOTES_KINDS:
+        return False
+    return True
 
 
 def clean(text):
@@ -182,11 +243,12 @@ def as_markdown():
            "Kinds: **member** = fabricated item, **connect** = connection/anchorage labor, **finish** = coating/grade,",
            "**misc** = ornamental/miscellaneous metals, **exclude** = looks like steel but is not ours,",
            "**status** = document status, **note** = scope language.", "",
-           "| Category | Kind | Catches (examples) | Patterns |", "|---|---|---|---|"]
+           "| Category | Kind | Used for | Catches (examples) | Patterns |", "|---|---|---|---|---|"]
     for v in VOCAB:
         ex = ", ".join(f"`{e}`" for e in v["ex"])
         pats = "<br>".join(f"`{p}`" for p in v["pats"])
-        out.append(f"| {v['cat']} | {v['kind']} | {ex} | {pats} |")
+        use = "scoping" if v.get("scope", True) else "measuring only (Todd 2026-09-08)"
+        out.append(f"| {v['cat']} | {v['kind']} | {use} | {ex} | {pats} |")
     out += ["", "## Open questions for Todd / Samantha", "",
             "- Which misc categories does Berger actually bid (railings, stairs, grating, canopies, gates, elevator)? Drop the rest to cut noise.",
             "- Is aluminum ever ours (ornamental)? Today it is flagged as an exclusion.",
