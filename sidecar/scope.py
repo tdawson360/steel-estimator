@@ -137,13 +137,18 @@ def title_block_facts(page):
 def run(args):
     src = Path(args.pdf)
     out = Path(args.output) if args.output else src.with_name(src.stem + "_SCOPE.pdf")
-    doc = pymupdf.open(src)
+    # opened from memory: no handle on the file, so the prepared copy can be
+    # written back over it (Windows refuses to replace an open file)
+    doc = pymupdf.open(stream=src.read_bytes(), filetype="pdf")
     # first order of business (Todd, 2026-09-08): flatten other authors'
     # markups without recovery and label every page with its sheet number,
     # so Revu's Markups List reads the drawing number, not the page position
     prepared = prepare.prepare(doc)
     if args.prepare_source and (prepared["flattened"] or prepared["labelled"]):
-        prepare.prepare_file(src)                     # the stored set itself, in place
+        try:
+            prepare.write_back(doc, src)              # the stored set itself, in place
+        except OSError as e:
+            print(f"prepared copy not written back to {src.name} ({e}); the outputs are still prepared", file=sys.stderr, flush=True)
     if prepared["flattened"] or prepared["labelled"]:
         print(f"prepared: flattened {prepared['flattened']} markup(s), labelled {prepared['labelled']} page(s)", flush=True)
     sheets, boxes, facts = [], 0, []

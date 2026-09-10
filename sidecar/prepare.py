@@ -86,20 +86,33 @@ def prepare(doc):
     return {"flattened": n_flat, "labelled": n_lab, "labels": labels}
 
 
+def write_back(doc, target):
+    """Save doc over target: written beside it first, then swapped in. The
+    caller must not hold target open (open it from a byte stream)."""
+    target = str(target)
+    fd, tmp = tempfile.mkstemp(suffix=".pdf", dir=os.path.dirname(os.path.abspath(target)))
+    os.close(fd)
+    try:
+        doc.save(tmp, garbage=3, deflate=True)
+        os.replace(tmp, target)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def prepare_file(src, out=None):
     """Prepare a PDF on disk; in place when out is None. Returns the summary."""
-    doc = pymupdf.open(src)
+    doc = pymupdf.open(stream=Path(src).read_bytes(), filetype="pdf")
     info = prepare(doc)
     if not (info["flattened"] or info["labelled"]):
         doc.close()
         info["written"] = False
         return info
-    target = out or src
-    fd, tmp = tempfile.mkstemp(suffix=".pdf", dir=os.path.dirname(os.path.abspath(target)))
-    os.close(fd)
-    doc.save(tmp, garbage=3, deflate=True)
+    write_back(doc, out or src)
     doc.close()
-    os.replace(tmp, target)
     info["written"] = True
     return info
 
