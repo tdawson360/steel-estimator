@@ -308,6 +308,24 @@ def scale_text(ppf):
     return f"{inch}\" = 1'-0\""
 
 
+def blend_multiply(doc, x):
+    """Revu's Highlight mode on a markup: /BM /Multiply on the annotation
+    AND in its appearance stream.  The annotation key alone lights the
+    Highlight button, but Revu draws the stored appearance, which PyMuPDF
+    writes opaque, so the line hid the drawing until the button was toggled
+    (Todd, 2026-09-10).  The appearance gets an ExtGState like Revu's own."""
+    doc.xref_set_key(x, "BM", "/Multiply")
+    kind, ref = doc.xref_get_key(x, "AP/N")
+    if kind != "xref":
+        return
+    n = int(ref.split()[0])
+    doc.xref_set_key(n, "Resources/ExtGState/GSm", "<< /Type /ExtGState /BM /Multiply /ca 1 /CA 1 >>")
+    doc.xref_set_key(n, "Group", "<< /S /Transparency >>")
+    content = doc.xref_stream(n) or b""
+    if not content.startswith(b"/GSm gs"):
+        doc.update_stream(n, b"/GSm gs\n" + content)
+
+
 def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xref):
     annot = page.add_polyline_annot([pymupdf.Point(x, y) for x, y in pts])
     annot.set_border(width=3)
@@ -317,7 +335,7 @@ def add_polyline(doc, page, pts, subject, color, ft, columns, values, measure_xr
     nm = new_name()
     x = annot.xref
     doc.xref_set_key(x, "NM", pdf_string(nm))
-    doc.xref_set_key(x, "BM", "/Multiply")               # Revu "highlight" blend: the drawn line shows through
+    blend_multiply(doc, x)                                # Revu "highlight" blend: the drawn line shows through
     doc.xref_set_key(x, "IT", "/PolyLineDimension")
     doc.xref_set_key(x, "Measure", f"{measure_xref} 0 R")
     doc.xref_set_key(x, "MeasurementTypes", "130")
