@@ -75,8 +75,8 @@ function UploadZone({ onDone }) {
           const d = body.duplicateOf;
           const whenTxt = (v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           setError(d.prospectStatus === 'PASS' || d.prospectStatus === 'DELETED'
-            ? `Heads up: this is the same file as "${d.name}", which was passed on ${whenTxt(d.passedAt || d.createdAt)}.`
-            : `Uploaded, but this looks identical to "${d.name}" (${whenTxt(d.createdAt)}).`);
+            ? `Same file as "${d.name}", passed on ${whenTxt(d.passedAt || d.createdAt)}. Scoping it again anyway.`
+            : `Looks identical to "${d.name}" (${whenTxt(d.createdAt)}). Scoping it again anyway.`);
         }
         onDone(body);
       } else {

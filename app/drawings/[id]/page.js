@@ -207,7 +207,8 @@ export default function DrawingSetPage() {
   };
 
   const scopeJob = set?.jobs?.find(j => j.kind === 'SCOPE' && j.status === 'DONE');
-  const busy = set?.jobs?.some(j => j.status === 'QUEUED' || j.status === 'RUNNING');
+  const activeJob = set?.jobs?.find(j => j.status === 'RUNNING') || set?.jobs?.find(j => j.status === 'QUEUED');
+  const busy = Boolean(activeJob);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 text-gray-900 dark:text-zinc-100">
@@ -240,6 +241,13 @@ export default function DrawingSetPage() {
                   {!set.projectId && set.prospectStatus !== 'DELETED' && (set.prospectStatus !== 'PASS'
                     ? <button onClick={() => pass(true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Pass</button>
                     : <button onClick={() => pass(false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>)}
+                  {activeJob && (
+                    <span className="basis-full inline-flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300" data-testid="job-working">
+                      <Loader2 className="animate-spin" size={12} />
+                      {activeJob.status === 'QUEUED' ? `${JOB_TITLE[activeJob.kind] || activeJob.kind} queued…`
+                        : `${activeJob.kind === 'MEASURE' ? 'Measuring' : activeJob.kind === 'COMPARE' ? 'Comparing' : 'Scoping'}… ${activeJob.progress || ''}`}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
