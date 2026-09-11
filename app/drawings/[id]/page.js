@@ -102,9 +102,16 @@ function CompareSummary({ s }) {
   return (
     <div className="mt-2 text-xs text-gray-600 dark:text-zinc-400 space-y-1">
       <div>
-        <span className="font-medium text-gray-800 dark:text-zinc-200">Agreement {s.agreement ?? '–'}%</span>
-        {' '}· kept {s.kept} · edited {s.edited}{kinds ? ` (${kinds})` : ''} · deleted {s.deleted} · added by hand {s.added}
+        <span className="font-medium text-gray-800 dark:text-zinc-200">Members found {s.found ?? s.agreement ?? '–'}%</span>
+        {' '}· kept {s.kept} · edited {s.edited}{kinds ? ` (${kinds})` : ''}
+        {s.replaced ? ` · re-drawn on top ${s.replaced}` : ''} · deleted {s.deleted} · added by hand {s.added}
       </div>
+      {s.replaced_stats ? (
+        <div>
+          Re-drawn: length within 1 ft on {s.replaced_stats.length_within_1ft} of {s.replaced_stats.n}, within 2 ft on {s.replaced_stats.length_within_2ft}
+          {' '}· median length change {s.replaced_stats.median_length_delta_ft?.toFixed(2)} ft · sideways {s.replaced_stats.median_sideways_ft?.toFixed(2)} ft · end shift {s.replaced_stats.median_end_shift_ft?.toFixed(2)} ft
+        </div>
+      ) : null}
       {s.added_top?.length ? <div>Missed (added by hand): {s.added_top.map(([k, v]) => `${k} ×${v}`).join(', ')}</div> : null}
       {s.deleted_top?.length ? <div>Wrong (deleted): {s.deleted_top.map(([k, v]) => `${k} ×${v}`).join(', ')}</div> : null}
       {s.training_dir ? <div className="text-gray-400 dark:text-zinc-600">Saved to the training corpus.</div> : null}
