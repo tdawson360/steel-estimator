@@ -69,10 +69,17 @@ def annots(doc, cols):
 
 
 def _num(s):
+    """A number from a Revu column, or None.  Never NaN: Python's json
+    writes NaN, which is not JSON and broke the app's parse of the summary
+    (OXY corrections, 2026-09-11)."""
+    t = str(s or "").strip()
+    if not t:
+        return None
     try:
-        return float(str(s).strip() or "nan")
+        v = float(t)
     except ValueError:
         return None
+    return None if v != v else v
 
 
 def norm_size(s):
@@ -177,7 +184,7 @@ def main():
     print("PROGRESS 2/2 comparing", flush=True)
     s = summarize(rows, args.auto, args.corrected)
     if args.json:
-        Path(args.json).write_text(json.dumps(s, indent=1), encoding="utf-8")
+        Path(args.json).write_text(json.dumps(s, indent=1, allow_nan=False), encoding="utf-8")
     md = markdown(s)
     if args.output:
         Path(args.output).write_text(md, encoding="utf-8")

@@ -228,7 +228,7 @@ def run(args):
     insert_summary_page(doc, summary)
     doc.save(out, garbage=3, deflate=True)
     if args.json:
-        Path(args.json).write_text(json.dumps(summary, indent=1), encoding="utf-8")
+        Path(args.json).write_text(json.dumps(summary, indent=1, allow_nan=False), encoding="utf-8")
     if args.md:
         Path(args.md).write_text(markdown(summary), encoding="utf-8")
     return out, summary

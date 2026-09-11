@@ -815,7 +815,7 @@ def write_json(path, src, sheets, hits, exceptions, weights):
         "members": len(hits), "exceptions": len(exceptions), "tons_measured": round(tons, 1),
         "sizes": sorted(groups.values(), key=lambda g: -g["count"]),
     }
-    path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    path.write_text(json.dumps(summary, indent=1, allow_nan=False), encoding="utf-8")
 
 
 def write_areas(doc, infos, deck_polys, set_deck, scale, columns, hits, args, weights):
