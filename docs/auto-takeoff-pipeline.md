@@ -280,6 +280,27 @@ improvement loop are never prepared. (3) scope highlights - the boxes round scop
 illegible in schedules and beside other text; scope items are now Revu Highlight annotations in a
 pale tint of the kind colour (`highlight_tint`, multiply blend keeps the words readable).
 
+**Scope sets the scales (2026-09-12, Todd: "drawing sets flattened, page labels created, and
+scales set on drawings, including the addition of viewports as needed for each detail").** The
+scope pass now installs Revu viewports on every scanned sheet: one per scale region
+(`lengths.scale_regions` + `verify_scale_regions`, raster stroke recovery off for speed via
+`lengths.CLUSTER_RASTER`), the sheet-wide window first and each detail's own window after it
+(a reader takes the last viewport containing a point). Summary JSON `scales` {sheets, viewports,
+own_scale}. OXY: 25 sheets, 71 viewports, 4 drawings at a scale other than their sheet note.
+Flatten + labels were already the first step of scope (`prepare.py`).
+
+**Scale verified from dimension strings (2026-09-12, Todd's OXY S401 lesson).** The elevation
+drawn above the plan on S401-S407 is at 3/8" = 1'-0" while the sheet's one scale note says 1/8";
+Todd set a second viewport and checked it against the dimensions. `lengths.dimension_scale`: two
+dimension strings in a row along one dimension line sit (a + b) / 2 feet apart, so consecutive
+strings give points-per-foot with no line work; the mode over a drawing cluster's pairs, snapped
+to a standard architectural scale (within 4%), is that drawing's scale. `verify_scale_regions`
+gives any drawing whose dimensions disagree with its note region by > 10% (>= 2 pairs) its own
+region at the measured scale (inserted first; `region_for` takes the smallest containing
+region), the sheet table shows both scales and the report lists the overrides. S401: plan 1/8"
+(10 pairs), elevation 3/8" (2 pairs); IAH100 roof plan 1/8" x33 with the 1/4" detail insets, all
+matching their notes. Rule: never trust that every drawing on a sheet shares the note's scale.
+
 **Positional schedules (2026-09-12, `sidecar/schedules.py`, Todd: why no base plates on OXY?).**
 OXY S302 "COLUMN SCHEDULE & DETAILS" is a real table (MARK | COLUMN TYPE | BASEPLATE TYPE |
 BASEPLATE EL.) plus a BASE PLATE SCHEDULE (MARK | TYPE | B | N | tp | QUANTITY | DIAMETER |

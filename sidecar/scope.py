@@ -31,7 +31,8 @@ import pymupdf
 sys.path.insert(0, str(Path(__file__).parent))
 import scope_vocab                       # noqa: E402
 import shapes                            # noqa: E402
-from auto_takeoff import sheet_info      # noqa: E402
+from auto_takeoff import sheet_info, Scale, scale_text      # noqa: E402
+import lengths                           # noqa: E402
 import prepare                           # noqa: E402
 
 KIND_ORDER = ["misc", "material", "connect", "finish", "exclude", "status", "note", "member"]
@@ -152,6 +153,8 @@ def run(args):
     if prepared["flattened"] or prepared["labelled"]:
         print(f"prepared: flattened {prepared['flattened']} markup(s), labelled {prepared['labelled']} page(s)", flush=True)
     sheets, boxes, facts = [], 0, []
+    scaler, viewports, own_scale = Scale(doc), 0, 0
+    lengths.CLUSTER_RASTER = False
     n = doc.page_count
     wanted = {d.strip().upper() for d in args.disciplines.split(",") if d.strip()}
     for pno, page in enumerate(doc):
@@ -164,6 +167,20 @@ def run(args):
         # OCR'd; OCR is reserved for structural plans with no readable callouts.
         if not (args.all_sheets or discipline in wanted or not number):
             continue
+        # scales set on every scanned sheet (Todd, 2026-09-12): one viewport per
+        # drawing region, at the scale its own dimension strings read when
+        # that differs from the sheet note (the elevation above the plan)
+        scales_here = []
+        try:
+            regions = lengths.scale_regions(page)
+            if regions:
+                regions, checks = lengths.verify_scale_regions(page, regions)
+                scaler.install_viewports(page, regions)
+                scales_here = sorted({scale_text(p) for _, p in regions})
+                viewports += len(regions)
+                own_scale += len(checks)
+        except Exception as e:                      # a sheet's scale never stops the scope
+            print(f"scale on {number}: {e}", file=sys.stderr, flush=True)
         use_ocr = args.ocr != "off" and structural and kind == "plan"
         lines, blocks, source, callouts = page_lines(page, use_ocr, args.ocr_dpi, f"{pno + 1}/{n} {number}")
         found = scope_vocab.scan([l["text"] for l in lines], extra=blocks)
@@ -222,9 +239,12 @@ def run(args):
             boxes += 1
         sheets.append({"page": pno + 1, "sheet": number or f"p{pno + 1}", "title": title, "kind": kind,
                        "discipline": discipline, "source": source, "lines": len(lines), "found": found, "sizes": sizes,
-                       "stairs": stairs})
+                       "stairs": stairs, "scales": scales_here})
     summary = build_summary(src, doc.page_count, sheets, facts, boxes)
     summary["scanned"] = "entire set" if args.all_sheets else f"disciplines {args.disciplines}"
+    summary["prepared"] = {k: v for k, v in prepared.items() if k != "labels"}
+    summary["scales"] = {"sheets": sum(1 for s in sheets if s.get("scales")), "viewports": viewports, "own_scale": own_scale}
+    print(f"scales: {summary['scales']['sheets']} sheets, {viewports} viewports, {own_scale} drawings at their own scale", flush=True)
     insert_summary_page(doc, summary)
     doc.save(out, garbage=3, deflate=True)
     if args.json:

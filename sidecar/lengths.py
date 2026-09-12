@@ -87,7 +87,7 @@ def drawing_clusters(page, gap=24.0, min_size=120.0):
     # vector drawings to cluster: the recovered strokes stand in for them
     try:
         import raster
-        if raster.has_raster_linework(page):
+        if CLUSTER_RASTER and raster.has_raster_linework(page):
             polys, _, _ = raster.raster_polylines(page, dpi=200)
             for pts, _w in polys:
                 xs = [x for x, _ in pts]
@@ -132,6 +132,7 @@ def drawing_clusters(page, gap=24.0, min_size=120.0):
 
 
 _CLUSTER_CACHE = {}
+CLUSTER_RASTER = True    # scope.py turns this off: recovering raster strokes on every sheet is slow
 
 
 def scale_regions(page):
@@ -173,6 +174,93 @@ def region_for(regions, pt):
     if not regions:
         return None, None
     return min(regions, key=lambda rp: math.hypot(max(rp[0].x0 - p.x, 0, p.x - rp[0].x1), max(rp[0].y0 - p.y, 0, p.y - rp[0].y1)))
+
+
+# ── scale verified from the dimension strings ─────────────────────────
+# Todd (2026-09-12, OXY S401): the elevation drawn above the plan is at a
+# different scale than the sheet's one scale note; he set a second viewport
+# and checked it against the dimensions.  Two dimension strings in a row
+# along one dimension line are (v1 + v2) / 2 feet apart, so consecutive
+# strings give points-per-foot with no line work at all; the mode over a
+# drawing's dimensions, snapped to a standard architectural scale, is that
+# drawing's scale.  A drawing whose dimensions disagree with the note by more
+# than 10% gets its own region at the measured scale.
+
+DIM_TEXT_RE = re.compile(r"""^(\d{1,3})'\s*-?\s*(\d{1,2})?(?:\s+(\d)/(\d{1,2}))?\s*(?:"|'')?$""")
+STD_IN_PER_FT = [1 / 32, 1 / 20, 1 / 16, 1 / 10, 3 / 32, 1 / 8, 3 / 16, 1 / 4, 3 / 8, 1 / 2, 3 / 4, 1.0, 1.5, 3.0]
+DIM_SCALE_TOL = 0.04       # a pair within this of a standard scale counts
+DIM_SCALE_MIN_PAIRS = 2
+DIM_SCALE_DISAGREE = 0.10  # the note is wrong for this drawing past this
+
+
+def dimension_strings(page):
+    """[(feet, cx, cy, horizontal)] for every dimension string on the page."""
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b.get("type") != 0:
+            continue
+        for l in b["lines"]:
+            t = "".join(s["text"] for s in l["spans"]).strip()
+            m = DIM_TEXT_RE.match(t)
+            if not m:
+                continue
+            v = int(m.group(1)) + (int(m.group(2)) if m.group(2) else 0) / 12 + ((int(m.group(3)) / int(m.group(4))) if m.group(3) else 0) / 12
+            if v < 1:
+                continue
+            x0, y0, x1, y1 = l["bbox"]
+            out.append((v, (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) >= (y1 - y0)))
+    return out
+
+
+def dimension_scale(dims, rect=None):
+    """(in_per_ft, pairs) from the dimension strings inside rect: the mode of
+    the consecutive-pair estimates that land on a standard scale."""
+    ds = [d for d in dims if rect is None or rect.contains(pymupdf.Point(d[1], d[2]))]
+    votes = collections.Counter()
+    for horiz in (True, False):
+        rows = collections.defaultdict(list)
+        for v, x, y, h in ds:
+            if h == horiz:
+                rows[round((y if horiz else x) / 4)].append((x if horiz else y, v))
+        for items in rows.values():
+            items.sort()
+            for (c1, v1), (c2, v2) in zip(items, items[1:]):
+                d = c2 - c1
+                if d <= 0:
+                    continue
+                ppf = d / ((v1 + v2) / 2)
+                std = min(STD_IN_PER_FT, key=lambda s: abs(s * 72 - ppf))
+                if abs(std * 72 - ppf) / (std * 72) <= DIM_SCALE_TOL:
+                    votes[std] += 1
+    if not votes:
+        return None, 0
+    std, n = votes.most_common(1)[0]
+    return std, n
+
+
+def verify_scale_regions(page, regions):
+    """Give every drawing whose dimensions read a different scale than its
+    region's note its own region.  Returns (regions, [notes])."""
+    if not regions:
+        return regions, []
+    dims = dimension_strings(page)
+    if not dims:
+        return regions, []
+    notes, out = [], list(regions)
+    for box in drawing_clusters(page):
+        rect, ppf = region_for(regions, ((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2))
+        if not ppf:
+            continue
+        std, n = dimension_scale(dims, box)
+        if std is None or n < DIM_SCALE_MIN_PAIRS:
+            continue
+        measured = std * 72
+        if abs(measured - ppf) / ppf > DIM_SCALE_DISAGREE:
+            out.insert(0, (pymupdf.Rect(box), measured))
+            notes.append({"box": tuple(round(v) for v in box), "note_ppf": ppf, "ppf": measured, "pairs": n})
+    # smallest region containing a point wins in region_for: the drawing's
+    # own box sits inside the sheet-wide note region
+    return out, notes
 
 
 # ── chains ────────────────────────────────────────────────────────────

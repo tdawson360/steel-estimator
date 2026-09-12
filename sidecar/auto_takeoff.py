@@ -288,7 +288,10 @@ class Scale:
         {ppf: measure xref} for the annotations to reference."""
         H = page.rect.height
         refs, out = [], {}
-        for rect, ppf in regions:
+        # a reader uses the LAST viewport in /VP that contains a point (Revu:
+        # the newest wins), so the sheet-wide window goes first and each
+        # detail's own window after it
+        for rect, ppf in sorted(regions, key=lambda rp: -rp[0].get_area()):
             mx = self.measure_xref(ppf)
             out[ppf] = mx
             vp = self.doc.get_new_xref()
@@ -505,10 +508,16 @@ def run(args):
                 number = ocr.ocr_sheet_number(page, title_block_clip(page))
                 labels[-1] = number or labels[-1]
         regions = lengths.scale_regions(page) if annotate else []
-        ppf = regions[0][1] if regions else None
+        # a drawing whose dimension strings read another scale than the sheet
+        # note (the elevation above the plan on OXY S401) measures at its own
+        scale_checks = []
+        if regions:
+            regions, scale_checks = lengths.verify_scale_regions(page, regions)
+        ppf = max(regions, key=lambda rp: rp[0].get_area())[1] if regions else None   # the sheet-wide scale
         rec = {"page": pno + 1, "sheet": number or "?", "title": title, "kind": kind,
                "chars": chars, "hits": len(found), "annotated": annotate, "source": source,
-               "scale": "; ".join(sorted({scale_text(p) for _, p in regions})) if regions else ""}
+               "scale": "; ".join(sorted({scale_text(p) for _, p in regions})) if regions else "",
+               "scale_check": scale_checks}
         sheets.append(rec)
         if not annotate:
             continue
@@ -932,6 +941,13 @@ def write_report(out, src, pname, tname, sheets, hits, exceptions, weights):
             src += f" + {s['raster']} raster strokes"
         lines.append(f"| {s['page']} | {s['sheet']} | {s['kind']} | {s['title']} | {s['scale']} | "
                      f"{'yes' if s['chars'] else 'NO TEXT'} | {s['hits']} | {src} | {'yes' if s['annotated'] else ''} |")
+    checks = [(s["sheet"], c) for s in sheets for c in (s.get("scale_check") or [])]
+    if checks:
+        lines += ["", "**Scale verified from the dimension strings** (Todd, 2026-09-12: the elevation above a plan can "
+                  "be at another scale than the sheet note; two dimension strings in a row are (a + b) / 2 apart): "
+                  "these drawings measured at their own scale.", "", "| Sheet | Drawing box (pt) | Sheet note | Dimensions read | Pairs |", "|---|---|---|---|---|"]
+        for sheet, c in checks:
+            lines.append(f"| {sheet} | {c['box']} | {scale_text(c['note_ppf'])} | {scale_text(c['ppf'])} | {c['pairs']} |")
     skipped = sum(s.get("existing", 0) for s in sheets)
     if skipped:
         lines += ["", f"Existing members skipped (EX. / (E) / EXISTING labels): {skipped} - "
