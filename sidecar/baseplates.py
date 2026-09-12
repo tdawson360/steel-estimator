@@ -251,7 +251,8 @@ def rod_label(spec):
         family, csv_name, proj = f"F1554 Gr{grade}", "f1554-anchor-rods.csv", ROD_PROJECTION_IN
     else:
         return None
-    need = (spec.get("embed_in") or 12.0) + (spec.get("thick_in") or 1.0) + proj
+    # a schedule states the rod length outright; a detail gives embedment + plate + projection
+    need = spec.get("rod_len_in") or ((spec.get("embed_in") or 12.0) + (spec.get("thick_in") or 1.0) + proj)
     lengths = _seed_lengths(csv_name, dia)
     if family.startswith("F1554"):
         lengths = [(L, s) for L, s in lengths] or [(12.0, "12"), (18.0, "18"), (24.0, "24"), (36.0, "36")]

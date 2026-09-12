@@ -40,6 +40,7 @@ import keynotes                   # noqa: E402  (run() has a local named columns
 import typicals                   # noqa: E402  (run() has a local named columns)
 import slopes                     # noqa: E402
 import prepare                    # noqa: E402
+import schedules                  # noqa: E402
 import lengths                                  # noqa: E402
 import shapes                                   # noqa: E402
 from revu_profile import (column_data, install_columns, load_profile,      # noqa: E402
@@ -445,7 +446,7 @@ def run(args):
         return re.match(r"[A-Z]*", n).group(0)[-1:]
     plan_pages = [i for i, (n, t, k) in enumerate(infos) if k == "plan" and disc(n) == "S"]
     other_s = [i for i, (n, t, k) in enumerate(infos) if k != "plan" and disc(n) == "S"]
-    col_schedule, col_blocks = column_step.column_schedule(doc, plan_pages)
+    col_schedule, col_blocks = column_step.column_schedule(doc, plan_pages + other_s)   # S302-style schedule sheets too
     loc_schedules = column_step.location_schedule(doc, plan_pages + other_s)
     loc_schedule = {}
     for sch in loc_schedules.values():
@@ -457,6 +458,8 @@ def run(args):
     base_details = baseplates.find_details(doc, plan_pages + other_s, {i: n for i, (n, t, k) in enumerate(infos)})
     base_spec = baseplates.choose(base_details)
     bp_specs = baseplates.bp_details(doc, other_s + plan_pages)      # BP-5B style designations
+    # a BASE PLATE SCHEDULE table (OXY S302) is the better source for its tags
+    bp_specs.update(schedules.base_plate_schedule(doc, other_s + plan_pages, {i: n for i, (n, t, k) in enumerate(infos)}))
     col_marks = 0
     deck_polys = {}
     x_units = {}            # {page: n} braced units counted from X symbols on a plan

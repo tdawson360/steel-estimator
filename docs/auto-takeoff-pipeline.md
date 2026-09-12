@@ -280,6 +280,23 @@ improvement loop are never prepared. (3) scope highlights - the boxes round scop
 illegible in schedules and beside other text; scope items are now Revu Highlight annotations in a
 pale tint of the kind colour (`highlight_tint`, multiply blend keeps the words readable).
 
+**Positional schedules (2026-09-12, `sidecar/schedules.py`, Todd: why no base plates on OXY?).**
+OXY S302 "COLUMN SCHEDULE & DETAILS" is a real table (MARK | COLUMN TYPE | BASEPLATE TYPE |
+BASEPLATE EL.) plus a BASE PLATE SCHEDULE (MARK | TYPE | B | N | tp | QUANTITY | DIAMETER |
+PROJECTION | LENGTH | W); the text layer reads such tables column by column, so the line-pair
+reader in `columns.column_schedule` found no mark/size pairs, and the sheet was classed "section"
+(DETAILS beats SCHEDULE) so it was never scanned. `schedules.tables` finds each MARK header,
+builds the columns from the header words (stacked lines merge by x-overlap, same-line words by
+word spacing, the next table starts beyond a 220 pt gap), rows from the MARK cells' y, cells by
+the nearest header column. `column_schedule` merges the positional marks and keeps mark -> BP tag
+(`SCHEDULE_BP`); `base_plate_schedule` yields parse_spec-shaped specs (plate B x N x tp, rods
+qty / dia / length / projection -> embed, weld, F1554 grade from the sheet notes) merged into
+`bp_specs`; `rod_label` takes a stated rod length over embed + plate + projection. OXY S201: 76
+columns (5 W12x45 / 33 W14x283 / 38 HSS8x8x5/16), plates PL3/4x20, PL2x28, PL1x16 nested, rods
+1" F1554 Gr55 x 24" x168 and 1-1/2" x132. Heights stay count-only there (no elevation notes on
+S201 / S203, schedule says VARIES). Marks land on the C3/F2 tag text at 1/20" scale (the 8 in
+column symbol is 2.4 pt).
+
 **End alignment from the OXY training pair (2026-09-11, first turn of the improvement loop).**
 Todd's corrections on the OXY Hanger frame elevations (S401-S407, 165 re-drawn members) showed
 the tool on the right line (median sideways 0.03 ft) but overshooting the ends (median end shift

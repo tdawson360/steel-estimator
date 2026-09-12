@@ -27,6 +27,7 @@ OTHER_SHEET_PENALTY_FT = 10.0   # a note on another plan sheet at the same spot 
 MIN_HEIGHT_FT, MAX_HEIGHT_FT = 6.0, 80.0
 
 MARK_RE = re.compile(r"^[A-Z]{1,2}\d{1,2}[A-Z]?$")
+SCHEDULE_BP = {}      # {column mark: base plate tag} from the last column_schedule() call
 BP_TAG_RE = re.compile(r"\bBP-?\d+[A-Z]*\b", re.I)
 COLUMN_LABEL_RE = re.compile(r"\b(COL(?:UMN|S|\.)?|POST)\b", re.I)
 # an elevation is named as such; a bare "MEZZANINE 60'-9"" is a plan dimension
@@ -108,6 +109,14 @@ def column_schedule(doc, pages=None):
                 for _, r in rows:
                     box |= r
                 blocks.setdefault(pno, []).append(box)
+    # a real table (MARK column beside COLUMN TYPE, BASEPLATE TYPE columns) reads
+    # column by column in the text layer: positional parse (OXY S302, 2026-09-12)
+    import schedules
+    pos_marks, bp_of = schedules.column_schedule(doc, list(pages) if pages is not None else list(range(doc.page_count)))
+    for mk, v in pos_marks.items():
+        marks.setdefault(mk, v)
+    SCHEDULE_BP.clear()
+    SCHEDULE_BP.update(bp_of)
     return marks, blocks
 
 
@@ -415,7 +424,8 @@ def columns_on_page(page, pno, sheet, callouts, chains, ppf, schedule, schedule_
                     claimed.add((round(x), round(y)))
                 columns.append({"raw": raw, "fam": fam, "dims": dims, "key": key, "conf": 1.0, "note": "",
                                 "bbox": r, "angle": 0, "line": f"{t} = {raw} (column schedule)",
-                                "column": True, "col_mark": t, "at": (x, y), "on_symbol": bool(sym)})
+                                "column": True, "col_mark": t, "at": (x, y), "on_symbol": bool(sym),
+                                "bp_tag": SCHEDULE_BP.get(t)})
     # 1b. drawn column symbols of a scheduled size that no mark claimed: a
     # column the plan shows but never bubbled (or a bubble the text layer
     # lost).  Counted as that size with a CHECK note.  Only on a sheet that
