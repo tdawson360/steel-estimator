@@ -682,6 +682,9 @@ def run(args):
             deck_polys[pno] = deck.plan_footprints(page, regions, chains,
                                                    lambda r: lengths.region_for(regions, ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))[1])
         for h in found:
+            if h.get("dup"):
+                rec["dup_labels"] = rec.get("dup_labels", 0) + 1
+                continue                              # the same label twice on one line: one member
             row = {**rec, **h, "conn_spec": conn_spec}
             base = {"Item_Number": args.item, "Item_Description": args.desc, "Drawing_Ref": number}
             if not h["key"]:

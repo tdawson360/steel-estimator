@@ -280,6 +280,32 @@ improvement loop are never prepared. (3) scope highlights - the boxes round scop
 illegible in schedules and beside other text; scope items are now Revu Highlight annotations in a
 pale tint of the kind colour (`highlight_tint`, multiply blend keeps the words readable).
 
+**End alignment from the OXY training pair (2026-09-11, first turn of the improvement loop).**
+Todd's corrections on the OXY Hanger frame elevations (S401-S407, 165 re-drawn members) showed
+the tool on the right line (median sideways 0.03 ft) but overshooting the ends (median end shift
+1.09 ft, 77 of 165 within 1 ft). Causes and rules, all in `lengths.py`: (1) the "too short to cut"
+threshold was `90 pt x page_dim/240` = 90 ft on a 42 x 30 sheet -> `MIN_CUTTER_FT` 10 ft on ELEVATIONS only (with the
+30%-of-own-line test capped at 30 ft); plans keep `PLAN_CUTTER_FT` 90 ft, the accidental value they were
+tuned on - at 10 ft short unlabelled strokes cut Veterans S-202 beams (52% -> 34%, found by bisect); (2) the engineer's existing structure is heavy unlabelled
+black lines (`HEAVY_RATIO` 2x the member's stroke, >= 10 ft): such a line cuts the member even when
+it only butts into it (column top under a girt, `HEAVY_TOUCH_PT` 16 pt so a top a flange depth
+short still meets the girt line drawn at the top flange) and ranks with labelled members as an end
+target; (3) side-by-side identical labels ("W14X82 W14X82" stacked on one column) are one label
+(`_merge_duplicate_labels`, the second is `dup` and writes nothing) - they had split a 22 ft
+column into two 11 ft halves; (4) elevation mode: a beam or girt stops at a column face = a plain
+vertical stroke >= 8 ft with its twin flange line 0.4-2.5 ft away (a lone tall stroke is a
+dimension witness line, which cut W18x46s 1.3 ft short until the twin test); a column stops at a
+sheet-spanning horizontal datum only when its line runs past it by <= 10 ft into nothing (girt
+row lines it passes through on the way to a real support never cut); grid lines never outrank a
+nearer drawn line as a snap target; a plain storey-tall stroke is a valid snap target; (5) a line
+the drawn end already touches (`TOUCH_PT` 8 pt) is the end - the snap used to skip it and run on to
+a labelled member 4 ft beyond. Loop result (fresh measure vs Todd's corrected copy, compare.py):
+within 1 ft 77/165 -> 149/190, within 2 ft 80 -> 161, both ends within 6 in 60 -> 124, median end
+shift 1.09 -> 0.28 ft, members found 73 -> 75%. Regression after: IAH100 74 -> 75% (S-41000 braced frames 45 -> 55%), MKT 80 -> 85%, Veterans 55% held (S-602 47 -> 65%). Left: W14x82 ends ~0.5 ft long (face vs centre),
+W14x68 columns 1-3 ft, 11 girt ends still > 3 ft, and the 82 members with no tool markup nearby.
+Harness: `scratchpad/oxy_loop.sh <tag>` re-measures set 8 and compares; `oxy_ends.py` histograms
+the per-end shifts by size.
+
 **Scoping vocabulary tuned 2026-09-08 (Todd's review of every category on the artifact):**
 dropped for scoping, kept for measuring (`scope=False`): headed studs, anchor bolts, high-strength
 bolts, moment / shear connections, welding, document status ("only needed when measuring is

@@ -615,13 +615,18 @@ def _seg_x(a0, a1, b0, b1):
     return ta, tb
 
 
+HEAVY_TOUCH_PT = 16.0   # pt: a heavy line ending this close to the member still meets it
+HEAVY_RATIO = 2.0        # an unlabelled line this many times the member's stroke width is existing structure
+
+
 def crossings(chain, chains):
     """[(s, other, through)] for every chain meeting this one."""
     out = []
-    bx0 = min(x for x, _ in chain.pts) - 6
-    bx1 = max(x for x, _ in chain.pts) + 6
-    by0 = min(y for _, y in chain.pts) - 6
-    by1 = max(y for _, y in chain.pts) + 6
+    m = HEAVY_TOUCH_PT                      # the widest tolerance any chain gets below
+    bx0 = min(x for x, _ in chain.pts) - m
+    bx1 = max(x for x, _ in chain.pts) + m
+    by0 = min(y for _, y in chain.pts) - m
+    by1 = max(y for _, y in chain.pts) + m
     for o in chains:
         if o is chain:
             continue
@@ -633,6 +638,10 @@ def crossings(chain, chains):
             La = math.hypot(a1[0] - a0[0], a1[1] - a0[1])
             if La == 0:
                 continue
+            # a heavy unlabelled line (existing structure) that stops a flange
+            # depth short of this line still meets it: a column top under a
+            # girt drawn at the top flange (OXY, 2026-09-11)
+            tol_b = HEAVY_TOUCH_PT if (chain.width > 0 and o.width >= max(1.0, HEAVY_RATIO * chain.width)) else 6.0
             for j, b0, b1 in o.segments():
                 r = _seg_x(a0, a1, b0, b1)
                 if r is None:
@@ -641,7 +650,7 @@ def crossings(chain, chains):
                 Lb = math.hypot(b1[0] - b0[0], b1[1] - b0[1])
                 if ta < -6 / La or ta > 1 + 6 / La:
                     continue
-                if tb < -6 / Lb or tb > 1 + 6 / Lb:
+                if tb < -tol_b / Lb or tb > 1 + tol_b / Lb:
                     continue
                 s = chain.cum[i] + max(0.0, min(1.0, ta)) * La
                 # how far the other chain extends past this point, either side
@@ -664,7 +673,7 @@ EXTEND_FT = 6.0     # ft: how far a free member end may reach out to the line it
 # an X-brace is not cut where its twin crosses it.
 ELEVATION_MODE = False
 ELEV_TARGET_FT = 8.0   # ft: an unlabelled line must be this long to stop a brace end on an elevation
-MIN_CUTTER = 90.0   # pt at 1/8" scale (10 ft): an unlabelled stroke shorter than this cannot cut a member
+# (MIN_CUTTER used to be 90 pt scaled by page size, which came to 90 ft on a 42 x 30 sheet: see MIN_CUTTER_FT)
 
 
 def ray_hits(p, u, reach, chains, exclude):
@@ -706,28 +715,45 @@ def snap_end(chain, s_end, outward, chains, own_weight, reach_label, extend, pag
     L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
     u = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
     best = None                                       # (priority, dist, other, sb)
+    touching = None                                   # a qualifying line the drawn end already sits on
+    ppf = reach_label / 30.0
     for dist, other, sb in ray_hits(p, u, extend, chains, chain):
-        if dist < 0.5:
-            continue
         w = local_weight(other, sb, reach_label)
         if w is not None:
             if w < own_weight - 1e-6:
                 continue
             pri = 0
+        elif _heavy(chain, other) and other.length >= MIN_CUTTER_FT * ppf:
+            pri = 0                                   # existing structure drawn heavy: as good as a labelled member
         elif page_dim and other.length > 0.6 * page_dim:
-            pri = 1
+            # a grid line; on an elevation it never outranks a nearer drawn line
+            pri = 2 if ELEVATION_MODE else 1
         elif other.pieces > 1 or other.width >= 0.5 * max(chain.width, 0.01):
             pri = 2
-            if ELEVATION_MODE and other.length < ELEV_TARGET_FT * reach_label / 30.0:
+            if ELEVATION_MODE and other.length < ELEV_TARGET_FT * ppf:
                 continue                              # gusset / work-point outline, not a chord
+        elif ELEVATION_MODE and other.length >= ELEV_TARGET_FT * ppf:
+            pri = 2                                   # a plain storey-tall stroke on an elevation: a column face
         else:
+            continue
+        # the drawn end already touches a line it can frame into: that is the
+        # end, however good a line farther out looks (OXY girts ran 4 ft past
+        # the column they stopped at to reach a labelled member beyond)
+        if dist < TOUCH_PT:
+            if touching is None or dist < touching[1]:
+                touching = (pri, dist, other, sb)
             continue
         if best is None or (pri, dist) < best[:2]:
             best = (pri, dist, other, sb)
+    if touching is not None:
+        best = touching
     chain.last_snap = None if best is None else (best[0], best[2], best[3])
     if best is None:
         return s_end
     return s_end + best[1] if outward > 0 else s_end - best[1]
+
+
+TOUCH_PT = 8.0    # pt: a line this close to the drawn end is the line the end sits on
 
 
 def direction_at(chain, s):
@@ -774,35 +800,94 @@ def end_target(other, sb, reach, page_dim, pri=None, own=None, s_own=None):
     return out
 
 
+MIN_CUTTER_FT = 10.0     # ft: an unlabelled stroke shorter than this cannot cut a member
+PLAN_CUTTER_FT = 90.0    # ft: the same on a plan (the accidental value the plan benchmarks were tuned on)
+CUTTER_REL_CAP_FT = 30.0  # ft: the "30% of the member's own line" test never asks for more than this
+
+
+def _heavy(chain, other):
+    return chain.width > 0 and other.width >= max(1.0, HEAVY_RATIO * chain.width)
+
+
+def _chain_dir(chain):
+    (x0, y0), (x1, y1) = chain.pts[0], chain.pts[-1]
+    L = math.hypot(x1 - x0, y1 - y0) or 1.0
+    return (x1 - x0) / L, (y1 - y0) / L
+
+
 def own_weight_cuts(chain, s_anchor, xs, own_weight, reach, page_dim=None, own_key=None):
     """A through-crossing cuts the member when the crossing line is, at that
     point, an equal-or-heavier member, or an unlabelled drawn (multi-piece)
     line.  Lighter members frame in; plain single strokes (grid, dimension,
     wall lines) are ignored, as are sheet-spanning lines (grids) and lines
-    drawn much thinner than the member itself."""
+    drawn much thinner than the member itself.
+
+    OXY training pair (Todd, 2026-09-11): the engineer's existing structure
+    is drawn as heavy unlabelled black lines.  Such a line cuts the member
+    even when it only butts into it (a column top under a girt), and on an
+    elevation a near-vertical member (a column) stops at the sheet-spanning
+    horizontal datum lines (floor, roof) it runs past."""
     lo, hi = 0.0, chain.length
+    ppf = reach / 30.0
+    # plans keep the long threshold IAH100 / Veterans were tuned on (short unlabelled
+    # multi-piece strokes cut beams that run past them at 10 ft: Veterans S-202 52% -> 34%);
+    # elevations use the short one so a column can cut the girt it stands under
+    if ELEVATION_MODE:
+        min_len = max(MIN_CUTTER_FT * ppf, min(0.3 * chain.length, CUTTER_REL_CAP_FT * ppf))
+    else:
+        min_len = max(PLAN_CUTTER_FT * ppf, 0.3 * chain.length)
+    ux, uy = _chain_dir(chain)
+    vertical = abs(uy) > 0.94                          # within ~20 deg of vertical
+    horizontal = abs(uy) < 0.35
+    datums = []
     for s, other, through, sb in xs:
-        if not through:
-            continue
-        if page_dim and other.length > 0.6 * page_dim:
-            continue                                   # grid / section line
         w = local_weight(other, sb, reach)
+        heavy = w is None and _heavy(chain, other) and other.length >= MIN_CUTTER_FT * ppf
+        sheet = bool(page_dim and other.length > 0.6 * page_dim)
+        ox, oy = _chain_dir(other)
+        if sheet:
+            # a sheet-spanning horizontal line on an elevation may be the floor
+            # or roof datum a column stops at: decided after the real cuts
+            if ELEVATION_MODE and vertical and abs(oy) < 0.2 and other.pieces >= 2 and through and w is None:
+                datums.append(s)
+            continue                                   # grids never cut anything
         if ELEVATION_MODE and own_key and any(abs(cs - sb) <= reach and k == own_key for cs, _, k, _ in other.callouts):
             continue                                   # an X-brace crossing its twin
-        if w is None:
+        # on an elevation a beam or girt stops at the column face: a plain
+        # vertical stroke a storey tall crossing a horizontal member, with its
+        # twin flange line a column depth away (a lone tall stroke is a
+        # dimension witness line: OXY S407 W18x46, cut 1.3 ft short)
+        face = (ELEVATION_MODE and w is None and horizontal and abs(oy) > 0.94
+                and other.length >= ELEV_TARGET_FT * ppf
+                and any(o2 is not other and abs(_chain_dir(o2)[1]) > 0.94 and o2.length >= ELEV_TARGET_FT * ppf
+                        and 0.4 * ppf <= abs(s2 - s) <= 2.5 * ppf for s2, o2, _, _ in xs))
+        if not (through or heavy or face):             # a column under a beam only touches it
+            continue
+        if w is None and not heavy and not face:
             if other.pieces < 2:
                 continue
             if chain.width > 0 and other.width < 0.5 * chain.width:
                 continue                               # hidden/grid work, not a member
-            if other.length < max(MIN_CUTTER * (page_dim / 240 if page_dim else 9), 0.3 * chain.length):
+            if other.length < min_len:
                 continue                               # short attachment (curb angle, opening frame), not a support
-        elif w < own_weight - 1e-6:
+        elif w is not None and w < own_weight - 1e-6:
             continue
         if s < s_anchor - CUT_MARGIN:
             lo = max(lo, s)
         elif s > s_anchor + CUT_MARGIN:
             hi = min(hi, s)
+    # datum lines only bound a column whose drawn line runs a little past
+    # them into nothing (a pier below the floor line); a girt row line the
+    # column passes through on its way to a real support never cuts
+    for s in datums:
+        if s < s_anchor - CUT_MARGIN and lo == 0.0 and s <= DATUM_RUNOUT_FT * ppf:
+            lo = s
+        elif s > s_anchor + CUT_MARGIN and hi == chain.length and chain.length - s <= DATUM_RUNOUT_FT * ppf:
+            hi = s
     return lo, hi
+
+
+DATUM_RUNOUT_FT = 10.0   # ft: a column line past the floor / roof datum by more than this has a real support beyond
 
 
 # ── main entry ────────────────────────────────────────────────────────
@@ -848,11 +933,45 @@ def measure(page, callouts, weights, ppf, extra_segments=None, chains=None):
         c["second"] = second
         if ch is not None:
             ch.callouts.append((s, weights.get(c.get("key"), 0.0), c.get("key"), c))
+    _merge_duplicate_labels(callouts, ppf or 9)
     resolve_conflicts(callouts, weights, ppf or 9)
     _extents(page, callouts, chains, weights, ppf)
     _riders(callouts, weights, ppf or 9)
     _z_axis(callouts, tips, paths, ppf)
     return callouts
+
+
+DUP_GAP_PT = 10.0    # two identical labels closer than this along one line are one label
+
+
+def _merge_duplicate_labels(callouts, ppf):
+    """"W14X82 W14X82" side by side on one column line (OXY frame
+    elevations, Todd 2026-09-11): the drafter's duplicate, not two members.
+    Each label owns the stretch nearest it, so the pair split one 22 ft
+    column into two 11 ft halves; the estimator kept one at full length.
+    The second label drops out of the measurement (flagged `dup`)."""
+    labelled = [c for c in callouts if c.get("key") and not c.get("dup")]
+    for i, a in enumerate(labelled):
+        if a.get("dup"):
+            continue
+        ra = pymupdf.Rect(a["bbox"])
+        for b in labelled[i + 1:]:
+            if b.get("dup") or a.get("key") != b.get("key"):
+                continue
+            rb = pymupdf.Rect(b["bbox"])
+            gap = max(rb.x0 - ra.x1, ra.x0 - rb.x1, rb.y0 - ra.y1, ra.y0 - rb.y1)
+            if gap > DUP_GAP_PT:
+                continue                              # not touching
+            # end to end along the same direction (stacked labels), not side by side
+            along_x = abs(rb.x0 - ra.x1) <= DUP_GAP_PT or abs(ra.x0 - rb.x1) <= DUP_GAP_PT
+            along_y = abs(rb.y0 - ra.y1) <= DUP_GAP_PT or abs(ra.y0 - rb.y1) <= DUP_GAP_PT
+            if not (along_x or along_y):
+                continue
+            b["dup"] = True
+            ch = b.get("chain")
+            if ch is not None:
+                ch.callouts = [t for t in ch.callouts if t[3] is not b]
+            b["chain"], b["anchor_note"] = None, f"duplicate of the {a.get('key')} label beside it"
 
 
 Z_AXIS_DEG = 45.0   # members standing up out of the plan are drawn at this angle from their origin
