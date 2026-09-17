@@ -10,6 +10,11 @@ function EstimatorWithParams() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const projectId = searchParams.get('projectId')
+  // ?takeoffSet=S&takeoffJob=J: arriving from the Drawings page with a takeoff
+  // to import; the estimator opens its import preview once the project loads
+  const takeoffSet = parseInt(searchParams.get('takeoffSet') || '', 10)
+  const takeoffJob = parseInt(searchParams.get('takeoffJob') || '', 10)
+  const takeoffSource = takeoffSet > 0 && takeoffJob > 0 ? { setId: takeoffSet, jobId: takeoffJob } : null
 
   if (!projectId) {
     if (typeof window !== 'undefined') {
@@ -30,6 +35,7 @@ function EstimatorWithParams() {
         userRole={userRole}
         userName={userName}
         userId={userId}
+        takeoffSource={takeoffSource}
       />
     </div>
   )

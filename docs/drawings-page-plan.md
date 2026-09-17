@@ -161,6 +161,25 @@ Project creation via chase must set `Project.version` like the normal POST does.
    (Roughly a week.)
 2. **Chase and Measure** — chase flow, project Drawings tab, MEASURE job with options,
    markup upload, bid-board indicators. (Roughly a week.)
+   **Built 2026-09-17 (Todd: "pivot right into the dashboard, a button perhaps"):**
+   - **Chase** on the set page and each Prospects card: prompts for the project name
+     (prefilled with the set name), `POST /api/drawings/[id]/chase` creates a DRAFT project
+     carrying only that name (same starter item/recap rows as `POST /api/projects`,
+     handling on), links the set, `prospectStatus` CHASE, opens the estimate. A chased set
+     stays in Prospects with a "chasing · name" chip and an **Open estimate** button.
+   - **Import into estimate** (or **Chase & import** when the set has no project) on every
+     finished MEASURE (takeoff.pdf) and COMPARE (corrected.pdf) job:
+     `POST /api/drawings/[id]/jobs/[jobId]/import` runs `sidecar/markups_csv.py` — the PDF's
+     Markups List as the import CSV, custom columns in /BSIColumnData order plus Subject,
+     Page Label, Page Index, Comments, Author — through `lib/import-takeoff-server.js`
+     (`importTakeoffText`, shared with `/api/import-csv`). The estimator opens with
+     `?takeoffSet=S&takeoffJob=J`, strips the params, switches to the Estimate tab and shows
+     the ordinary import preview; **Import** merges additively (matching lines take the
+     takeoff quantity, new lines are added, nothing removed) exactly like a CSV upload. Rows
+     with neither Item_Number nor Shape_Size are skipped; rows with an item but no size (scope
+     rectangles) import as blank members, as Revu's own export would.
+   - Still open: a Drawings tab inside the project, bid-board indicators, Measure options
+     beyond lengths.
 3. **Operate** — backup mirror, retention action, cancel, admin settings (Python path,
    OCR default), benchmark button on a set that has a markup copy.
 

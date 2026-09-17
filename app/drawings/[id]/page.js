@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Loader2, Download, ChevronDown, ChevronRight, XCircle, Upload } from 'lucide-react';
+import { Loader2, Download, ChevronDown, ChevronRight, XCircle, Upload, FileInput } from 'lucide-react';
 import AppHeader from '../../../components/AppHeader';
 import { apiFetch } from '../../../lib/api-client';
 
@@ -146,7 +146,9 @@ function CorrectedUpload({ set, job, onChange }) {
   );
 }
 
-function JobRow({ set, job, canManage, onChange }) {
+function JobRow({ set, job, canManage, onChange, onImport }) {
+  // a finished auto takeoff or corrected copy can go straight into the estimate
+  const importable = job.status === 'DONE' && (job.kind === 'MEASURE' || job.kind === 'COMPARE');
   const [open, setOpen] = useState(false);
   const active = job.status === 'QUEUED' || job.status === 'RUNNING';
   const cancel = async () => {
@@ -168,6 +170,14 @@ function JobRow({ set, job, canManage, onChange }) {
         ))}
         {active && canManage && <button onClick={cancel} className="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"><XCircle size={12} />Cancel</button>}
         {job.kind === 'MEASURE' && job.status === 'DONE' && canManage && <CorrectedUpload set={set} job={job} onChange={onChange} />}
+        {importable && canManage && (
+          <button onClick={() => onImport(job)} title={job.kind === 'COMPARE'
+            ? 'Read the rows of your corrected takeoff into the estimate (creates the estimate first if this set has none)'
+            : 'Read the auto takeoff rows into the estimate as a first pass (creates the estimate first if this set has none); correct in Revu and import again later'}
+            className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1">
+            <FileInput size={12} />{set.project ? 'Import into estimate' : 'Chase & import'}
+          </button>
+        )}
       </div>
       {job.kind === 'COMPARE' && job.status === 'DONE' && <CompareSummary s={job.summary} />}
       {open && (
@@ -205,6 +215,28 @@ export default function DrawingSetPage() {
   const pass = async (p) => {
     try { await apiFetch(`/api/drawings/${id}/pass`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass: p }) }); load(); } catch (e) { setErr(e.message); }
   };
+  // Chase: a DRAFT estimate named here (nothing else filled in), linked to
+  // the set. Returns the project id, or null when the estimator cancelled.
+  const chase = async () => {
+    if (set?.project) return set.project.id;
+    const name = window.prompt('Project name for the new estimate:', set?.name || '');
+    if (name == null) return null;
+    try {
+      const r = await apiFetch(`/api/drawings/${id}/chase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName: name }) });
+      await load();
+      return r.projectId;
+    } catch (e) { setErr(e.message); return null; }
+  };
+  const chaseAndOpen = async () => {
+    const projectId = await chase();
+    if (projectId) window.location.href = `/?projectId=${projectId}`;
+  };
+  // Import a takeoff's rows into the estimate: chase first when the set has
+  // no project yet, then the estimator opens with its import preview.
+  const importIntoEstimate = async (job) => {
+    const projectId = await chase();
+    if (projectId) window.location.href = `/?projectId=${projectId}&takeoffSet=${id}&takeoffJob=${job.id}`;
+  };
 
   const scopeJob = set?.jobs?.find(j => j.kind === 'SCOPE' && j.status === 'DONE');
   const activeJob = set?.jobs?.find(j => j.status === 'RUNNING') || set?.jobs?.find(j => j.status === 'QUEUED');
@@ -238,6 +270,11 @@ export default function DrawingSetPage() {
                   </span>
                   <button disabled={busy} onClick={() => runJob('SCOPE')} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Architectural + structural sheets">Re-scope</button>
                   <button disabled={busy} onClick={() => runJob('SCOPE', { allSheets: true })} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50" title="Every discipline, slower">Re-scope entire set</button>
+                  {set.project
+                    ? <a href={`/?projectId=${set.project.id}`} className="px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700" title="The estimate this set belongs to">Open estimate</a>
+                    : set.prospectStatus !== 'DELETED' && set.prospectStatus !== 'PASS' && (
+                      <button onClick={chaseAndOpen} className="px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700" title="Create a draft estimate with this name and open it; nothing else is filled in">Chase</button>
+                    )}
                   {!set.projectId && set.prospectStatus !== 'DELETED' && (set.prospectStatus !== 'PASS'
                     ? <button onClick={() => pass(true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Pass</button>
                     : <button onClick={() => pass(false)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Restore</button>)}
@@ -264,7 +301,7 @@ export default function DrawingSetPage() {
               <h2 className="font-medium p-4 pb-2">Jobs</h2>
               <div className="divide-y divide-gray-200 dark:divide-zinc-800">
                 {set.jobs.length === 0 && <div className="p-4 text-sm text-gray-500">No jobs yet.</div>}
-                {set.jobs.map(j => <JobRow key={j.id} set={set} job={j} canManage={canManage} onChange={load} />)}
+                {set.jobs.map(j => <JobRow key={j.id} set={set} job={j} canManage={canManage} onChange={load} onImport={importIntoEstimate} />)}
               </div>
             </section>
           </>

@@ -38,21 +38,38 @@ def flatten(doc):
 def label_pages(doc):
     """Set page labels from the title blocks where the existing label names
     no sheet.  Returns (pages relabelled, [(page, label)])."""
-    from auto_takeoff import sheet_info          # lazy: auto_takeoff imports this module
+    from auto_takeoff import sheet_info, sheet_number_caption   # lazy: auto_takeoff imports this module
     existing = [(p.get_label() or "").strip() for p in doc]
-    if all(LABEL_NO_RE.match(l) for l in existing if l) and all(existing):
+    # A label that names a sheet is kept, unless the title block's own
+    # "SHEET NO:" cell disagrees: an earlier run labelled the CMH228 sets
+    # with callouts ("W14 - ...") and those files must heal on the next pass.
+    captioned = [sheet_number_caption(p) for p in doc]
+
+    def trusted(i):
+        m = LABEL_NO_RE.match(existing[i]) if existing[i] else None
+        if not m:
+            return False
+        head = re.sub(r"^\s*(?:\[\d+\]\s*)?", "", existing[i]).upper()
+        return not captioned[i] or head.startswith(captioned[i])
+
+    if all(trusted(i) for i in range(len(existing))):
         return 0, []
     entries, done = [], []
     for i, page in enumerate(doc):
-        if existing[i] and LABEL_NO_RE.match(existing[i]):
+        if trusted(i):
             entries.append({"startpage": i, "prefix": existing[i], "style": "", "firstpagenum": 1})
             continue
         # the number comes from the title block; a text-only label ("PECIAL
         # INSPECTIONS": an export that drops the first letter) is the title,
         # repaired against the page's own text when it is a truncation
         number, title, _kind = sheet_info(page, use_label=False)
-        if existing[i]:
-            title = repair_truncation(page, existing[i])
+        old = existing[i]
+        if old.isdigit():                            # a page position, not a name
+            old = ""
+        if old and LABEL_NO_RE.match(old):
+            old = ""                                 # "W14 - NOTES": a wrong number, its title is suspect too
+        if old:
+            title = repair_truncation(page, old)
         if number:
             label = f"{number} - {title}" if title else number
             entries.append({"startpage": i, "prefix": label[:80], "style": "", "firstpagenum": 1})

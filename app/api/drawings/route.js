@@ -29,9 +29,11 @@ export async function GET(request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get('projectId');
+  // Prospects keep a chased set (it now carries a project) until it is passed
+  // or deleted, so the estimator can still get back to its jobs from here.
   const where = projectId
     ? { projectId: parseInt(projectId, 10) }
-    : { projectId: null, prospectStatus: searchParams.get('passed') ? 'PASS' : { notIn: ['PASS', 'DELETED'] } };
+    : { prospectStatus: searchParams.get('passed') ? 'PASS' : { notIn: ['PASS', 'DELETED'] } };
   if (!projectId && !canManageDrawings(user)) {
     return NextResponse.json({ error: 'Prospects are for estimators' }, { status: 403 });
   }

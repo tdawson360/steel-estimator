@@ -47,7 +47,12 @@ from revu_profile import (column_data, install_columns, load_profile,      # noq
                           load_toolkit, pdf_string)
 
 ROOT = Path(__file__).resolve().parent.parent
-SHEET_NO = re.compile(r"^[A-Z]{1,3}-?\d{1,3}(?:\.\d{1,2})?[A-Z]?$")
+# up to five digits: Jacobs-style "S-00100" / "SB-50001" (Todd's CMH228 sets,
+# 2026-09-17, every page came out labelled with a callout like "W14" instead)
+SHEET_NO = re.compile(r"^[A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?[A-Z]?$")
+# the title-block cell that names the sheet number: its value sits right
+# under or beside this caption, whatever font size the block uses
+SHEET_CAPTION = re.compile(r"^(?:(?:SHEET|SHT\.?|DWG\.?|DRAWING)\s*(?:NO\.?|NUMBER|#)\s*:?|(?:SHEET|DWG|DRAWING)\s*:)$")
 # a title block that just says "Parapet Roof Framing" is a plan; "Framing Sections" is not
 KINDS = [("plan", r"\bPLAN|\bFRAMING\s*$"), ("section", r"\bSECTION|\bDETAIL"), ("schedule", r"\bSCHEDULE"),
          ("elevation", r"\bELEVATION"), ("notes", r"\bNOTES\b|\bSPECIFICATIONS?\b")]
@@ -71,13 +76,8 @@ def title_block_clip(page):
     return pymupdf.Rect(r.x0 + r.width * 0.85, r.y0 + r.height * 0.55, r.x1, r.y1)
 
 
-def sheet_info(page, use_label=True):
-    """(sheet_number, title, kind).
-
-    The sheet number is the largest sheet-like token on the page (title
-    blocks print it big, wherever the block sits and however the page is
-    rotated).  The title comes from a Bluebeam page label when one names the
-    sheet, else from the largest plan/section/... line near the number."""
+def _text_lines(page):
+    """[(text, font size, centre x, centre y)] for every text line."""
     lines = []
     for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
@@ -88,8 +88,66 @@ def sheet_info(page, use_label=True):
                 size = max(s["size"] for s in l["spans"])
                 x0, y0, x1, y1 = l["bbox"]
                 lines.append((t, size, (x0 + x1) / 2, (y0 + y1) / 2))
-    number, num_pos, num_size = "", None, 0.0
+    return lines
+
+
+def _captioned_number(lines, page_rect):
+    """The sheet number printed under a "SHEET NO:" style caption, or ("", None).
+
+    Jacobs title blocks (CMH228) print the number at 12 pt beside a 8 pt
+    caption while the drawing's own callouts run larger, so "largest
+    sheet-like token" picked "W14" and "HSS1".  The caption is unambiguous:
+    the nearest sheet-like token below or right of it, within a title-block
+    cell's reach, is the number."""
+    W, H = page_rect.width, page_rect.height
+    reach = max(W, H) * 0.05
+    best = None
     for t, size, x, y in lines:
+        if not SHEET_CAPTION.match(t.upper()):
+            continue
+        # the title block sits on the right or bottom strip; a "SHEET NO."
+        # in the body is a sheet-index column or a legend (KISD, Rothko)
+        if x < W * 0.8 and y < H * 0.8:
+            continue
+        near = []
+        for u, usize, ux, uy in lines:
+            up = u.upper()
+            if not SHEET_NO.match(up) or u.isdigit():
+                continue
+            if usize < size * 0.95:                  # a legend's example number (KISD cover) is smaller than its caption
+                continue
+            dx, dy = ux - x, uy - y
+            if dy < -size or dx < -reach:            # above, or left of the caption
+                continue
+            d = math.hypot(dx, dy)
+            if d <= reach:
+                near.append((d, up, (ux, uy)))
+        if not near or len(near) > 2:                # nothing, or a column of references
+            continue
+        near.sort()
+        if best is None or near[0][0] < best[0]:
+            best = near[0]
+    return (best[1], best[2]) if best else ("", None)
+
+
+def sheet_number_caption(page):
+    """The sheet number named by a title-block caption ("SHEET NO:"), or ""."""
+    return _captioned_number(_text_lines(page), page.rect)[0]
+
+
+def sheet_info(page, use_label=True):
+    """(sheet_number, title, kind).
+
+    The sheet number is the one under a "SHEET NO:" caption when the title
+    block has one, else the largest sheet-like token on the page (title
+    blocks print it big, wherever the block sits and however the page is
+    rotated).  The title comes from a Bluebeam page label when one names the
+    sheet, else from the largest plan/section/... line near the number."""
+    lines = _text_lines(page)
+    number, num_pos = _captioned_number(lines, page.rect)
+    captioned = bool(number)
+    num_size = 0.0
+    for t, size, x, y in lines if not number else []:
         u = t.upper()
         # bubbles ("S3", "C3", "L1") are big too: a sheet number has 2+ digits
         if SHEET_NO.match(u) and not t.isdigit() and len(re.sub(r"\D", "", u)) >= 2 \
@@ -119,7 +177,8 @@ def sheet_info(page, use_label=True):
     lab_u = re.sub(r"^\[\d+\]\s*", "", lab.upper())          # "[1] C1.00 CIVIL SITE ..." (Revu index prefix)
     m = re.match(r"^\s*([A-Z]{1,3}-?\d{1,5}(?:\.\d{1,2})?)\s*[-:]?\s*(.*)$", lab_u)
     if m:
-        number = m.group(1)                                # a labelled set names its sheets reliably
+        if not captioned:                                  # a labelled set names its sheets reliably
+            number = m.group(1)                            # ...unless the title block itself says otherwise
         if m.group(2).strip():
             title = m.group(2).strip()
     elif lab and not lab.isdigit() and re.search(r"[A-Z]{3,}", lab_u):
@@ -480,7 +539,16 @@ def run(args):
         number, title, kind = infos[pno]
         print(f"PROGRESS {pno + 1}/{doc.page_count} {number or ''}", flush=True)
         chars = len(page.get_text().strip())
-        labels.append(number or page.get_label() or str(pno + 1))
+        # the takeoff copy is the one the estimator finishes in Revu, so every
+        # page reads "S-20100 - ROOF FRAMING PLAN" in the Markups List (Todd,
+        # 2026-09-17): the prepared label when it names this sheet, else built here
+        existing = (page.get_label() or "").strip()
+        if number and existing.upper().startswith(number):
+            labels.append(existing)
+        elif number:
+            labels.append(f"{number} - {title}"[:80] if title else number)
+        else:
+            labels.append(existing or str(pno + 1))
         discipline = re.match(r"[A-Z]*", number).group(0)[-1:]      # "LRS2.11" -> "S"
         structural = discipline == "S"
         # Plans with no readable sheet number (stroke-font title blocks) are

@@ -158,6 +158,16 @@ export default function DrawingsPage() {
       load();
     } catch (e) { setErr(e.message); }
   };
+  // Chase: name the estimate (prefilled with the set name), create it as a
+  // DRAFT linked to this set, open it. Nothing else on Project Info is set.
+  const chase = async (set) => {
+    const name = window.prompt('Project name for the new estimate:', set.name || '');
+    if (name == null) return;
+    try {
+      const r = await apiFetch(`/api/drawings/${set.id}/chase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName: name }) });
+      window.location.href = `/?projectId=${r.projectId}`;
+    } catch (e) { setErr(e.message); }
+  };
   const remove = async (set) => {
     if (!window.confirm(`Delete the PDF and all job outputs for "${set.name}"? A stub stays so a re-upload of the same file is recognised.`)) return;
     try {
@@ -212,6 +222,7 @@ export default function DrawingsPage() {
                         <a href={`/drawings/${set.id}`} className="font-medium hover:underline truncate">{set.name}</a>
                         {job && <span className={`text-xs rounded px-1.5 py-0.5 ${JOB_BADGE[job.status] || ''}`}>{job.kind === 'SCOPE' ? 'scope' : 'measure'} {job.status.toLowerCase()}{job.status === 'RUNNING' && job.progress ? ` · ${job.progress}` : ''}</span>}
                         {set.prospectStatus === 'PASS' && <span className="text-xs rounded px-1.5 py-0.5 bg-gray-100 text-gray-500 dark:bg-zinc-800">passed</span>}
+                        {set.project && <span className="text-xs rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" title={set.project.projectName}>chasing · {set.project.projectName || `#${set.project.id}`}</span>}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5">
                         {set.originalName} · {fmtBytes(set.sizeBytes)}{set.pageCount ? ` · ${set.pageCount} pages` : ''} · {set.uploadedBy?.firstName} {set.uploadedBy?.lastName}, {when(set.createdAt)}
@@ -224,7 +235,13 @@ export default function DrawingsPage() {
                         <a href={`/api/drawings/${set.id}/files/scope.pdf?job=${job.id}`} className="px-2.5 py-1 rounded bg-sky-600 text-white hover:bg-sky-700">Scope PDF</a>
                       )}
                       <a href={`/drawings/${set.id}`} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800">Open</a>
-                      {canManage && set.prospectStatus !== 'PASS' && (
+                      {set.project && (
+                        <a href={`/?projectId=${set.project.id}`} className="px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">Open estimate</a>
+                      )}
+                      {canManage && !set.project && set.prospectStatus !== 'PASS' && (
+                        <button onClick={() => chase(set)} className="px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700" title="Create a draft estimate with this name and open it; nothing else is filled in">Chase</button>
+                      )}
+                      {canManage && !set.project && set.prospectStatus !== 'PASS' && (
                         <button onClick={() => pass(set, true)} className="px-2.5 py-1 rounded border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1" title="Not chasing this one"><XCircle size={14} />Pass</button>
                       )}
                       {canManage && set.prospectStatus === 'PASS' && (

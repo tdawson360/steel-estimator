@@ -264,7 +264,7 @@ const fmtWhen = (iso) => {
     : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
 };
 
-const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
+const SteelEstimator = ({ projectId, userRole, userName, userId, takeoffSource = null }) => {
   const [activeTab, setActiveTab] = useState('project');
   const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -1693,9 +1693,12 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
   // ── LOAD ON MOUNT ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (projectId) {
-      handleLoad(projectId);
+      handleLoad(projectId).then(() => {
+        const source = takeoffSourceRef.current;
+        if (source) importTakeoffFromDrawings(source);
+      });
     }
-  }, [projectId, handleLoad]);
+  }, [projectId, handleLoad]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch('/api/dashboard/users')
@@ -2107,32 +2110,70 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         return;
       }
 
-      if (!data.success) {
-        setTakeoffError(data.error || 'Failed to process CSV file');
-        setTakeoffPreview(null);
-      } else {
-        // Run the same size translation the import will perform, so sizes that
-        // would silently become Custom (zero weight, zero cost) are surfaced
-        // in the preview instead of hiding in the imported estimate.
-        const unmatched = new Map(); // size string -> { size, rowCount, locations[] }
-        const walkMembers = (members, itemNumber) => {
-          for (const m of members) {
-            if (m.size && !m.hardware && !translateSizeToAISC(m.size).matched) {
-              const entry = unmatched.get(m.size) || { size: m.size, rowCount: 0, locations: [] };
-              entry.rowCount += 1;
-              const loc = `Item ${itemNumber} / Mark ${m.mark}`;
-              if (!entry.locations.includes(loc)) entry.locations.push(loc);
-              unmatched.set(m.size, entry);
-            }
-            if (m.children?.length) walkMembers(m.children, itemNumber);
-          }
-        };
-        for (const it of data.items || []) walkMembers(it.members || [], it.itemNumber);
-        setTakeoffPreview({ ...data, unmatchedSizes: Array.from(unmatched.values()) });
-        setTakeoffError(null);
-      }
+      showTakeoffPreview(data);
     } catch (err) {
       setTakeoffError('Network error: ' + err.message);
+      setTakeoffPreview(null);
+    } finally {
+      setTakeoffImporting(false);
+      setShowTakeoffModal(true);
+    }
+  };
+
+  // A parsed takeoff (from the CSV route or the Drawings page's import route)
+  // becomes the import preview; the same additive merge runs on Import.
+  const showTakeoffPreview = (data) => {
+    if (!data.success) {
+      setTakeoffError(data.error || 'Failed to process CSV file');
+      setTakeoffPreview(null);
+      return;
+    }
+    // Run the same size translation the import will perform, so sizes that
+    // would silently become Custom (zero weight, zero cost) are surfaced
+    // in the preview instead of hiding in the imported estimate.
+    const unmatched = new Map(); // size string -> { size, rowCount, locations[] }
+    const walkMembers = (members, itemNumber) => {
+      for (const m of members) {
+        if (m.size && !m.hardware && !translateSizeToAISC(m.size).matched) {
+          const entry = unmatched.get(m.size) || { size: m.size, rowCount: 0, locations: [] };
+          entry.rowCount += 1;
+          const loc = `Item ${itemNumber} / Mark ${m.mark}`;
+          if (!entry.locations.includes(loc)) entry.locations.push(loc);
+          unmatched.set(m.size, entry);
+        }
+        if (m.children?.length) walkMembers(m.children, itemNumber);
+      }
+    };
+    for (const it of data.items || []) walkMembers(it.members || [], it.itemNumber);
+    setTakeoffPreview({ ...data, unmatchedSizes: Array.from(unmatched.values()) });
+    setTakeoffError(null);
+  };
+
+  // Opened from the Drawings page with ?takeoffSet=S&takeoffJob=J: the rows
+  // are read out of that job's takeoff PDF server-side (no Revu export), then
+  // reviewed and merged through the ordinary import preview. Once only: the
+  // params come off the URL so a reload does not offer the import again.
+  const takeoffSourceRef = useRef(takeoffSource);
+  const importTakeoffFromDrawings = async (source) => {
+    takeoffSourceRef.current = null;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('takeoffSet');
+      url.searchParams.delete('takeoffJob');
+      window.history.replaceState(null, '', url.toString());
+    } catch { /* cosmetic */ }
+    setActiveTab('estimate');
+    setTakeoffImporting(true);
+    setTakeoffError(null);
+    setTakeoffPreview(null);
+    try {
+      const data = await apiFetch(`/api/drawings/${source.setId}/jobs/${source.jobId}/import`, { method: 'POST' });
+      showTakeoffPreview(data);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) setSessionExpired(true);
+      setTakeoffError(err instanceof SessionExpiredError
+        ? 'Your session has expired — log back in, then import again from the Drawings page.'
+        : (err.message || 'Could not read the takeoff'));
       setTakeoffPreview(null);
     } finally {
       setTakeoffImporting(false);
@@ -7664,11 +7705,20 @@ const SteelEstimator = ({ projectId, userRole, userName, userId }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto m-4">
             <div className="bg-blue-700 text-white p-4 rounded-t-lg flex justify-between items-center">
-              <h3 className="text-lg font-bold">Import Takeoff CSV</h3>
+              <h3 className="text-lg font-bold">{takeoffPreview?.source ? 'Import Takeoff from Drawings' : 'Import Takeoff CSV'}</h3>
               <button onClick={cancelTakeoffImport} className="text-white hover:text-gray-300 text-2xl">&times;</button>
             </div>
 
             <div className="p-6 space-y-4">
+              {takeoffImporting && !takeoffPreview && !takeoffError && (
+                <div className="text-sm text-gray-600 dark:text-gray-300">Reading the takeoff…</div>
+              )}
+              {takeoffPreview?.source && (
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  {takeoffPreview.source.rows} markup rows read from <span className="font-medium">{takeoffPreview.source.kind === 'COMPARE' ? 'your corrected takeoff' : 'the auto takeoff'}</span> ({takeoffPreview.source.file}, job #{takeoffPreview.source.jobId}).
+                  Rows merge into the estimate the same way a CSV import does: matching lines take the takeoff&apos;s quantity, new lines are added, nothing is removed.
+                </div>
+              )}
               {takeoffError && (
                 <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 rounded p-4 flex items-start gap-3">
                   <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />

@@ -318,6 +318,26 @@ columns (5 W12x45 / 33 W14x283 / 38 HSS8x8x5/16), plates PL3/4x20, PL2x28, PL1x1
 S201 / S203, schedule says VARIES). Marks land on the C3/F2 tag text at 1/20" scale (the 8 in
 column symbol is 2.4 pt).
 
+**Sheet numbers under a caption (2026-09-17, Todd: "only 1 of the 17 pages was labeled").**
+The CMH228 (Jacobs) sets print "SHEET NO:" at 8 pt with the number "S-00100" at 12 pt under
+it, while the drawing's callouts run 19-25 pt, so the largest-sheet-like-token rule labelled
+pages "W14", "HSS1", "CF3.0" and the five-digit numbers never matched `SHEET_NO` (three digits
+max). Now: `SHEET_NO` allows five digits; `sheet_info` takes the sheet-like token nearest
+below/right of a SHEET NO / DWG NO / DRAWING NO caption (within 5% of the page) before any
+size heuristic, and a captioned number also beats a page label that disagrees. Guards, from
+the before/after diff over every sample set (2,052 pages): the caption must sit on the right
+or bottom strip (a "SHEET NUMBER" in the body is a sheet-index column or a legend), at most
+two numbers may be near it (index columns), and the number must not be smaller than its
+caption (KISD's cover legend prints "SHEET NUMBER" at 12.5 pt over a 9.5 pt example). Net:
+IAH100 (Walter P Moore, five-digit) gained numbers on all 34 pages, HTX2 arch sheets read
+their title block (A4.1 ceiling plans, not the A2.1G sector tags), nothing else moved. `prepare.py`
+trusts an existing label only when it starts with the captioned number, so a set labelled by
+the earlier rule heals on its next scope or measure (a wrong label's title is dropped too; a
+digits-only label is a page position, not a name). The measure output now labels every page
+"S-20100 - ROOF FRAMING PLAN" (prepared label when it names the sheet, else number - title),
+since that copy is the one the estimator finishes in Revu. `markups_csv.py` reads a takeoff
+PDF's Markups List back out as the app's import CSV (page label → Drawing_Ref).
+
 **End alignment from the OXY training pair (2026-09-11, first turn of the improvement loop).**
 Todd's corrections on the OXY Hanger frame elevations (S401-S407, 165 re-drawn members) showed
 the tool on the right line (median sideways 0.03 ft) but overshooting the ends (median end shift
