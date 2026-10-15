@@ -46,3 +46,13 @@ Prices: none of these sources carry current pricing; unit prices are to be seede
 - The auto-takeoff's base plate step names the rods it reads off the typical column base
   plate detail in the plate row's note (e.g. "(4) 3/4\" F1554-55 anchor rods x 1'-0\" embed");
   Grade 55 (IAH100's spec) was added 2026-09-06 with the same sizes.
+
+## Loose hardware families (2026-10-15)
+
+Added so Bidding Enterprise's takeoff rows match catalog items (their change log v1.7.7 cited the sources; see `Bidding Enterprise/`). No prices yet; set on Global Pricing Data.
+
+- `heavy-hex-nuts.csv` - heavy hex nuts 1/2"-2", weight each from Portland Bolt's nut weight chart. Kind NUT, no length.
+- `f436-washers.csv` - F436 hardened washers 1/2"-1-1/2", Portland Bolt structural bolt weight chart (washer row). Kind WASHER, no length.
+- `headed-studs.csv` - Nelson H4L headed concrete anchors 1/4"-5/8" x 2"-8", weight = dimensions x steel density. Kind STUD.
+- `threaded-rod.csv` - all-thread rod 3/8"-1-1/2" cut to 12/24/36/72", weight = 2.673 x d^2 lb/ft x length. Kind THREADED_ROD. (Portland Bolt gives rod weight per foot; the catalog prices per each, so stock cut lengths are seeded.)
+- `tek-screws.csv` - ITW Buildex flat-head Teks (10-16 to 1/4-20); no published weight, seeded at 0. Kind SCREW; diameter is the gauge (#10, #12, 1/4).

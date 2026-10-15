@@ -49,15 +49,19 @@ Takeoffs are done in-house with Bluebeam Revu; Todd shares the profile/toolkit w
 
 ### CSV contract (essentials)
 
-One row = one piece. Grouped by `Item_Number`; `Member_Mark` parent/child dotting ("45", "45.1") nests subparts under members. `Length_Ft` (typed) OR `Measured_Length` (measured) suffices; drawn dimension strings are parsed and reconciled to the nearest inch. `Page_Label` and `Drawing_Ref` merge into the item's Dwg Ref.
+One row = one piece. Grouped by `Item_Number`; `Member_Mark` parent/child dotting ("45", "45.1") nests subparts under members. `Length_Ft` (typed) OR `Measured_Length` (measured) suffices; drawn dimension strings are parsed and reconciled to the nearest inch. `Page_Label` and `Drawing_Ref` merge into the item's Dwg Ref. Columns are matched by header name; unknown columns are ignored.
+
+Profile v1.7.7 columns (Bidding Enterprise, Oct 2026) the importer also reads: `Total_Pieces` (wins over `Quantity` when > 0 — count markups), `Plate_Width_In` (a thickness-only `PL 3/8` becomes `PL 3/8 x W` → Plate category), `Weld_Qty` (welds per piece, default 1), the prep quantity columns (`Ease_Qty`, `Splice_Qty`, `90s_Qty`, `Camber_Qty`, `Roll_Qty`, `Returns_Qty`, `Rail_Start_Qty`, `Rail_End_Qty` → quantity of the selected `Prep_Ops`), and a **Bluebeam weight carry-over**: `Total_Weight_Lbs ÷ Total_Length_Ft` (else `Weight_Per_Ft`) becomes `customWeight` for any size the shape database doesn't match (joists, deck, "Dia. Bar", pipe names, SS/CRTN) instead of zero.
+
+Custom ops (Global Pricing Data → Custom ops, seeded by `scripts/seed-custom-ops.mjs`, rates entered by Todd/Samantha): `Apply- Groove Weld` ($/in), `Apply- Plug/Slot Weld`, `Returns`, `Rail Start`, `Rail End`, `Shear & Brake` ($/ea). The import server prices any op whose name matches an active custom op (`lib/import-takeoff-server.js`). Hardware kinds now also include NUT, WASHER, STUD, THREADED_ROD, SCREW (lengthless labels: `3/4" Heavy Hex Nut`).
 
 Dropdown → operation mappings (see `import-takeoff.js` maps; `None` imports as blank everywhere):
 
 - **End_1/End_2**: Straight/Miter/Double Miter/Single Cope/Double Cope/Profile, plus compounds ("Single Cope + Miter" splits into two ops)
 - **Holes** + `Hole_Qty`: Drill / Drill & C'sink / Drill & Tap / Drill Thru
-- **Weld_Type**: Fillet / Bevel\/Grind / PJP / CJP
+- **Weld_Type** + `Weld_Qty`: Fillet / Bevel\/Grind / PJP / CJP / Groove Weld / Plug\/Slot (flare-bevel = Fillet; field welds blank + Notes)
 - **Connection_Type** + `Connection_Qty`: `WF Bolted`, `WF Welded`, `WF CJP`, `C Bolted`, `C Welded`, `C CJP`, `Loose` (legacy `WF/C Connx` and `Moment Connx` still accepted; CJP maps to Moment pricing)
-- **Prep_Ops**: Ease / Splice / 90's / Camber / Roll
+- **Prep_Ops** + its `*_Qty` column: Ease / Splice / 90's / Camber / Roll / Returns / Rail Start / Rail End / Shear & Brake (handrail: 90's = direction change, Returns = wall-return 90 with capped end)
 - **Coating**: aggregates at ITEM level when uniform across rows; mixed values are flagged
 - **Galvanized**: Yes → galv weight lines (see galv rules below)
 

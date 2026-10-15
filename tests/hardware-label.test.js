@@ -82,3 +82,21 @@ describe('annotateHardware (import)', () => {
     expect(items[0].members[0].hardware).toMatchObject({ id: 2, finish: 'HDG', unitPrice: 15 });
   });
 });
+
+describe('loose hardware labels (nuts, washers, screws)', () => {
+  it('omits the length when the item has none and the inch mark on screw gauges', () => {
+    expect(hardwareLabel({ kind: 'NUT', family: 'Heavy Hex Nut', diameter: '3/4', length: '', finish: 'Plain' })).toBe('3/4" Heavy Hex Nut');
+    expect(hardwareLabel({ kind: 'WASHER', family: 'F436 Washer', diameter: '1/2', length: '', finish: 'HDG' })).toBe('1/2" F436 Washer HDG');
+    expect(hardwareLabel({ kind: 'SCREW', family: 'Tek Screw', diameter: '#12', length: '1-5/8', finish: 'Zinc' })).toBe('#12 Tek Screw x 1-5/8"');
+    expect(hardwareLabel({ kind: 'STUD', family: 'Headed Stud', diameter: '1/2', length: '4', finish: 'Plain' })).toBe('1/2" Headed Stud x 4"');
+  });
+  it('matches a takeoff row back to a lengthless item', () => {
+    const cat = [
+      { id: 1, kind: 'NUT', family: 'Heavy Hex Nut', name: '', diameter: '3/4', length: '', finish: 'Plain' },
+      { id: 2, kind: 'STUD', family: 'Headed Stud', name: '', diameter: '1/2', length: '4', finish: 'Plain' },
+    ];
+    expect(matchHardwareLabel('3/4" Heavy Hex Nut', cat)?.id).toBe(1);
+    expect(matchHardwareLabel('Heavy Hex Nut 3/4', cat)?.id).toBe(1);
+    expect(matchHardwareLabel('1/2" Headed Stud x 4"', cat)?.id).toBe(2);
+  });
+});

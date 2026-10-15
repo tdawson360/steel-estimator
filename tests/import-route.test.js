@@ -306,3 +306,91 @@ describe('size → pricing key', () => {
     expect(env.getShapeTypeFromKey('HSS4X4X1/4')).toBeNull();
   });
 });
+
+// Profile v1.7.7 (Bidding Enterprise, Oct 2026): Total_Pieces on count
+// markups, Plate_Width_In, Weld_Qty, prep quantity columns, and the Bluebeam
+// weight carry-over for sizes outside the shape database.
+describe('profile v1.7.7 columns', () => {
+  const HDR = 'Item_Number,Item_Description,Member_Mark,Shape_Size,Quantity,Total_Pieces,Length_Ft,Plate_Width_In,Measured_Length,Weight_Per_Ft,Total_Length_Ft,Total_Weight_Lbs,Weld_Type,Weld_Qty,Prep_Ops,Ease_Qty,90s_Qty';
+  const parse = (rows) => env.parseTakeoffCSV([HDR, ...rows].join('\n')).rawRows;
+
+  it('Total_Pieces wins over Quantity when present (10 clicks, Quantity 1 → 10 pieces)', () => {
+    const rows = parse([
+      '1,COLUMNS,C1,HSS  6 x 6 x 1/4,1,10,12,,0,19.02,120,"2,282.4",,,,,',
+      '1,FRAMING,B1,W 8 x 21,4,,,,23.01,21,92.04,1932.8,,,,,',
+      '1,FRAMING,B2,W 8 x 21,,,,,23.01,21,23.01,483.2,,,,,',
+    ]);
+    expect(rows.map(r => r.quantity)).toEqual([10, 4, 1]);
+    expect(rows[0].lengthFt).toBe(12); // typed Length_Ft on a count markup
+  });
+  it('Plate_Width_In turns a thickness-only PL size into a priced plate', () => {
+    const rows = parse([
+      '1,PLATES,P1,PL 3/8,1,,0.583,5,0,15.3,0.583,3.72,,,,,',
+      '1,PLATES,P2,PL 3/8,1,,0.833,,0,15.3,0.833,12.75,,,,,',
+      '1,FRAMING,B1,W 8 x 21,1,,,8,23.01,21,23.01,483.2,,,,,',
+    ]);
+    expect(rows[0].shapeSize).toBe('PL 3/8 x 5');
+    expect(rows[1].shapeSize).toBe('PL 3/8');          // no width: unchanged
+    expect(rows[2].shapeSize).toBe('W 8 x 21');        // width ignored on non-plate
+  });
+  it('carries Bluebeam lb/ft: Total_Weight ÷ Total_Length, else Weight_Per_Ft', () => {
+    const rows = parse([
+      '1,JOISTS,J1,24LH10,1,,,,30,17,30,510,,,,,',
+      '1,PLATES,P1,PL 3/8,1,,0.583,5,0,15.3,0.583,3.717,,,,,',  // width factor already in the ratio
+      '1,DECK,D1,3.5 D20 Roof Deck,1,,,,0,3.3,0,1328.3,,,,,',     // area markup: no length
+      '1,FRAMING,B1,W 8 x 21,1,,,,23.01,21,,,,,,,',
+    ]);
+    expect(rows.map(r => r.weightPerFt)).toEqual([17, 6.376, 3.3, 21]);
+  });
+  it('Weld_Qty and the prep quantity column set op quantities; blank keeps 1', () => {
+    const rows = parse([
+      '1,FRAMING,B1,W 8 x 21,1,,,,23.01,21,23.01,483.2,Fillet,2,Ease,12,',
+      "1,FRAMING,B2,W 8 x 21,1,,,,23.01,21,23.01,483.2,CJP,,90's,,3",
+      '1,FRAMING,B3,W 8 x 21,1,,,,23.01,21,23.01,483.2,Fillet,,Splice,,',
+    ]);
+    expect(env.generateRowFabOps(rows[0])).toEqual([
+      { operation: 'Apply- Fillet Weld', quantity: 2, unit: 'EA' },
+      { operation: 'Ease', quantity: 12, unit: 'EA' },
+    ]);
+    expect(env.generateRowFabOps(rows[1])).toEqual([
+      { operation: 'Apply- CJP Weld', quantity: 1, unit: 'EA' },
+      { operation: "90's", quantity: 3, unit: 'EA' },
+    ]);
+    expect(env.generateRowFabOps(rows[2])).toEqual([
+      { operation: 'Apply- Fillet Weld', quantity: 1, unit: 'EA' },
+      { operation: 'Splice', quantity: 1, unit: 'EA' },
+    ]);
+  });
+  it('aggregated members keep the Bluebeam lb/ft for the client fallback', () => {
+    const rows = parse(['1,JOISTS,J1,24LH10,1,,,,30,17,30,510,,,,,']);
+    const { items } = env.aggregateTakeoffData(rows);
+    expect(items[0].members[0]).toMatchObject({ size: '24LH10', weightPerFt: 17, pieces: 1 });
+  });
+});
+
+// Custom ops decided 2026-10-15 (Groove Weld, Plug/Slot, railing ops, Shear & Brake)
+describe('v1.7.7 dropdown values mapped to custom ops', () => {
+  it('weld values', () => {
+    expect(env.generateRowFabOps({ weldType: 'Groove Weld', weldQty: 2 }))
+      .toEqual([{ operation: 'Apply- Groove Weld', quantity: 2, unit: 'EA' }]);
+    expect(env.generateRowFabOps({ weldType: 'Plug/Slot' }))
+      .toEqual([{ operation: 'Apply- Plug/Slot Weld', quantity: 1, unit: 'EA' }]);
+  });
+  it('prep values with their quantity columns', () => {
+    const HDR = 'Item_Number,Shape_Size,Quantity,Measured_Length,Prep_Ops,Returns_Qty,Rail_Start_Qty,Rail_End_Qty,Shear_Brake_Qty';
+    const { rawRows } = env.parseTakeoffCSV([HDR,
+      '1,HSS  1-1/2 x 1-1/2 x 1/8,1,40,Returns,4,,,',
+      '1,HSS  1-1/2 x 1-1/2 x 1/8,1,40,Rail Start,,1,,',
+      '1,HSS  1-1/2 x 1-1/2 x 1/8,1,40,Rail End,,,1,',
+      '1,PL 1/4,1,3,Shear & Brake,,,,2',
+      '1,PL 1/4,1,3,S/B,,,,',
+    ].join('\n'));
+    expect(rawRows.map(r => env.generateRowFabOps(r)[0])).toEqual([
+      { operation: 'Returns', quantity: 4, unit: 'EA' },
+      { operation: 'Rail Start', quantity: 1, unit: 'EA' },
+      { operation: 'Rail End', quantity: 1, unit: 'EA' },
+      { operation: 'Shear & Brake', quantity: 2, unit: 'EA' },
+      { operation: 'Shear & Brake', quantity: 1, unit: 'EA' },
+    ]);
+  });
+});

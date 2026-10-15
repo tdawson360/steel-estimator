@@ -128,6 +128,51 @@ for (const r of read('f1554-anchor-rods.csv')) {
   }
 }
 
+// Loose hardware families (Todd, 2026-10-15) so Bidding Enterprise's takeoff
+// rows match catalog items. Weights are the published figures they cited
+// (Portland Bolt, Nelson); Tek screws have no published weight. No prices yet.
+for (const r of read('heavy-hex-nuts.csv')) {
+  desired.push({
+    kind: 'NUT', family: 'Heavy Hex Nut', name: '', diameter: r.diameter, diameterIn: frac(r.diameter),
+    length: '', lengthIn: 0, finish: 'Plain',
+    weightEach: num(r.weight_each_lb), unitPrice: num(r.unit_price),
+    isDefault: r.diameter === '3/4', sortOrder: 50,
+  });
+}
+for (const r of read('f436-washers.csv')) {
+  desired.push({
+    kind: 'WASHER', family: 'F436 Washer', name: '', diameter: r.diameter, diameterIn: frac(r.diameter),
+    length: '', lengthIn: 0, finish: 'Plain',
+    weightEach: num(r.weight_each_lb), unitPrice: num(r.unit_price),
+    isDefault: r.diameter === '3/4', sortOrder: 51,
+  });
+}
+for (const r of read('headed-studs.csv')) {
+  desired.push({
+    kind: 'STUD', family: 'Headed Stud', name: '', diameter: r.diameter, diameterIn: frac(r.diameter),
+    length: r.length, lengthIn: num(r.length_in), finish: 'Plain',
+    weightEach: num(r.weight_each_lb), unitPrice: num(r.unit_price),
+    isDefault: r.diameter === '1/2' && r.length === '4', sortOrder: 52,
+  });
+}
+for (const r of read('threaded-rod.csv')) {
+  desired.push({
+    kind: 'THREADED_ROD', family: 'All-Thread Rod', name: '', diameter: r.diameter, diameterIn: frac(r.diameter),
+    length: r.length, lengthIn: num(r.length_in), finish: 'Plain',
+    weightEach: num(r.weight_each_lb), unitPrice: num(r.unit_price),
+    isDefault: r.diameter === '1/2' && r.length === '12', sortOrder: 53,
+  });
+}
+for (const r of read('tek-screws.csv')) {
+  desired.push({
+    kind: 'SCREW', family: 'Tek Screw', name: '', diameter: r.diameter,
+    diameterIn: ({ '#10': 0.19, '#12': 0.216, '1/4': 0.25 })[r.diameter] ?? 0,
+    length: r.length, lengthIn: num(r.length_in), finish: 'Zinc',
+    weightEach: num(r.weight_each_lb), unitPrice: num(r.unit_price),
+    isDefault: r.thread === '12-24' && r.length === '1-5/8', sortOrder: 54,
+  });
+}
+
 // ── One-time fixups from earlier seed shapes ────────────────────────────────
 const uniq = (i) => ({ family: i.family, name: i.name || '', diameter: i.diameter, length: i.length, finish: i.finish });
 const keyOf = (i) => Object.values(uniq(i)).join('|');

@@ -193,7 +193,9 @@ const applyHardwareItem = (mat, item) => {
 const hardwareItemFor = (mat, items) => (mat?.hardwareItemId != null ? (items || []).find(i => i.id === mat.hardwareItemId) || null : null);
 const hardwareLengthText = (mat, items) => {
   const it = hardwareItemFor(mat, items);
-  return it ? (it.kind === 'ADHESIVE' ? it.length : `${it.length}"`) : '—';
+  if (!it) return '—';
+  if (it.kind === 'ADHESIVE') return it.length;
+  return it.length ? `${it.length}"` : '—';   // nuts and washers carry no length
 };
 
 // Size-cell picker for a Hardware row: family, then size (finish in the label
@@ -2251,7 +2253,9 @@ const SteelEstimator = ({ projectId, userRole, userName, userId, takeoffSource =
           category: hw ? 'Hardware' : translated.category,
           size: hw ? hw.label : (translated.size || member.size),
           hardwareItemId: hw ? hw.id : null,
-          customWeight: hw ? (hw.weightEach || 0) : (translated.category === 'Custom' ? 0 : null),
+          // A size the shape database doesn't know (joists, deck, bar and pipe
+          // names from the Bluebeam list) keeps the lb/ft Bluebeam computed
+          customWeight: hw ? (hw.weightEach || 0) : (translated.category === 'Custom' ? (member.weightPerFt || 0) : null),
           pieces: member.pieces || 1,
           length: hw ? (hw.lengthIn || 0) : (member.length || 0),
           stockLength: null,
